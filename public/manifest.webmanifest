@@ -1,0 +1,10 @@
+{
+  "name": "Outta Here",
+  "short_name": "Outta Here",
+  "description": "Group trips that actually happen.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F2F3F8",
+  "theme_color": "#D41C78",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
