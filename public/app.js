@@ -681,6 +681,7 @@ async function deleteTrip(tid) {
   if (S.tid === tid) stop();
   try {
     const t = (await S.db.doc('trips/' + tid).get()).data() || {};
+    const word = SIZES[t.size] ? SIZES[t.size].label : 'Trip';
     if (S.assets) for (const x of Object.values(t.tickets || {})) if (x && x.asset) await S.assets.delete(x.asset).catch(() => {});
     if (S.assets) { const ph = await S.db.collection(`trips/${tid}/photos`).get(); for (const d of ph.docs) { const a = d.data().asset; if (a) await S.assets.delete(a).catch(() => {}); } }
     for (const c of ['members', 'expenses', 'packing', 'feed', 'bucket', 'photos', 'pot', 'songs']) {
@@ -690,7 +691,7 @@ async function deleteTrip(tid) {
     await S.db.doc('trips/' + tid).delete();
     S.confirmHome = null; S.confirm = null;
     if (S.tid === tid) goHome(); else render();
-    flash('Trip deleted.');
+    flash(word + ' deleted.');
   } catch (e) { flash(writeErr(e)); if (S.tid === tid) openTrip(tid, 'crew'); }
 }
 async function leaveTrip() {
@@ -1889,7 +1890,7 @@ function planRow(t, opts = {}) {
     </div>
     <div class="row" style="gap:6px;flex-wrap:nowrap">${S.confirmHome === t.id
       ? `<button class="btn sm danger-fill" data-homedo="${esc(t.id)}">Delete</button><button class="btn sm ghost" data-act="homeCancel">Cancel</button>`
-      : `${opts.del && canDelete(t) ? `<button class="x" data-homedel="${esc(t.id)}" aria-label="Delete ${esc(t.name)}">×</button>` : ''}<button class="btn sm" data-share="${esc(t.id)}" aria-label="Share ${esc(t.name)}">Share</button><button class="btn sm primary" data-open="${esc(t.id)}">Open</button>`}</div>
+      : `${canDelete(t) ? `<button class="x" data-homedel="${esc(t.id)}" aria-label="Delete ${esc(t.name)}">×</button>` : ''}<button class="btn sm" data-share="${esc(t.id)}" aria-label="Share ${esc(t.name)}">Share</button><button class="btn sm primary" data-open="${esc(t.id)}">Open</button>`}</div>
     ${S.shareHome === t.id && S.copyText ? `<textarea class="pr-copy" id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
   </div>`;
 }
