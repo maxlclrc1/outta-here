@@ -373,3 +373,9 @@ body[data-sec="live"] .mini-name{color:var(--ink)}
 }
 @media (pointer:coarse){.btn,.chip,.subtab,.bn,.qa,.tab{touch-action:manipulation;-webkit-tap-highlight-color:transparent}}
 @media (prefers-reduced-motion:reduce){.qa:active{transform:none}.bn svg{transition:none}}
+
+/* invite card */
+.invite-link{display:block;padding:10px 12px;border-radius:10px;background:var(--bg);border:1px dashed var(--line);font-size:13px;overflow-wrap:anywhere;user-select:all}
+.steps-list{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px}
+.empty .row{justify-content:center}
+.code-tbd{opacity:.35}

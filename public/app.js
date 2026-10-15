@@ -62,8 +62,8 @@ function aiErr(e) {
 /* ---------- derived ---------- */
 const active = () => S.members.filter(m => m.status !== 'out');
 const meDoc = () => S.members.find(m => m.id === S.uid);
-function bestWindows() {
-  const t = S.trip; const len = (t.nights || 3) + 1; const days = span(t.winStart, t.winEnd); const ms = active();
+function bestWindows(nights) {
+  const t = S.trip; const len = (nights || t.nights || 3) + 1; const days = span(t.winStart, t.winEnd); const ms = active();
   const out = [];
   for (let i = 0; i + len <= days.length; i++) {
     const d = days.slice(i, i + len);
@@ -75,6 +75,10 @@ function bestWindows() {
   const picked = [];
   for (const w of out) { if (picked.every(p => Math.abs(D(p.start) - D(w.start)) >= 2 * 864e5)) picked.push(w); if (picked.length === 3) break; }
   return picked;
+}
+function shorterFit() {
+  for (let n = (S.trip.nights || 3) - 1; n >= 1; n--) { const w = bestWindows(n)[0]; if (w) return { n, w }; }
+  return null;
 }
 function votesFor(id) { return active().filter(m => (m.votes || []).includes(id)); }
 function leaderDest() {
@@ -208,22 +212,25 @@ async function copy(text) {
   render();
   const ta = $('#copybox'); if (ta) { ta.focus(); ta.select(); }
 }
-let meT, meWriting = false;
-function saveMe(patch, now) {
+let meT, meWriting = false, meSeq = 0;
+function saveMe(patch, now, quiet) {
   let m = meDoc();
   if (!m) { m = { id: S.uid, nick: S.myName || 'Me', home: '', budget: 0, status: 'in', days: [], votes: [] }; S.members.push(m); }
-  Object.assign(m, patch); render();
+  Object.assign(m, patch); if (!quiet) render();
   if (S.demo) return;
-  S.meDirty = true; clearTimeout(meT); meT = setTimeout(flushMe, now ? 0 : 600);
+  S.meDirty = true; meSeq++; clearTimeout(meT); meT = setTimeout(flushMe, now ? 0 : 600);
 }
 async function flushMe() {
   if (meWriting) { meT = setTimeout(flushMe, 300); return; }
   const m = meDoc(); if (!m || !S.db) return;
-  meWriting = true;
+  meWriting = true; const seq = meSeq;
   const { id, ...body } = m;
-  try { await S.db.doc(`trips/${S.tid}/members/${S.uid}`).set({ ...body, updatedAt: Date.now() }); }
+  try {
+    await S.db.doc(`trips/${S.tid}/members/${S.uid}`).set({ ...body, updatedAt: Date.now() });
+    if (!(S.trip?.people || {})[S.uid]) S.db.doc('trips/' + S.tid).update({ people: { [S.uid]: true } }).catch(() => {});
+  }
   catch (e) { flash(writeErr(e)); }
-  meWriting = false; S.meDirty = false;
+  meWriting = false; if (seq === meSeq) S.meDirty = false;
 }
 
 /* ---------- AI ---------- */
@@ -330,7 +337,7 @@ const maps = (name, city) => 'https://www.google.com/maps/search/?api=1&query=' 
 
 /* ---------- render ---------- */
 function render() {
-  const a = document.activeElement, fid = a && a.id, sel = a && 'selectionStart' in a ? [a.selectionStart, a.selectionEnd] : null;
+  const a = document.activeElement, fid = (a && a !== document.body && a.id) || (lastDown && Date.now() - lastDown.at < 800 ? lastDown.id : ''), sel = a && 'selectionStart' in a ? [a.selectionStart, a.selectionEnd] : null;
   const scrollTabs = $('.tabs')?.scrollLeft;
   app.innerHTML = S.tid && S.trip ? tripView() : homeView();
   const sk = S.tid && S.trip ? secOf(S.tab).k : 'none';
@@ -357,9 +364,9 @@ function pass() {
       <div class="row" style="justify-content:space-between"><span class="label">${esc(S.trip.name)}</span>
         ${tickets().on ? `<span class="on-pill">Trip is on</span>` : booking_time() ? `<span class="pill in">Booking flights</span>` : `<span class="pill maybe">Still deciding</span>`}</div>
       <div class="route">
-        <span class="code">${from.length ? esc(homes().length > 1 ? homes().length + ' CITIES' : from[0]) : '???'}</span>
+        <span class="code ${from.length ? '' : 'code-tbd'}">${from.length ? esc(homes().length > 1 ? homes().length + ' CITIES' : from[0]) : 'HOME'}</span>
         <span class="plane" aria-hidden="true">✈</span>
-        <span class="code" style="color:var(--accent)">${ds ? esc(ds.code ? ds.code.toUpperCase() : ds.city) : '???'}</span>
+        <span class="code ${ds ? '' : 'code-tbd'}" style="color:var(--accent)">${ds ? esc(ds.code ? ds.code.toUpperCase() : ds.city) : 'TBD'}</span>
       </div>
       <div class="facts">
         <div><span class="label">Dates${d && !d.locked ? ' · best so far' : ''}</span><b>${d ? short(d.start) + ' → ' + short(d.end) : 'TBD'}</b></div>
@@ -384,7 +391,8 @@ function pass() {
 function crewTab() {
   const m = meDoc() || { nick: S.myName, home: '', budget: '' };
   const ns = nudges();
-  return `<section class="card stack">
+  return `${inviteCard()}
+  <section class="card stack">
     <div class="row" style="justify-content:space-between"><h2>Who’s holding things up</h2>
       ${ns.length ? `<button class="btn primary sm" data-act="copyNudge">Copy nudge for the group chat</button>` : ''}</div>
     ${ns.length ? `<div>${ns.map(x => `<div class="nudge"><b>${esc(x.m.nick || 'Someone')}${x.m.id === S.uid ? ' (you)' : ''}</b><span class="small muted">${x.todo.join(' · ')}</span></div>`).join('')}</div>`
@@ -430,7 +438,7 @@ function datesTab() {
   return `<section class="grid2">
     <div class="card stack">
       <div class="row" style="justify-content:space-between"><h2>Tap the days you’re free</h2>
-        <div class="row" style="gap:6px"><button class="btn sm ghost" data-act="allDays">All</button><button class="btn sm ghost" data-act="weekends">Weekends</button><button class="btn sm ghost" data-act="noDays">Clear</button></div></div>
+        <div class="row" style="gap:6px"><button class="btn sm ghost" data-act="allDays">All</button><button class="btn sm ghost" data-act="weekends">Fri–Sun</button><button class="btn sm ghost" data-act="noDays">Clear</button></div></div>
       <div class="cal">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x => `<span class="dow">${x}</span>`).join('')}${'<span></span>'.repeat(lead)}${cells.join('')}</div>
       <div class="legend"><span><i class="sw" style="background:var(--accent)"></i>More people free</span><span><i class="sw" style="outline:2px solid var(--ink)"></i>You</span><span><i class="sw" style="box-shadow:inset 0 -3px 0 var(--gold)"></i>Best window</span></div>
       <div class="row small muted"><span>Window ${short(t.winStart)} – ${short(t.winEnd)} · trip length</span>
@@ -444,7 +452,9 @@ function datesTab() {
         <div class="bar"><i style="width:${Math.round(w.ok.length / max * 100)}%"></i></div>
         ${w.miss.length ? `<span class="small muted">Missing: ${w.miss.map(m => esc(m.nick || 'Someone')).join(', ')}</span>` : `<span class="small" style="color:var(--good)">Everyone can make it</span>`}
         <div><button class="btn sm ${i === 0 ? 'primary' : ''}" data-lockdates="${w.start}|${w.end}">Lock these dates</button></div>
-      </div>`).join('') : `<div class="empty"><span>No ${t.nights || 3}-night stretch overlaps yet. Once people tap their free days, the best windows show up here.</span></div>`}
+      </div>`).join('') : `<div class="empty">${(() => { const f = shorterFit(); return f
+        ? `<b>No ${t.nights || 3}-night stretch works yet</b><span>But a ${f.n}-night trip, ${fmt(f.w.start)} → ${fmt(f.w.end)}, works for ${f.w.ok.length} of ${ms.length}.</span><button class="btn sm primary" data-setnights="${f.n}">Switch to ${f.n} night${f.n === 1 ? '' : 's'}</button>`
+        : `<span>No ${t.nights || 3}-night stretch overlaps yet. Once people tap their free days, the best windows show up here.</span>`; })()}</div>`}
     </div>
   </section>`;
 }
@@ -472,8 +482,11 @@ function whereTab() {
 }
 
 function needDestDates(what) {
-  return `<div class="empty"><b>Pick a place and dates first.</b><span>${what} needs a destination (vote in Where) and dates (tap free days in Dates).</span>
-    <div class="row"><button class="btn sm" data-tab="where">Go to Where</button><button class="btn sm" data-tab="dates">Go to Dates</button></div></div>`;
+  const hasDest = !!dest(), hasDates = !!dates();
+  const need = !hasDest && !hasDates ? 'a destination and dates' : !hasDest ? 'a destination' : 'dates';
+  return `<div class="empty"><b>${!hasDest && !hasDates ? 'First, decide where and when' : !hasDest ? 'First, pick where you’re going' : 'First, pick your dates'}</b>
+    <span>You’ll need ${need} for ${esc(what)}. Trip Match settles both at once: the AI pitches trips that fit everyone and the crew swipes.</span>
+    <div class="row" style="gap:6px"><button class="btn sm primary" data-tab="match">Open Trip Match</button>${!hasDest ? '<button class="btn sm" data-tab="where">Vote on where</button>' : ''}${!hasDates ? '<button class="btn sm" data-tab="dates">Pick dates</button>' : ''}</div></div>`;
 }
 
 function ticketsSection() {
@@ -513,7 +526,7 @@ function dealsBody(x, cap) {
 
 function spotsTab() {
   const d = dates(), ds = dest();
-  if (!ds) return needDestDates('Nightlife picks');
+  if (!ds) return needDestDates('nightlife picks');
   const spots = S.trip.spots && S.trip.spots.city === ds.city ? S.trip.spots.items : null;
   const mq = meDoc()?.quiz || {}, b = blend();
   const ranked = spots ? spots.map((s, i) => ({ s, i, sc: score(rkey('sp' + s.name)) })).sort((a, b) => b.sc.net - a.sc.net || a.i - b.i) : [];
@@ -550,7 +563,7 @@ function spotsTab() {
 
 function planTab() {
   const d = dates();
-  if (!d) return needDestDates('The itinerary');
+  if (!d) return needDestDates('the itinerary');
   const days = span(d.start, d.end), items = visItems();
   return `<section class="card stack">
     <div class="row" style="justify-content:space-between"><h2>Itinerary</h2>
@@ -658,6 +671,7 @@ async function leaveTrip() {
   stop(); clearTimeout(meT); S.meDirty = false;
   try {
     if (mine) { if (mine.asset && S.assets) await S.assets.delete(mine.asset).catch(() => {}); await S.db.doc('trips/' + tid).update({ tickets: { [S.uid]: null } }); }
+    await S.db.doc('trips/' + tid).update({ people: { [S.uid]: null } }).catch(() => {});
     await S.db.doc(`trips/${tid}/members/${S.uid}`).delete();
     goHome(); flash('You left the trip.');
   } catch (e) { flash(writeErr(e)); openTrip(tid, 'crew'); }
@@ -836,7 +850,7 @@ const CHECKINS = ['At the hotel', 'At the pool', 'Getting food', 'Out out', 'Hea
 function ago(at) { const m = Math.round((Date.now() - at) / 6e4); return m < 1 ? 'just now' : m < 60 ? m + 'm ago' : m < 1440 ? Math.round(m / 60) + 'h ago' : Math.round(m / 1440) + 'd ago'; }
 const isLive = () => { const d = dates(); return !!d && TODAY >= d.start && TODAY <= d.end; };
 function liveTab() {
-  const d = dates(); if (!d) return needDestDates('Live trip mode');
+  const d = dates(); if (!d) return needDestDates('live mode');
   const live = isLive(), days = span(d.start, d.end);
   const day = live ? TODAY : d.start, idx = days.indexOf(day);
   const now = new Date().toTimeString().slice(0, 5);
@@ -1016,8 +1030,9 @@ function crewSection() {
   </section>`;
 }
 function crewsHome() {
-  if (!S.crews.length) return '';
-  return `<section class="stack"><h2>Your crews</h2>${S.crews.map(c => {
+  const crews = S.crews.filter(c => c.by === S.uid || (c.ids || []).includes(S.uid));
+  if (!crews.length) return '';
+  return `<section class="stack"><h2>Your crews</h2>${crews.map(c => {
     const trips = S.trips.filter(t => t.crewId === c.id);
     return `<div class="card stack" style="gap:8px">
       <div class="row" style="justify-content:space-between"><h3>${esc(c.name)}</h3><span class="small muted">${trips.length} trip${trips.length === 1 ? '' : 's'} together</span></div>
@@ -1112,7 +1127,7 @@ function tripView() {
 function steps() {
   const t = S.trip, tk = tickets(), ins = S.members.filter(m => m.status === 'in').length, d = dates();
   return [
-    { label: 'Get the crew in', done: ins >= 2, sub: `${ins} in so far. Share this page so friends can join.`, go: 'crew', cta: 'See the crew' },
+    { label: 'Get the crew in', done: ins >= 2, sub: `${ins} in so far. Send your friends the invite.`, go: 'crew', cta: 'Invite friends' },
     { label: 'Pick where', done: !!t.lockedDest, sub: dest() ? `Leaning ${dest().city}. Swipe on AI-pitched trips to settle it.` : 'Swipe on AI-pitched trips that fit everyone.', go: 'match', cta: 'Open Trip Match' },
     { label: 'Lock the dates', done: !!t.lockedDates, sub: d ? `Best so far: ${short(d.start)} – ${short(d.end)}` : 'Everyone taps the days they’re free.', go: 'dates', cta: 'Pick dates' },
     { label: 'Book flights', done: tk.on, sub: `${tk.have.length}/${tk.goal} booked. Search fares from every home city.`, go: 'flights', cta: 'Find flights' },
@@ -1143,7 +1158,7 @@ function overviewTab() {
       <span class="small muted">${t.stay ? esc(t.stay.area || '') + (t.stay.perNight ? ' · ' + esc(t.stay.perNight) : '') : 'Hotels and Airbnbs that fit the budget'}</span><span class="tile-go">${t.stay ? 'See the stay →' : 'Find stays →'}</span></button>
   </section>
   <section class="card stack">
-    <div class="row" style="justify-content:space-between"><h3>Crew</h3><button class="btn sm ghost" data-tab="crew">Manage</button></div>
+    <div class="row" style="justify-content:space-between"><h3>Crew</h3><button class="btn sm" data-tab="crew">Invite & manage</button></div>
     <div class="row" style="gap:6px">${S.members.map(m => `<span class="av-sm" title="${esc(m.nick || 'Someone')}" style="background:${colorFor(m.id)};${m.status === 'out' ? 'opacity:.35' : ''}">${esc((m.nick || '?')[0].toUpperCase())}</span>`).join('')}</div>
     ${ns.length ? `<span class="small muted">${ns.length} ${ns.length === 1 ? 'person has' : 'people have'} stuff to do. <button class="linkbtn" data-tab="crew">See who</button></span>` : '<span class="small" style="color:var(--good)">Everyone’s done their part.</span>'}
   </section>`;
@@ -1165,9 +1180,11 @@ function homeView() {
   if (S.loading && /^#[a-z0-9]{6,20}$/.test(location.hash)) return `${topBar()}<p class="muted">Loading trip…</p>`;
   if (S.creating === 'mode') return modePicker();
   if (S.creating === 'form') return newTripForm();
-  const canSave = !!S.db, has = S.trips.length > 0;
+  // only trips you created or joined
+  const mine = S.trips.filter(t => t.createdBy === S.uid || (t.people || {})[S.uid]);
+  const canSave = !!S.db, has = mine.length > 0;
   const list = !canSave ? '' : !S.tripsLoaded ? `<p class="muted">Loading trips…</p>` :
-    has ? S.trips.map(t => { const m = MODES[t.mode] || MODES.friends; return `<div class="card trip-li" style="border-left:4px solid ${m.color}">
+    has ? mine.map(t => { const m = MODES[t.mode] || MODES.friends; return `<div class="card trip-li" style="border-left:4px solid ${m.color}">
         <div class="stack" style="gap:2px;min-width:0"><span class="label">${esc(m.label)}</span><h3>${esc(t.name)}</h3>
         <span class="small muted">${t.lockedDates ? short(t.lockedDates.start) + ' – ' + short(t.lockedDates.end) : `${t.nights || 3} nights between ${short(t.winStart)} and ${short(t.winEnd)}`}</span></div>
         <div class="row" style="gap:6px;flex-wrap:nowrap">${S.confirmHome === t.id
@@ -1217,7 +1234,7 @@ function newTripForm() {
 /* ---------- book: flights ---------- */
 function skyscanner(from, d, ds) { const y = s => s.slice(2).replace(/-/g, ''); return `https://www.skyscanner.com/transport/flights/${from.toLowerCase()}/${ds.code.toLowerCase()}/${y(d.start)}/${y(d.end)}/`; }
 function flightsTab() {
-  const d = dates(), ds = dest(); if (!d || !ds) return needDestDates('Finding flights');
+  const d = dates(), ds = dest(); if (!d || !ds) return needDestDates('flight search');
   const tk = tickets(), b = budgetCap(), nights = Math.max(1, nightsOf(d));
   const deals = S.trip.deals && S.trip.deals.city === ds.city && S.trip.deals.start === d.start ? S.trip.deals.data : null;
   const est = {}; for (const f of deals?.flights || []) est[String(f.from || '').toLowerCase()] = f;
@@ -1270,7 +1287,7 @@ function stayLinks(s, ds, d, n) {
   return `<a class="btn sm primary" href="https://www.google.com/travel/search?q=${q}" target="_blank" rel="noopener">Check prices</a><a class="btn sm" href="https://www.booking.com/searchresults.html?ss=${q}&checkin=${d.start}&checkout=${d.end}&group_adults=${n}&no_rooms=${Math.max(1, Math.ceil(n / 2))}" target="_blank" rel="noopener">Booking.com</a>`;
 }
 function staysTab() {
-  const d = dates(), ds = dest(); if (!d || !ds) return needDestDates('Finding a place to stay');
+  const d = dates(), ds = dest(); if (!d || !ds) return needDestDates('stay ideas');
   const n = Math.max(1, active().length), nights = Math.max(1, nightsOf(d)), b = budgetCap(), st = S.trip.stay;
   const opts = S.trip.stays && S.trip.stays.city === ds.city ? S.trip.stays.items : [];
   const ranked = opts.map((s, i) => ({ s, i, sc: score(rkey('st' + s.name)) })).sort((a, b2) => b2.sc.net - a.sc.net || a.i - b2.i);
@@ -1388,7 +1405,7 @@ Reply with only JSON: {"places":[{"name":"exactly as given","lat":0,"lng":0,"kin
   });
 }
 function mapTab() {
-  const ds = dest(); if (!ds) return needDestDates('The crew map');
+  const ds = dest(); if (!ds) return needDestDates('the crew map');
   const pts = mapPoints();
   return `<section class="card stack">
     <div class="row" style="justify-content:space-between"><div class="stack" style="gap:2px"><h2>Crew map</h2><span class="small muted">Your stay, spots and plans in ${esc(ds.city)}. Tap a pin for walking time and directions.</span></div>
@@ -1627,7 +1644,7 @@ function wrapData() {
   return { d, ds, ms, total, topSpot: spots[0]?.s, owl: owl && owl.n ? owl : null, photo: photo?.p, champ, hyper, wrecked, awards, over: d && TODAY > d.end, b: blend() };
 }
 function wrappedTab() {
-  const w = wrapData(); if (!w.d || !w.ds) return needDestDates('Trip Wrapped');
+  const w = wrapData(); if (!w.d || !w.ds) return needDestDates('your Trip Wrapped');
   const nights = nightsOf(w.d);
   const slides = [
     { c: ['#D41C78', '#7048E8'], k: `${w.over ? '' : 'So far · '}${esc(S.trip.name)}`, h: `Your ${esc(w.ds.city)} Wrapped`, s: `${nights} nights · ${w.ms.length} people · ${short(w.d.start)} – ${short(w.d.end)}` },
@@ -1692,6 +1709,21 @@ function liveQuick() {
 }
 function jumpTo(sel) { const el = $(sel); if (!el) return; el.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); setTimeout(() => el.focus({ preventScroll: true }), 300); }
 
+/* ---------- invites ---------- */
+const SHARE_BASE = window.OUTTA_SHARE_BASE || (location.origin + '/');
+const IN_CLAUDE = !!window.OUTTA_SHARE_BASE;
+const inviteLink = () => SHARE_BASE + '#' + S.tid;
+function inviteCard() {
+  if (S.demo) return `<section class="card stack"><h2>Invite the crew</h2><p class="small muted">Invites work on real trips. Start one from the home screen.</p></section>`;
+  return `<section class="card stack">
+    <div class="row" style="justify-content:space-between"><h2>Invite the crew</h2><span class="small muted">${S.members.length} in the trip</span></div>
+    ${IN_CLAUDE ? `<ol class="small steps-list"><li>Open this page’s <b>Share</b> menu and invite each friend by email as an <b>Editor</b>. Viewers can look but can’t vote or swipe.</li><li>Send them the invite below. It opens this trip directly.</li></ol>`
+      : `<p class="small muted">Send this link. Friends type their name and land right in this trip.</p>`}
+    <span class="invite-link mono">${esc(inviteLink())}</span>
+    <div class="row" style="gap:6px"><button class="btn primary" data-act="copyInvite">Copy invite message</button></div>
+  </section>`;
+}
+
 /* ---------- story card ---------- */
 async function makeCard() {
   const W = 1080, H = 1920, c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d');
@@ -1711,8 +1743,8 @@ async function makeCard() {
   const L = 70, d = dates(), ds = dest(), hs = homes(), cd = countdown(), b = blend();
   y.fillStyle = GREY; y.font = F(600, 30, 'mono'); y.fillText('BOARDING PASS · GROUP TRIP', L, 110);
   y.fillStyle = INK; fit(y, S.trip.name, tw - 2 * L, 70, 800, 'body'); y.fillText(S.trip.name, L, 200);
-  const from = hs.length === 0 ? '???' : hs.length === 1 ? (isCode(hs[0]) ? hs[0].toUpperCase() : hs[0].toUpperCase().slice(0, 8)) : `${hs.length} CITIES`;
-  const to = ds ? (ds.code ? ds.code.toUpperCase() : ds.city.toUpperCase()) : '???';
+  const from = hs.length === 0 ? 'HOME' : hs.length === 1 ? (isCode(hs[0]) ? hs[0].toUpperCase() : hs[0].toUpperCase().slice(0, 8)) : `${hs.length} CITIES`;
+  const to = ds ? (ds.code ? ds.code.toUpperCase() : ds.city.toUpperCase()) : 'TBD';
   y.fillStyle = GREY; y.font = F(600, 28, 'mono'); y.fillText('FROM', L, 300); y.fillText('TO', tw / 2 + 40, 300);
   y.fillStyle = INK; fit(y, from, tw / 2 - L - 110, 190, 900); y.fillText(from, L, 470);
   y.fillStyle = PINK; fit(y, to, tw / 2 - L - 10, 190, 900); y.fillText(to, tw / 2 + 40, 470);
@@ -1772,6 +1804,8 @@ app.addEventListener('click', e => {
   if (ds.vibe) { const set = new Set(S.trip.vibes || []); set.has(ds.vibe) ? set.delete(ds.vibe) : set.add(ds.vibe); return saveTrip({ vibes: [...set] }); }
   if (ds.act === 'card') return makeCard();
   if (ds.act === 'genPitches') return genPitches();
+  if (ds.act === 'copyInvite') return copy(`Join our trip "${S.trip.name}" on Outta Here: ${inviteLink()}\nTap “I’m in”, then add your free days and budget. Takes 2 minutes.`);
+  if (ds.setnights) return saveTrip({ nights: +ds.setnights, lockedDates: null });
   if (ds.act === 'ciJump') return jumpTo('#ci-text');
   if (ds.act === 'meetJump') return jumpTo('#meet-where');
   if (ds.pin) { S.pinSel = S.pinSel === ds.pin ? null : ds.pin; return render(); }
@@ -1852,16 +1886,16 @@ app.addEventListener('click', e => {
 });
 app.addEventListener('change', e => {
   const id = e.target.id;
-  if (id === 'me-nick') saveMe({ nick: e.target.value.trim().slice(0, 30) }, true);
-  if (id === 'me-home') saveMe({ home: e.target.value.trim().slice(0, 40) }, true);
-  if (id === 'me-budget') saveMe({ budget: Math.max(0, Math.round(+e.target.value || 0)) }, true);
+  if (id === 'me-nick') saveMe({ nick: e.target.value.trim().slice(0, 30) }, true, true);
+  if (id === 'me-home') saveMe({ home: e.target.value.trim().slice(0, 40) }, true, true);
+  if (id === 'me-budget') saveMe({ budget: Math.max(0, Math.round(+e.target.value || 0)) }, true, true);
   if (id === 'ph-files') { uploadPhotos(e.target.files); return; }
   if (id === 'set-honoree') { saveTrip({ honoree: e.target.value || null }); return; }
   if (id === 'set-free') { saveTrip({ honoreeFree: e.target.checked }); return; }
   if (id === 'pot-keeper') { saveTrip({ potKeeper: e.target.value }); return; }
   if (id === 'tk-file') { S.tkFile = e.target.files[0] || null; render(); }
-  if (id === 'me-venmo') saveMe({ venmo: handle(e.target.value).slice(0, 40) }, true);
-  if (id === 'me-cash') saveMe({ cashapp: handle(e.target.value).slice(0, 40) }, true);
+  if (id === 'me-venmo') saveMe({ venmo: handle(e.target.value).slice(0, 40) }, true, true);
+  if (id === 'me-cash') saveMe({ cashapp: handle(e.target.value).slice(0, 40) }, true, true);
   if (id === 'nights') saveTrip({ nights: +e.target.value, lockedDates: null });
   if (id.startsWith('me-') || id === 'nights') delete DRAFT[id];
 });
@@ -1883,6 +1917,10 @@ app.addEventListener('touchend', e => {
   S.tab = sec.tabs[j][0]; S.secTab[sec.k] = S.tab; S.tabPicked = true;
   render(); window.scrollTo({ top: 0 });
 }, { passive: true });
+// opening an invite link while the app is already open only changes the #code, so watch for it
+window.addEventListener('hashchange', () => { const h = (location.hash || '').slice(1); if (S.db && /^[a-z0-9]{6,20}$/.test(h) && h !== S.tid) openTrip(h); });
+let lastDown = null;
+app.addEventListener('pointerdown', e => { const f = e.target.closest && e.target.closest('input,textarea,select'); lastDown = f && f.id ? { id: f.id, at: Date.now() } : null; }, true);
 // keep half-typed text when someone else's change re-renders the page
 const DRAFT = {};
 app.addEventListener('input', e => { if (e.target.id && e.target.type !== 'file') DRAFT[e.target.id] = e.target.value; });
@@ -1951,7 +1989,7 @@ async function createTrip() {
   if (b < a) [a, b] = [b, a];
   if (span(a, b).length >= 92) b = add(a, 90);
   const id = rid(10);
-  const trip = { name: name.slice(0, 60), winStart: a, winEnd: b, nights: +$('#nt-nights').value, destinations: [], vibes: [], itinerary: [], lockedDates: null, lockedDest: null, mode: S.newMode || 'friends', honoreeName: ($('#nt-honoree')?.value || '').trim().slice(0, 40), honoreeFree: true, createdBy: S.uid, createdAt: Date.now() };
+  const trip = { name: name.slice(0, 60), winStart: a, winEnd: b, nights: +$('#nt-nights').value, destinations: [], vibes: [], itinerary: [], lockedDates: null, lockedDest: null, mode: S.newMode || 'friends', honoreeName: ($('#nt-honoree')?.value || '').trim().slice(0, 40), honoreeFree: true, people: { [S.uid]: true }, createdBy: S.uid, createdAt: Date.now() };
   try {
     await S.db.doc('trips/' + id).set(trip);
     const crew = S.crews.find(c => c.id === S.newCrew);
@@ -1959,7 +1997,7 @@ async function createTrip() {
     await S.db.doc(`trips/${id}/members/${S.uid}`).set({ nick: mine.nick || S.myName || 'Me', home: mine.home || '', venmo: mine.venmo || '', cashapp: mine.cashapp || '', budget: 0, status: 'in', days: [], votes: [], updatedAt: Date.now() });
     if (crew) {
       for (const uid of crew.ids || []) if (uid !== S.uid) { const pr = crew.profiles?.[uid] || {}; await S.db.doc(`trips/${id}/members/${uid}`).set({ nick: pr.nick || 'Someone', home: pr.home || '', venmo: pr.venmo || '', cashapp: pr.cashapp || '', budget: 0, status: 'maybe', days: [], votes: [], updatedAt: Date.now() }); }
-      await S.db.doc('trips/' + id).update({ crewId: crew.id });
+      await S.db.doc('trips/' + id).update({ crewId: crew.id, people: Object.fromEntries((crew.ids || []).map(u => [u, true])) });
     }
     S.newCrew = null; S.creating = null; S.newMode = null;
     openTrip(id, 'overview');
