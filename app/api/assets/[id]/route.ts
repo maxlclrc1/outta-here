@@ -1,0 +1,21 @@
+import { NextResponse } from 'next/server';
+import { deleteAsset, readAsset } from '@/lib/assets';
+import { userOf } from '@/lib/user';
+
+export const runtime = 'nodejs';
+
+type Ctx = { params: Promise<{ id: string }> };
+
+export async function GET(_req: Request, { params }: Ctx) {
+  const a = readAsset((await params).id);
+  if (!a) return new NextResponse('Not found', { status: 404 });
+  return new NextResponse(new Uint8Array(a.bytes), {
+    headers: { 'Content-Type': a.meta.contentType, 'Cache-Control': 'private, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' },
+  });
+}
+
+export async function DELETE(req: Request, { params }: Ctx) {
+  const r = deleteAsset((await params).id, userOf(req));
+  if (r === 'ok') return NextResponse.json({ ok: true });
+  return NextResponse.json({ code: r, message: r === 'not_uploader' ? 'Only the person who uploaded this can delete it.' : 'Not found' }, { status: r === 'not_uploader' ? 403 : 404 });
+}
