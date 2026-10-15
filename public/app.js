@@ -42,7 +42,7 @@ const rid = (n = 10) => Array.from(crypto.getRandomValues(new Uint8Array(n)), b 
 
 /* ---------- toast ---------- */
 let toastT;
-function flash(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 4200); }
+function flash(msg) { const t = $('#toast'); t.textContent = msg; t.classList.remove('out'); t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.classList.add('out'); toastT = setTimeout(() => { t.hidden = true; t.classList.remove('out'); }, 260); }, 4200); }
 function writeErr(e) {
   if (e && e.code === 'invalid_argument') { S.readOnly = true; return "You can view this plan but not edit it. Ask the owner to share it with you as a Contributor."; }
   if (e && e.code === 'quota_exceeded') return 'Storage is full. Delete an old trip and try again.';
@@ -345,6 +345,76 @@ function gHotels(ds, d) { return 'https://www.google.com/travel/search?q=' + enc
 const maps = (name, city) => 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(name + ' ' + city);
 
 /* ---------- render ---------- */
+/* ---------- rendering: patch the page in place so things can animate ---------- */
+// Replacing all of #app on every change made the app feel static: nothing could transition,
+// and new items just appeared. morph() keeps existing elements and only changes what differs.
+const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+// Rows carry their item's id on their buttons (data-delexp="…", data-open="…"), so a row
+// whose buttons all point at one id is keyed by it. That way adding or deleting an item
+// animates that item instead of shuffling the content of every row below it.
+const ID_ATTRS = ['data-open', 'data-crew', 'data-pickcrew', 'data-share', 'data-homedel', 'data-pack', 'data-claim', 'data-lockpitch', 'data-found', 'data-reveal', 'data-delfeed', 'data-delpack', 'data-delspend', 'data-delsong', 'data-delpot', 'data-delphoto', 'data-delitem', 'data-delexp', 'data-deldest', 'data-delbk'];
+const ID_SEL = ID_ATTRS.map(a => `[${a}]`).join(',');
+function keyOf(n) {
+  if (n.nodeType !== 1) return '';
+  const k = n.getAttribute('data-key') || n.id;
+  if (k) return k;
+  const vals = new Set();
+  for (const el of [n, ...n.querySelectorAll(ID_SEL)]) for (const a of ID_ATTRS) { const v = el.getAttribute(a); if (v) vals.add(v); }
+  return vals.size === 1 ? '~' + [...vals][0] : '';
+}
+function patchKids(parent, next, born) {
+  const kids = [...next.childNodes], keys = kids.map(keyOf), want = new Set(keys.filter(Boolean));
+  let cur = parent.firstChild;
+  kids.forEach((nk, i) => {
+    const k = keys[i];
+    let m = null;
+    if (k) for (let c = cur; c; c = c.nextSibling) if (c.nodeName === nk.nodeName && keyOf(c) === k) { m = c; break; }
+    if (!m && cur && cur.nodeType === nk.nodeType && cur.nodeName === nk.nodeName && (!k || k[0] === '~')) {
+      const ck = keyOf(cur);
+      if (!ck || (ck[0] === '~' && !want.has(ck))) m = cur;
+    }
+    if (m) { if (m !== cur) parent.insertBefore(m, cur); else cur = cur.nextSibling; patchNode(m, nk, born); }
+    else { parent.insertBefore(nk, cur); if (nk.nodeType === 1) born.push(nk); }
+  });
+  while (cur) { const n = cur.nextSibling; cur.remove(); cur = n; }
+}
+function morph(root, html) {
+  const tpl = document.createElement('template'); tpl.innerHTML = html;
+  const born = [];
+  patchKids(root, tpl.content, born);
+  return born;
+}
+function patchNode(el, nk, born) {
+  if (el.nodeType !== 1) { if (el.nodeValue !== nk.nodeValue) el.nodeValue = nk.nodeValue; return; }
+  for (const { name, value } of [...nk.attributes]) if (el.getAttribute(name) !== value) el.setAttribute(name, value);
+  for (const { name } of [...el.attributes]) if (!nk.hasAttribute(name) && !(name === 'open' && el.tagName === 'DETAILS')) el.removeAttribute(name);
+  const tag = el.tagName;
+  if (tag === 'TEXTAREA') { if (el.value !== nk.value) el.value = nk.value; return; }
+  if (tag === 'INPUT') {
+    if (el.type === 'checkbox' || el.type === 'radio') el.checked = nk.hasAttribute('checked');
+    else if (el.type !== 'file' && el.value !== (nk.getAttribute('value') || '')) el.value = nk.getAttribute('value') || '';
+    return;
+  }
+  if (tag === 'IFRAME' || tag === 'CANVAS' || tag === 'VIDEO') return;
+  patchKids(el, nk, born);
+  if (tag === 'SELECT') { const o = [...el.options].findIndex(o => o.hasAttribute('selected')); el.selectedIndex = o < 0 ? 0 : o; }
+}
+// motion helpers (Web Animations, so nothing lingers in the markup)
+const EASE = 'cubic-bezier(.2,.8,.2,1)';
+function enter(els, step = 32) {
+  if (calm()) return;
+  els.forEach((el, i) => el.animate([{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: 380, delay: Math.min(i, 8) * step, easing: EASE, fill: 'backwards' }));
+}
+function popIn(els) {
+  if (calm()) return;
+  for (const el of els) {
+    if (!el.isConnected || el.closest('[data-noanim]') || getComputedStyle(el).display.startsWith('inline') && !el.matches('.chip,.pill,.btn')) continue;
+    el.animate([{ opacity: 0, transform: 'translateY(6px) scale(.98)' }, { opacity: 1, transform: 'none' }], { duration: 280, easing: EASE });
+  }
+}
+let lastView = '';
+const viewKey = () => S.tid && S.trip ? `t:${S.tid}:${S.tab}` : `h:${S.loading ? 'load' : ''}:${S.creating && S.creating !== 'newCrew' ? S.creating : ''}:${S.crewView || ''}`;
+
 function render() {
   // switching menus cross-fades; going into or out of Live fades slower so the dark mode eases in
   const next = S.tid && S.trip ? secOf(TAB_ALIAS[S.tab] || S.tab).k : 'none', prev = app.dataset.sec;
@@ -358,7 +428,10 @@ function render() {
 function paint() {
   const a = document.activeElement, fid = (a && a !== document.body && a.id) || (lastDown && Date.now() - lastDown.at < 800 ? lastDown.id : ''), sel = a && 'selectionStart' in a ? [a.selectionStart, a.selectionEnd] : null;
   const scrollTabs = $('.tabs')?.scrollLeft;
-  app.innerHTML = S.tid && S.trip ? tripView() : homeView();
+  const vk = viewKey(), fresh = vk !== lastView || !app.firstChild; lastView = vk;
+  const html = S.tid && S.trip ? tripView() : homeView();
+  let born = [];
+  if (fresh) app.innerHTML = html; else born = morph(app, html);
   const sk = S.tid && S.trip ? secOf(S.tab).k : 'none';
   app.dataset.sec = sk; document.body.dataset.sec = sk;
   for (const [id, v] of Object.entries(DRAFT)) { const el = document.getElementById(id); if (el && el.tagName !== 'BUTTON') el.value = v; }
@@ -368,6 +441,8 @@ function paint() {
   applyBeacon(); checkMilestones();
   const stb = $('.subtabs'), son = $('.subtab.on'); if (stb && son) stb.scrollLeft = son.offsetLeft - stb.clientWidth / 2 + son.clientWidth / 2;
   const fd = $('#feed'); if (fd) fd.scrollTop = fd.scrollHeight;
+  if (fresh) enter([...app.children].filter(el => !el.matches('.top,.bottomnav,.subtabs,.mini,.fab-lost,script')));
+  else popIn(born);
 }
 
 function topBar() {
@@ -792,7 +867,7 @@ function matchTab() {
   const items = S.trip.pitches?.items || [], vs = active(), m = matchedPitch();
   const next = items.find(x => !swipeOf(x.id, S.uid));
   const pitchCard = p => { const [c1, c2] = GRADS[hashStr(p.city) % GRADS.length];
-    return `<article class="pitch" id="pitch" data-pid="${esc(p.id)}">
+    return `<article class="pitch" id="pitch" data-key="pitch-${esc(p.id)}" data-pid="${esc(p.id)}">
       <span class="stamp yes" id="stamp-yes">I'D GO</span><span class="stamp no" id="stamp-no">PASS</span>
       <div class="pitch-top" style="background:linear-gradient(135deg,${c1},${c2})">
         <span class="label" style="color:rgba(255,255,255,.8)">${items.indexOf(p) + 1} of ${items.length}${p.vibeMatch ? ` · ${p.vibeMatch}% vibe match` : ''}</span>
@@ -827,7 +902,7 @@ function matchTab() {
   </section>` : ''}`;
 }
 function bindSwipe() {
-  const el = document.getElementById('pitch'); if (!el) return;
+  const el = document.getElementById('pitch'); if (!el || el._swipe) return; el._swipe = true;
   let x0 = null, dx = 0;
   const yes = document.getElementById('stamp-yes'), no = document.getElementById('stamp-no');
   el.addEventListener('pointerdown', e => { if (e.button) return; x0 = e.clientX; dx = 0; el.classList.add('dragging'); el.setPointerCapture(e.pointerId); });

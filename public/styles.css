@@ -443,3 +443,35 @@ body{transition:background-color .6s ease}
 .chip.sotn-on{background:var(--gold);border-color:var(--gold);color:#1A1405}
 /* fields stacked in a column shouldn't stretch to their row-layout basis */
 .stack > .field{flex:none}
+
+/* ---------- motion ---------- */
+:root{--ease:cubic-bezier(.2,.8,.2,1);--spring:cubic-bezier(.34,1.4,.64,1)}
+.btn,.chip,.subtab,.mode,.qa,.box,.day,.x,.linkbtn,.crew-open,.bn{transition:background-color .18s var(--ease),border-color .18s var(--ease),color .18s var(--ease),box-shadow .18s var(--ease),transform .22s var(--spring),filter .18s,opacity .18s}
+.btn:active:not([disabled]),.chip:active,.subtab:active,.box:active,.day:active,.mode:active{transform:scale(.96);transition-duration:.08s}
+.bn:active svg{transform:scale(.88)}
+.bn svg{transition:background-color .2s var(--ease),transform .25s var(--spring)}
+.bn.on svg{transform:translateY(-1px)}
+.box.on{animation:tick .32s var(--spring)}
+@keyframes tick{0%{transform:scale(.7)}100%{transform:scale(1)}}
+.x:hover{color:var(--ink);transform:scale(1.15)}
+input,select,textarea{transition:border-color .18s var(--ease),box-shadow .18s var(--ease)}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in oklab,var(--accent) 22%,transparent)}
+.bar i,.bigbar i{transition:width .6s var(--ease)}
+.plan-row,.crew-card{transition:transform .25s var(--ease),box-shadow .25s var(--ease),border-color .2s}
+@media (hover:hover){
+  .plan-row:hover,.crew-card:hover,.mode:hover,.qa:hover{transform:translateY(-2px);box-shadow:0 8px 24px -14px color-mix(in oklab,var(--ink) 45%,transparent)}
+}
+.toast{transition:opacity .25s var(--ease),transform .3s var(--spring)}
+.toast.out{opacity:0;transform:translate(-50%,8px)}
+@keyframes toast-in{from{opacity:0;transform:translate(-50%,14px) scale(.96)}to{opacity:1;transform:translate(-50%,0)}}
+.toast:not([hidden]):not(.out){animation:toast-in .34s var(--spring)}
+@supports (interpolate-size:allow-keywords){
+  :root{interpolate-size:allow-keywords}
+  details::details-content{height:0;overflow:clip;transition:height .3s var(--ease),content-visibility .3s allow-discrete}
+  details[open]::details-content{height:auto}
+}
+@media (prefers-reduced-motion:reduce){
+  .btn,.chip,.subtab,.mode,.qa,.box,.day,.x,.bn,.bn svg,.plan-row,.crew-card,.toast,.bar i,.bigbar i{transition:none!important;animation:none!important}
+  .btn:active,.chip:active,.subtab:active,.box:active,.day:active,.mode:active,.plan-row:hover,.crew-card:hover,.mode:hover,.qa:hover{transform:none}
+  details::details-content{transition:none}
+}
