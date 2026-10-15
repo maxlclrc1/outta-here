@@ -379,3 +379,13 @@ body[data-sec="live"] .mini-name{color:var(--ink)}
 .steps-list{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px}
 .empty .row{justify-content:center}
 .code-tbd{opacity:.35}
+
+/* trip window editor */
+.win-edit{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end}
+@media (max-width:420px){.win-edit{grid-template-columns:1fr 1fr}.win-edit .field:last-child{grid-column:1 / -1}}
+
+/* smooth hand-off between menus; the slow fade is for going into or out of Live */
+::view-transition-old(root),::view-transition-new(root){animation-duration:.28s;animation-timing-function:ease-out}
+:root[data-vt="live"]::view-transition-old(root),:root[data-vt="live"]::view-transition-new(root){animation-duration:.7s;animation-timing-function:ease-in-out}
+body{transition:background-color .6s ease}
+@media (prefers-reduced-motion:reduce){body{transition:none}}

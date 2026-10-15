@@ -337,6 +337,16 @@ const maps = (name, city) => 'https://www.google.com/maps/search/?api=1&query=' 
 
 /* ---------- render ---------- */
 function render() {
+  // switching menus cross-fades; going into or out of Live fades slower so the dark mode eases in
+  const next = S.tid && S.trip ? secOf(TAB_ALIAS[S.tab] || S.tab).k : 'none', prev = app.dataset.sec;
+  if (prev && next !== prev && document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    document.documentElement.dataset.vt = next === 'live' || prev === 'live' ? 'live' : 'sec';
+    document.startViewTransition(paint).finished.finally(() => { delete document.documentElement.dataset.vt; });
+    return;
+  }
+  paint();
+}
+function paint() {
   const a = document.activeElement, fid = (a && a !== document.body && a.id) || (lastDown && Date.now() - lastDown.at < 800 ? lastDown.id : ''), sel = a && 'selectionStart' in a ? [a.selectionStart, a.selectionEnd] : null;
   const scrollTabs = $('.tabs')?.scrollLeft;
   app.innerHTML = S.tid && S.trip ? tripView() : homeView();
@@ -441,8 +451,15 @@ function datesTab() {
         <div class="row" style="gap:6px"><button class="btn sm ghost" data-act="allDays">All</button><button class="btn sm ghost" data-act="weekends">Fri–Sun</button><button class="btn sm ghost" data-act="noDays">Clear</button></div></div>
       <div class="cal">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x => `<span class="dow">${x}</span>`).join('')}${'<span></span>'.repeat(lead)}${cells.join('')}</div>
       <div class="legend"><span><i class="sw" style="background:var(--accent)"></i>More people free</span><span><i class="sw" style="outline:2px solid var(--ink)"></i>You</span><span><i class="sw" style="box-shadow:inset 0 -3px 0 var(--gold)"></i>Best window</span></div>
-      <div class="row small muted"><span>Window ${short(t.winStart)} – ${short(t.winEnd)} · trip length</span>
-        <select id="nights" style="width:auto">${[1,2,3,4,5,6,7,10,14].map(n => `<option value="${n}" ${n === (t.nights || 3) ? 'selected' : ''}>${n} nights</option>`).join('')}</select></div>
+      <div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:12px">
+        <span class="label">Trip window</span>
+        <div class="win-edit">
+          <label class="field"><span class="small muted">Earliest</span><input id="win-start" type="date" value="${t.winStart}"></label>
+          <label class="field"><span class="small muted">Latest</span><input id="win-end" type="date" value="${t.winEnd}"></label>
+          <label class="field"><span class="small muted">Trip length</span><select id="nights">${[1,2,3,4,5,6,7,10,14].map(n => `<option value="${n}" ${n === (t.nights || 3) ? 'selected' : ''}>${n} night${n === 1 ? '' : 's'}</option>`).join('')}</select></label>
+        </div>
+        <span class="small muted">Change these any time. Days people already tapped are kept.</span>
+      </div>
     </div>
     <div class="card stack">
       <h2>Best dates</h2>
@@ -1897,6 +1914,17 @@ app.addEventListener('change', e => {
   if (id === 'me-venmo') saveMe({ venmo: handle(e.target.value).slice(0, 40) }, true, true);
   if (id === 'me-cash') saveMe({ cashapp: handle(e.target.value).slice(0, 40) }, true, true);
   if (id === 'nights') saveTrip({ nights: +e.target.value, lockedDates: null });
+  if (id === 'win-start' || id === 'win-end') {
+    delete DRAFT['win-start']; delete DRAFT['win-end'];
+    let a = $('#win-start').value, b = $('#win-end').value;
+    if (!a || !b) return;
+    if (b < a) { flash('The latest date has to be after the earliest one.'); render(); return; }
+    if (span(a, b).length >= 92) { b = add(a, 90); flash('The window can be up to 3 months, so the end moved to ' + short(b) + '.'); }
+    const patch = { winStart: a, winEnd: b }, L = S.trip.lockedDates;
+    if (L && (L.start < a || L.end > b)) { patch.lockedDates = null; flash('Your locked dates were outside the new window, so they’re unlocked.'); }
+    saveTrip(patch);
+    return;
+  }
   if (id.startsWith('me-') || id === 'nights') delete DRAFT[id];
 });
 app.addEventListener('keydown', e => { const p = e.target.closest && e.target.closest('[data-pin]'); if (p && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); p.dispatchEvent(new MouseEvent('click', { bubbles: true })); } });
