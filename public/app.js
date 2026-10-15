@@ -63,7 +63,7 @@ function aiErr(e) {
 const active = () => S.members.filter(m => m.status !== 'out');
 const meDoc = () => S.members.find(m => m.id === S.uid);
 function bestWindows(nights) {
-  const t = S.trip; const len = (nights || t.nights || 3) + 1; const days = span(t.winStart, t.winEnd); const ms = active();
+  const t = S.trip; const len = (nights ?? nightsSet(t)) + 1; const days = span(t.winStart, t.winEnd); const ms = active();
   const out = [];
   for (let i = 0; i + len <= days.length; i++) {
     const d = days.slice(i, i + len);
@@ -77,7 +77,7 @@ function bestWindows(nights) {
   return picked;
 }
 function shorterFit() {
-  for (let n = (S.trip.nights || 3) - 1; n >= 1; n--) { const w = bestWindows(n)[0]; if (w) return { n, w }; }
+  for (let n = nightsSet(S.trip) - 1; n >= 1; n--) { const w = bestWindows(n)[0]; if (w) return { n, w }; }
   return null;
 }
 function votesFor(id) { return active().filter(m => (m.votes || []).includes(id)); }
@@ -367,13 +367,14 @@ function topBar() {
 }
 
 function pass() {
+  if (isSmall()) return passSmall();
   const d = dates(), ds = dest(), b = budgetCap(), ms = active();
   const from = homes().map(h => isCode(h) ? h.toUpperCase() : h).slice(0, 3);
   const inN = S.members.filter(m => m.status === 'in').length;
   return `<section class="pass">
     <div class="pass-main">
       <div class="row" style="justify-content:space-between"><span class="label">${esc(S.trip.name)}</span>
-        ${tickets().on ? `<span class="on-pill">Trip is on</span>` : booking_time() ? `<span class="pill in">Booking flights</span>` : `<span class="pill maybe">Still deciding</span>`}</div>
+        ${planOn() ? `<span class="on-pill">Trip is on</span>` : booking_time() ? `<span class="pill in">${size() === 'trip' ? 'Booking flights' : 'Booking'}</span>` : `<span class="pill maybe">Still deciding</span>`}</div>
       <div class="route">
         <span class="code ${from.length ? '' : 'code-tbd'}">${from.length ? esc(homes().length > 1 ? homes().length + ' CITIES' : from[0]) : 'HOME'}</span>
         <span class="plane" aria-hidden="true">✈</span>
@@ -385,7 +386,7 @@ function pass() {
         <div><span class="label">Budget cap / person</span><b>${b ? money(b.cap) : 'TBD'}</b></div>
         ${(() => { const c = countdown(); return c ? `<div><span class="label">Countdown</span><b style="color:var(--accent)">${c.text}</b></div>` : ''; })()}
       </div>
-      ${(() => { const t = tickets(); if (!booking_time() && !t.have.length) return ''; return `<button class="stack" data-tab="tickets" style="gap:6px;background:none;border:0;padding:0;text-align:left;color:inherit;font:inherit;cursor:pointer">
+      ${(() => { const t = tickets(); if (size() !== 'trip' || (!booking_time() && !t.have.length)) return ''; return `<button class="stack" data-tab="tickets" style="gap:6px;background:none;border:0;padding:0;text-align:left;color:inherit;font:inherit;cursor:pointer">
         <div class="row" style="justify-content:space-between"><span class="small"><b>${t.have.length}/${t.goal}</b> boarding passes in</span>${t.on ? '<span class="on-pill">Trip is on</span>' : `<span class="small muted">${t.goal - t.have.length} more to make it official</span>`}</div>
         <div class="bigbar"><i style="width:${t.goal ? Math.min(100, t.have.length / t.goal * 100) : 0}%"></i></div></button>`; })()}
       <div class="row" style="gap:6px"><button class="btn sm" data-act="card">Make story card</button></div>
@@ -457,22 +458,22 @@ function datesTab() {
         <div class="win-edit">
           <label class="field"><span class="small muted">Earliest</span><input id="win-start" type="date" value="${t.winStart}"></label>
           <label class="field"><span class="small muted">Latest</span><input id="win-end" type="date" value="${t.winEnd}"></label>
-          <label class="field"><span class="small muted">Trip length</span><select id="nights">${[1,2,3,4,5,6,7,10,14].map(n => `<option value="${n}" ${n === (t.nights || 3) ? 'selected' : ''}>${n} night${n === 1 ? '' : 's'}</option>`).join('')}</select></label>
+          <label class="field"><span class="small muted">Trip length</span><select id="nights">${(isSmall() ? [0] : [1,2,3,4,5,6,7,10,14]).map(n => `<option value="${n}" ${n === nightsSet(t) ? 'selected' : ''}>${n === 0 ? 'Same day' : n + ' night' + (n === 1 ? '' : 's')}</option>`).join('')}</select></label>
         </div>
         <span class="small muted">Change these any time. Days people already tapped are kept.</span>
       </div>
     </div>
     <div class="card stack">
       <h2>Best dates</h2>
-      ${t.lockedDates ? `<div class="banner"><span><b>Locked:</b> ${fmt(t.lockedDates.start)} → ${fmt(t.lockedDates.end)}</span><button class="btn sm" data-act="unlockDates">Unlock</button></div>` : ''}
+      ${t.lockedDates ? `<div class="banner"><span><b>Locked:</b> ${dayRange(t.lockedDates.start, t.lockedDates.end)}</span><button class="btn sm" data-act="unlockDates">Unlock</button></div>` : ''}
       ${best.length ? best.map((w, i) => `<div class="stack" style="gap:6px;${i ? 'border-top:1px solid var(--line);padding-top:12px' : ''}">
-        <div class="row" style="justify-content:space-between"><b class="mono">${fmt(w.start)} → ${fmt(w.end)}</b><span class="small"><b>${w.ok.length}/${ms.length}</b> can go</span></div>
+        <div class="row" style="justify-content:space-between"><b class="mono">${dayRange(w.start, w.end)}</b><span class="small"><b>${w.ok.length}/${ms.length}</b> can go</span></div>
         <div class="bar"><i style="width:${Math.round(w.ok.length / max * 100)}%"></i></div>
         ${w.miss.length ? `<span class="small muted">Missing: ${w.miss.map(m => esc(m.nick || 'Someone')).join(', ')}</span>` : `<span class="small" style="color:var(--good)">Everyone can make it</span>`}
         <div><button class="btn sm ${i === 0 ? 'primary' : ''}" data-lockdates="${w.start}|${w.end}">Lock these dates</button></div>
       </div>`).join('') : `<div class="empty">${(() => { const f = shorterFit(); return f
-        ? `<b>No ${t.nights || 3}-night stretch works yet</b><span>But a ${f.n}-night trip, ${fmt(f.w.start)} → ${fmt(f.w.end)}, works for ${f.w.ok.length} of ${ms.length}.</span><button class="btn sm primary" data-setnights="${f.n}">Switch to ${f.n} night${f.n === 1 ? '' : 's'}</button>`
-        : `<span>No ${t.nights || 3}-night stretch overlaps yet. Once people tap their free days, the best windows show up here.</span>`; })()}</div>`}
+        ? `<b>No ${nightsSet(t) ? nightsSet(t) + '-night stretch' : 'day'} works yet</b><span>But a ${f.n}-night trip, ${fmt(f.w.start)} → ${fmt(f.w.end)}, works for ${f.w.ok.length} of ${ms.length}.</span><button class="btn sm primary" data-setnights="${f.n}">Switch to ${f.n} night${f.n === 1 ? '' : 's'}</button>`
+        : `<span>No ${nightsSet(t) ? nightsSet(t) + '-night stretch' : 'day'} overlaps yet. Once people tap their free days, the best windows show up here.</span>`; })()}</div>`}
     </div>
   </section>`;
 }
@@ -503,8 +504,8 @@ function needDestDates(what) {
   const hasDest = !!dest(), hasDates = !!dates();
   const need = !hasDest && !hasDates ? 'a destination and dates' : !hasDest ? 'a destination' : 'dates';
   return `<div class="empty"><b>${!hasDest && !hasDates ? 'First, decide where and when' : !hasDest ? 'First, pick where you’re going' : 'First, pick your dates'}</b>
-    <span>You’ll need ${need} for ${esc(what)}. Trip Match settles both at once: the AI pitches trips that fit everyone and the crew swipes.</span>
-    <div class="row" style="gap:6px"><button class="btn sm primary" data-tab="match">Open Trip Match</button>${!hasDest ? '<button class="btn sm" data-tab="where">Vote on where</button>' : ''}${!hasDates ? '<button class="btn sm" data-tab="dates">Pick dates</button>' : ''}</div></div>`;
+    <span>You’ll need ${need} for ${esc(what)}. ${isSmall() ? 'Plan Match settles both at once: the AI pitches plans' : 'Trip Match settles both at once: the AI pitches trips'} that fit everyone and the crew swipes.</span>
+    <div class="row" style="gap:6px"><button class="btn sm primary" data-tab="match">Open ${isSmall() ? 'Plan' : 'Trip'} Match</button>${!hasDest ? '<button class="btn sm" data-tab="where">Vote on where</button>' : ''}${!hasDates ? '<button class="btn sm" data-tab="dates">Pick dates</button>' : ''}</div></div>`;
 }
 
 function ticketsSection() {
@@ -673,7 +674,7 @@ async function deleteTrip(tid) {
     const t = (await S.db.doc('trips/' + tid).get()).data() || {};
     if (S.assets) for (const x of Object.values(t.tickets || {})) if (x && x.asset) await S.assets.delete(x.asset).catch(() => {});
     if (S.assets) { const ph = await S.db.collection(`trips/${tid}/photos`).get(); for (const d of ph.docs) { const a = d.data().asset; if (a) await S.assets.delete(a).catch(() => {}); } }
-    for (const c of ['members', 'expenses', 'packing', 'feed', 'bucket', 'photos', 'pot']) {
+    for (const c of ['members', 'expenses', 'packing', 'feed', 'bucket', 'photos', 'pot', 'songs']) {
       const snap = await S.db.collection(`trips/${tid}/${c}`).get();
       for (const d of snap.docs) await S.db.doc(`trips/${tid}/${c}/${d.id}`).delete();
     }
@@ -725,7 +726,7 @@ function matchedPitch() {
   return p.find(x => vs.every(m => swipeOf(x.id, m.id) === 1)) || null;
 }
 function dateOptions() {
-  const t = S.trip, len = (t.nights || 3) + 1, days = span(t.winStart, t.winEnd), ms = active(), out = [];
+  const t = S.trip, len = nightsSet(t) + 1, days = span(t.winStart, t.winEnd), ms = active(), out = [];
   for (let i = 0; i + len <= days.length; i++) {
     const d = days.slice(i, i + len), ok = ms.filter(m => d.every(x => (m.days || []).includes(x))).length;
     out.push({ start: d[0], end: d[len - 1], ok });
@@ -736,13 +737,14 @@ function dateOptions() {
   return picked;
 }
 function genPitches() {
+  if (isSmall()) return genPlanPitches();
   const opts = dateOptions(); if (!opts.length) { flash('Set a date window first.'); return; }
   const b = budgetCap();
   const prompt = `You're pitching group trips to a friend group. They will each swipe yes or no on every pitch, like a dating app, so make each pitch exciting, specific and honest.
 Trip type: ${mode().label}. ${mode().ai}
 Crew: ${active().length} people flying from ${homes().join(', ') || 'unknown cities'}.
 Per-person budget cap (all-in, flights included): ${b ? money(b.cap) : 'not set, assume moderate'}.
-Trip length: ${S.trip.nights || 3} nights.
+Trip length: ${nightsSet(S.trip)} nights.
 ${blend() ? 'Crew vibe quiz:\n' + blendText() : 'Vibe: fun, social, nightlife'}
 Destinations already suggested by the crew: ${(S.trip.destinations || []).map(d => d.city).join(', ') || 'none'}
 Date options (each pitch must use one of these exactly):
@@ -769,6 +771,7 @@ async function swipe(pid, v) {
 }
 function lockPitch(pid) {
   const p = (S.trip.pitches?.items || []).find(x => x.id === pid); if (!p) return;
+  if (p.small) return lockSmallPitch(p);
   const ds = [...(S.trip.destinations || [])];
   let d = ds.find(x => x.city.toLowerCase() === p.city.toLowerCase());
   if (!d) { d = { id: rid(6), city: p.city, code: p.code }; ds.push(d); }
@@ -783,22 +786,22 @@ function matchTab() {
       <span class="stamp yes" id="stamp-yes">I'D GO</span><span class="stamp no" id="stamp-no">PASS</span>
       <div class="pitch-top" style="background:linear-gradient(135deg,${c1},${c2})">
         <span class="label" style="color:rgba(255,255,255,.8)">${items.indexOf(p) + 1} of ${items.length}${p.vibeMatch ? ` · ${p.vibeMatch}% vibe match` : ''}</span>
-        <span class="code" style="color:#fff">${esc(p.code || p.city.slice(0, 3).toUpperCase())}</span>
-        <h2 style="color:#fff">${esc(p.city)}</h2>
+        ${p.small ? `<h2 style="color:#fff;font-size:34px">${esc(p.title)}</h2>${p.where ? `<span style="color:rgba(255,255,255,.85)">${esc(p.where)}</span>` : ''}` : `<span class="code" style="color:#fff">${esc(p.code || p.city.slice(0, 3).toUpperCase())}</span>
+        <h2 style="color:#fff">${esc(p.city)}</h2>`}
         <span style="color:#fff;font-weight:600">${esc(p.tagline)}</span>
       </div>
       <div class="pitch-body">
-        <div class="facts"><div><span class="label">Dates</span><b>${short(p.start)} → ${short(p.end)}</b></div><div><span class="label">Per person</span><b>${esc(p.perPerson || '?')}</b></div>${p.weather ? `<div><span class="label">Weather</span><b style="font-family:var(--f-body)">${esc(p.weather)}</b></div>` : ''}</div>
+        <div class="facts"><div><span class="label">${p.small ? 'When' : 'Dates'}</span><b>${p.small ? fmt(p.start) + (p.time ? ' · ' + t12(p.time) : '') : short(p.start) + ' → ' + short(p.end)}</b></div><div><span class="label">Per person</span><b>${esc(p.perPerson || '?')}</b></div>${p.weather ? `<div><span class="label">Weather</span><b style="font-family:var(--f-body)">${esc(p.weather)}</b></div>` : ''}</div>
         <p>${esc(p.why)}</p>
         ${p.highlights.length ? `<ul style="margin:0;padding-left:18px">${p.highlights.map(h => `<li>${esc(h)}</li>`).join('')}</ul>` : ''}
       </div>
     </article>`; };
   return `<section class="card stack">
-    <div class="row" style="justify-content:space-between"><div class="stack" style="gap:2px"><h2>Trip Match</h2><span class="small muted">The AI pitches complete trips that fit everyone’s budget, dates and vibe. Everyone swipes. If you all say yes to the same one, it’s a match.</span></div>
-      ${S.sample !== null ? `<button class="btn ${items.length ? '' : 'primary'}" data-act="genPitches" ${S.busy.pitch ? 'disabled' : ''}>${S.busy.pitch ? '<i class="spin"></i>Pitching trips…' : items.length ? 'New pitches' : 'Pitch us some trips'}</button>` : ''}</div>
+    <div class="row" style="justify-content:space-between"><div class="stack" style="gap:2px"><h2>${isSmall() ? 'Plan Match' : 'Trip Match'}</h2><span class="small muted">The AI pitches ${isSmall() ? 'whole plans' : 'complete trips'} that fit everyone’s budget, free days and vibe. Everyone swipes. If you all say yes to the same one, it’s a match.</span></div>
+      ${S.sample !== null ? `<button class="btn ${items.length ? '' : 'primary'}" data-act="genPitches" ${S.busy.pitch ? 'disabled' : ''}>${S.busy.pitch ? '<i class="spin"></i>Pitching…' : items.length ? 'New pitches' : isSmall() ? 'Pitch us some plans' : 'Pitch us some trips'}</button>` : ''}</div>
   </section>
   ${m ? `<section class="match"><span class="label" style="color:rgba(255,255,255,.85)">Everyone swiped yes</span><h1 style="color:#fff">It’s a match!</h1>
-      <p style="font-size:17px">${esc(m.city)} · ${fmt(m.start)} → ${fmt(m.end)} · ${esc(m.perPerson)}</p>
+      <p style="font-size:17px">${esc(m.city)} · ${dayRange(m.start, m.end)}${m.time ? ' · ' + t12(m.time) : ''} · ${esc(m.perPerson)}</p>
       <div>${S.trip.lockedDest && dest()?.city === m.city && S.trip.lockedDates?.start === m.start ? `<span class="on-pill" style="background:#fff;color:var(--accent)">Locked in</span>` : `<button class="btn" data-lockpitch="${esc(m.id)}">Lock it in</button>`}</div></section>` : ''}
   ${!items.length ? `<div class="empty"><b>No pitches yet.</b><span>The more the crew fills in (home airports, budgets, free days, the vibe quiz), the better the pitches get.</span></div>`
   : next ? `<section class="stack" style="align-items:center">${pitchCard(next)}
@@ -808,7 +811,7 @@ function matchTab() {
   ${items.length ? `<section class="card"><h3 style="margin-bottom:6px">Scoreboard</h3>
     ${[...items].sort((a, b) => vs.filter(x => swipeOf(b.id, x.id) === 1).length - vs.filter(x => swipeOf(a.id, x.id) === 1).length).map(p => {
       const yes = vs.filter(x => swipeOf(p.id, x.id) === 1), waiting = vs.filter(x => !swipeOf(p.id, x.id)), mine = swipeOf(p.id, S.uid);
-      return `<div class="linkrow"><div style="min-width:0"><b>${esc(p.city)}</b> <span class="small muted">${short(p.start)} – ${short(p.end)} · ${esc(p.perPerson)}</span>
+      return `<div class="linkrow"><div style="min-width:0"><b>${esc(p.city)}</b> <span class="small muted">${p.start === p.end ? short(p.start) : short(p.start) + ' – ' + short(p.end)} · ${esc(p.perPerson)}</span>
         <div class="small muted">${yes.length}/${vs.length} yes${waiting.length ? ` · waiting on ${waiting.map(x => esc(x.nick || 'Someone')).join(', ')}` : ''}</div></div>
         <div class="row" style="gap:6px">${mine ? `<button class="chip ${mine === 1 ? 'on' : ''}" data-swipe="${esc(p.id)}|${mine === 1 ? -1 : 1}">${mine === 1 ? '♥ Yes' : '✕ Pass'}</button>` : ''}<div class="bar" style="width:80px"><i style="width:${yes.length / Math.max(1, vs.length) * 100}%"></i></div></div></div>`; }).join('')}
   </section>` : ''}`;
@@ -866,7 +869,8 @@ function arrivalsSection(compact) {
 /* ---------- live trip mode ---------- */
 const CHECKINS = ['At the hotel', 'At the pool', 'Getting food', 'Out out', 'Heading back', 'Asleep'];
 function ago(at) { const m = Math.round((Date.now() - at) / 6e4); return m < 1 ? 'just now' : m < 60 ? m + 'm ago' : m < 1440 ? Math.round(m / 60) + 'h ago' : Math.round(m / 1440) + 'd ago'; }
-const isLive = () => { const d = dates(); return !!d && TODAY >= d.start && TODAY <= d.end; };
+// live only once the dates are actually locked, never from a best guess
+const isLive = () => { const L = S.trip?.lockedDates; return !!L && TODAY >= L.start && TODAY <= L.end; };
 function liveTab() {
   const d = dates(); if (!d) return needDestDates('live mode');
   const live = isLive(), days = span(d.start, d.end);
@@ -1047,19 +1051,6 @@ function crewSection() {
       <form id="crewForm" class="row" style="gap:6px"><input id="crew-name" maxlength="40" placeholder="The Vegas Six" style="flex:1 1 180px" required><button class="btn sm primary" type="submit">Save crew</button></form>`}
   </section>`;
 }
-function crewsHome() {
-  const crews = S.crews.filter(c => c.by === S.uid || (c.ids || []).includes(S.uid));
-  if (!crews.length) return '';
-  return `<section class="stack"><h2>Your crews</h2>${crews.map(c => {
-    const trips = S.trips.filter(t => t.crewId === c.id);
-    return `<div class="card stack" style="gap:8px">
-      <div class="row" style="justify-content:space-between"><h3>${esc(c.name)}</h3><span class="small muted">${trips.length} trip${trips.length === 1 ? '' : 's'} together</span></div>
-      <div class="row" style="gap:6px">${(c.ids || []).map(id => `<span class="chip" style="cursor:default"><span class="av" style="width:18px;height:18px;font-size:10px;background:${colorFor(id)}">${esc((c.profiles?.[id]?.nick || '?')[0].toUpperCase())}</span>${esc(c.profiles?.[id]?.nick || 'Someone')}</span>`).join('')}</div>
-      ${trips.length ? `<div class="small muted">${trips.map(t => `<button class="linkbtn" data-open="${esc(t.id)}">${esc(t.name)}</button>`).join(' · ')}</div>` : ''}
-      <div class="row" style="gap:6px"><button class="btn sm primary" data-startcrew="${esc(c.id)}">Start the next trip</button>${c.by === S.uid || S.isOwner ? `<button class="btn sm ghost danger" data-delcrew="${esc(c.id)}">Delete crew</button>` : ''}</div>
-    </div>`; }).join('')}</section>`;
-}
-
 /* ---------- trip modes ---------- */
 const SUPERS_DEFAULT = ['MVP', 'Most likely to lose their ID', 'Biggest spender', 'Best dressed', 'First to fall asleep', 'Last one standing', 'Main character', 'Most likely to miss the flight'];
 const MODES = {
@@ -1111,24 +1102,24 @@ const icon = k => `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" s
 function sections() {
   return [
     { k: 'home', label: 'Home', tabs: [['overview', 'Overview'], ['crew', 'Crew'], ['settings', 'Settings']] },
-    { k: 'plan', label: 'Plan', tabs: [['match', 'Trip Match'], ['dates', 'Dates'], ['where', 'Where'], ['spots', mode().nightlife || 'Nightlife'], ['plan', 'Itinerary']] },
+    { k: 'plan', label: 'Plan', tabs: [['match', isSmall() ? 'Plan Match' : 'Trip Match'], ['dates', isSmall() ? 'When' : 'Dates'], ['where', 'Where'], ['spots', isSmall() ? 'Spots' : (mode().nightlife || 'Nightlife')], ['plan', isSmall() ? 'The plan' : 'Itinerary']] },
     { k: 'book', label: 'Book', tabs: [['flights', 'Flights'], ['stays', 'Stays'], ['tickets', 'Boarding passes'], ['pack', 'Packing']] },
     { k: 'live', label: 'Live', tabs: [['live', 'Today'], ['map', 'Map'], ['bucket', 'Bucket list'], ['hype', 'Hype']] },
     { k: 'money', label: 'Money', tabs: [['meter', 'My spend'], ['pot', 'Group pot'], ['money', 'Expenses']] },
-    { k: 'memories', label: 'Memories', tabs: [['wrapped', 'Wrapped'], ['recap', 'Photos'], ['awards', 'Awards']] },
-  ];
+    { k: 'memories', label: 'Memories', tabs: [['wrapped', isSmall() ? 'Recap' : 'Wrapped'], ['recap', 'Photos'], ['playlist', 'Playlist'], ['awards', 'Awards']] },
+  ].map(s => ({ ...s, tabs: s.tabs.filter(([k]) => !HIDE_TABS[size()].includes(k)) })).filter(s => s.tabs.length);
 }
 const TAB_ALIAS = { deals: 'flights' };
 const secOf = tab => sections().find(s => s.tabs.some(t => t[0] === tab)) || sections()[0];
 const TABFN = () => ({ overview: overviewTab, crew: crewTab, settings: settingsTab, match: matchTab, dates: datesTab, where: whereTab, spots: spotsTab, plan: planTab,
   flights: flightsTab, stays: staysTab, tickets: ticketsTab, pack: packTab, live: liveTab, map: mapTab, bucket: bucketSection, hype: hypeTab,
-  meter: meterTab, pot: potTab, money: moneyTab, wrapped: wrappedTab, recap: photosTab, awards: awardsTab });
+  meter: meterTab, pot: potTab, money: moneyTab, wrapped: wrappedTab, recap: photosTab, awards: awardsTab, playlist: playlistTab });
 function tripView() {
   if (TAB_ALIAS[S.tab]) S.tab = TAB_ALIAS[S.tab];
   const fns = TABFN(); if (!fns[S.tab]) S.tab = 'overview';
   const sec = secOf(S.tab), cd = countdown(), m = mode(), gd = guide(), crumbTab = gd && !gd.wait && gd.tab !== S.tab ? gd.tab : null;
   const head = S.tab === 'overview' ? '' : `<div class="mini"><span class="sec-eyebrow">${esc(sec.label)}</span><button class="mini-name" data-tab="overview">${esc(S.trip.name)}</button>
-      <span class="mode-chip" style="--mc:${m.color}">${esc(m.label)}</span>${cd ? `<span class="small muted">${esc(cd.n > 0 ? cd.text + ' to go' : cd.text)}</span>` : ''}${nextPill(gd)}</div>`;
+      ${isSmall() ? `<span class="mode-chip" style="--mc:${SIZES[size()].color}">${esc(SIZES[size()].label)}</span>` : `<span class="mode-chip" style="--mc:${m.color}">${esc(m.label)}</span>`}${cd ? `<span class="small muted">${esc(cd.n > 0 ? cd.text + ' to go' : cd.text)}</span>` : ''}${nextPill(gd)}</div>`;
   return `${topBar()}
   ${S.demo ? `<div class="banner"><span><b>Demo trip.</b> Sample crew, nothing is saved. Try switching the trip type in Home › Settings.</span><button class="btn sm" data-act="home">Back</button></div>` : ''}
   ${S.readOnly ? `<div class="banner"><span>You can view this trip but not edit it. Ask the owner to share it with you as a Contributor.</span></div>` : ''}
@@ -1138,20 +1129,23 @@ function tripView() {
   ${fns[S.tab]()}
   ${isLive() && !S.lostOpen && !['live', 'map', 'overview'].includes(S.tab) ? '<button class="fab-lost" data-act="lostOpen" aria-label="I’m lost: send the crew my spot">SOS</button>' : ''}
   ${S.lostOpen ? lostSheet() : ''}
-  <nav class="bottomnav" aria-label="Trip sections"><div class="bn-inner">${sections().map(s => `<button class="bn ${s.k === sec.k ? 'on' : ''}" data-sec="${s.k}" aria-current="${s.k === sec.k}">${icon(s.k)}${crumbTab && secOf(crumbTab).k === s.k && s.k !== sec.k ? '<i class="crumb" aria-hidden="true"></i>' : ''}<span>${s.label}${s.k === 'live' && isLive() ? ' ●' : ''}</span></button>`).join('')}</div></nav>`;
+  <nav class="bottomnav" aria-label="Trip sections"><div class="bn-inner" style="grid-template-columns:repeat(${sections().length},1fr)">${sections().map(s => `<button class="bn ${s.k === sec.k ? 'on' : ''}" data-sec="${s.k}" aria-current="${s.k === sec.k}">${icon(s.k)}${crumbTab && secOf(crumbTab).k === s.k && s.k !== sec.k ? '<i class="crumb" aria-hidden="true"></i>' : ''}<span>${s.label}${s.k === 'live' && isLive() ? ' ●' : ''}</span></button>`).join('')}</div></nav>`;
 }
 
 /* ---------- home: overview ---------- */
 function steps() {
-  const t = S.trip, tk = tickets(), ins = S.members.filter(m => m.status === 'in').length, d = dates();
-  return [
-    { label: 'Get the crew in', done: ins >= 2, sub: `${ins} in so far. Send your friends the invite.`, go: 'crew', cta: 'Invite friends' },
-    { label: 'Pick where', done: !!t.lockedDest, sub: dest() ? `Leaning ${dest().city}. Swipe on AI-pitched trips to settle it.` : 'Swipe on AI-pitched trips that fit everyone.', go: 'match', cta: 'Open Trip Match' },
-    { label: 'Lock the dates', done: !!t.lockedDates, sub: d ? `Best so far: ${short(d.start)} – ${short(d.end)}` : 'Everyone taps the days they’re free.', go: 'dates', cta: 'Pick dates' },
-    { label: 'Book flights', done: tk.on, sub: `${tk.have.length}/${tk.goal} booked. Search fares from every home city.`, go: 'flights', cta: 'Find flights' },
-    { label: 'Book the stay', done: !!t.stay, sub: t.stay ? t.stay.name : 'Hotels and Airbnbs that fit the group budget.', go: 'stays', cta: 'Find stays' },
-    { label: 'Plan the days', done: (t.itinerary || []).length >= Math.max(3, nightsOf(d)), sub: 'Nightlife picks, an itinerary and a packing list.', go: 'plan', cta: 'Build the plan' },
-  ];
+  const t = S.trip, tk = tickets(), ins = S.members.filter(m => m.status === 'in').length, d = dates(), small = isSmall();
+  const all = {
+    crew: { label: 'Get the crew in', done: ins >= 2, sub: `${ins} in so far. Send your friends the invite.`, go: 'crew', cta: 'Invite friends' },
+    where: small ? { label: 'Pick the plan', done: !!t.lockedDest, sub: dest() ? `Leaning “${dest().city}”. Swipe on AI-pitched plans to settle it.` : 'Swipe on AI-pitched plans that fit everyone.', go: 'match', cta: 'Open Plan Match' }
+      : { label: 'Pick where', done: !!t.lockedDest, sub: dest() ? `Leaning ${dest().city}. Swipe on AI-pitched trips to settle it.` : 'Swipe on AI-pitched trips that fit everyone.', go: 'match', cta: 'Open Trip Match' },
+    dates: small ? { label: 'Pick the day', done: !!t.lockedDates, sub: d ? `Best so far: ${fmt(d.start)}` : 'Everyone taps the days they’re free.', go: 'dates', cta: 'Pick the day' }
+      : { label: 'Lock the dates', done: !!t.lockedDates, sub: d ? `Best so far: ${short(d.start)} – ${short(d.end)}` : 'Everyone taps the days they’re free.', go: 'dates', cta: 'Pick dates' },
+    flights: { label: 'Book flights', done: tk.on, sub: `${tk.have.length}/${tk.goal} booked. Search fares from every home city.`, go: 'flights', cta: 'Find flights' },
+    stay: { label: 'Book the stay', done: !!t.stay, sub: t.stay ? t.stay.name : 'Hotels and Airbnbs that fit the group budget.', go: 'stays', cta: 'Find stays' },
+    plan: { label: small ? (size() === 'day' ? 'Plan the day' : 'Plan the night') : 'Plan the days', done: (t.itinerary || []).length >= (small ? 1 : Math.max(3, nightsOf(d))), sub: small ? 'Add the stops: where you meet, eat, and end up.' : 'Nightlife picks, an itinerary and a packing list.', go: 'plan', cta: 'Build the plan' },
+  };
+  return STEP_KEYS[size()].map(k => all[k]);
 }
 function overviewTab() {
   const st = steps(), next = st.find(s => !s.done), live = isLive(), d = dates(), over = d && TODAY > d.end;
@@ -1169,12 +1163,12 @@ function overviewTab() {
   : `<section class="hero-card" style="--hc:#14915F"><span class="label" style="color:inherit">All set</span><h2>Everything’s booked. Now you just wait.</h2></section>`}
   ${pass()}
   <section class="card"><div class="steps">${st.map((s, i) => `<button class="step ${s.done ? 'ok' : s === next ? 'cur' : ''}" data-tab="${s.go}"><span class="dot">${s.done ? '✓' : i + 1}</span><span>${esc(s.label)}</span></button>`).join('')}</div></section>
-  <section class="grid2">
+  ${isSmall() ? '' : `<section class="grid2">${size() === 'trip' ? `
     <button class="tile" data-tab="flights"><span class="label">Flights</span><b class="tile-big">${tk.have.length}/${tk.goal || 0} booked</b>
-      <span class="small muted">${fl.length ? 'Typical: ' + esc(fl.map(f => f.roundTrip).filter(Boolean)[0] || '') + ' round trip' : 'Search fares from every home city'}</span><span class="tile-go">Find flights →</span></button>
+      <span class="small muted">${fl.length ? 'Typical: ' + esc(fl.map(f => f.roundTrip).filter(Boolean)[0] || '') + ' round trip' : 'Search fares from every home city'}</span><span class="tile-go">Find flights →</span></button>` : ''}
     <button class="tile" data-tab="stays"><span class="label">Stay</span><b class="tile-big">${t.stay ? esc(t.stay.name) : (t.stays?.items?.length ? t.stays.items.length + ' options' : 'Not booked')}</b>
       <span class="small muted">${t.stay ? esc(t.stay.area || '') + (t.stay.perNight ? ' · ' + esc(t.stay.perNight) : '') : 'Hotels and Airbnbs that fit the budget'}</span><span class="tile-go">${t.stay ? 'See the stay →' : 'Find stays →'}</span></button>
-  </section>
+  </section>`}
   <section class="card stack">
     <div class="row" style="justify-content:space-between"><h3>Crew</h3><button class="btn sm" data-tab="crew">Invite & manage</button></div>
     <div class="row" style="gap:6px">${S.members.map(m => `<span class="av-sm" title="${esc(m.nick || 'Someone')}" style="background:${colorFor(m.id)};${m.status === 'out' ? 'opacity:.35' : ''}">${esc((m.nick || '?')[0].toUpperCase())}</span>`).join('')}</div>
@@ -1183,7 +1177,8 @@ function overviewTab() {
 }
 function settingsTab() {
   const m = mode();
-  return `<section class="card stack"><h3>Trip type</h3>
+  return `<section class="card stack"><h3>Plan size</h3><div class="row" style="gap:6px">${Object.entries(SIZES).map(([k, v]) => `<button class="chip ${size() === k ? 'on' : ''}" data-setsize="${k}">${esc(v.label)}</button>`).join('')}</div><p class="small muted">Changing the size keeps everyone’s votes and free days.</p></section>
+  <section class="card stack"><h3>Type</h3>
     <div class="modes compact">${Object.entries(MODES).map(([k, v]) => `<button class="mode ${S.trip.mode === k || (!S.trip.mode && k === 'friends') ? 'on' : ''}" data-setmode="${k}" style="--mc:${v.color}"><b>${esc(v.label)}</b></button>`).join('')}</div>
     ${m.honoree ? `<div class="row" style="gap:10px">
       <label class="field"><span class="label">The ${esc(m.honoree)}</span><select id="set-honoree"><option value="">Pick someone</option>${S.members.map(x => `<option value="${esc(x.id)}" ${S.trip.honoree === x.id ? 'selected' : ''}>${esc(x.nick || 'Someone')}</option>`).join('')}</select></label>
@@ -1194,61 +1189,6 @@ function settingsTab() {
 }
 
 /* ---------- home screen + trip creation ---------- */
-function homeView() {
-  if (S.loading && /^#[a-z0-9]{6,20}$/.test(location.hash)) return `${topBar()}<p class="muted">Loading trip…</p>`;
-  if (S.creating === 'mode') return modePicker();
-  if (S.creating === 'form') return newTripForm();
-  // only trips you created or joined
-  const mine = S.trips.filter(t => t.createdBy === S.uid || (t.people || {})[S.uid]);
-  const canSave = !!S.db, has = mine.length > 0;
-  const list = !canSave ? '' : !S.tripsLoaded ? `<p class="muted">Loading trips…</p>` :
-    has ? mine.map(t => { const m = MODES[t.mode] || MODES.friends; return `<div class="card trip-li" style="border-left:4px solid ${m.color}">
-        <div class="stack" style="gap:2px;min-width:0"><span class="label">${esc(m.label)}</span><h3>${esc(t.name)}</h3>
-        <span class="small muted">${t.lockedDates ? short(t.lockedDates.start) + ' – ' + short(t.lockedDates.end) : `${t.nights || 3} nights between ${short(t.winStart)} and ${short(t.winEnd)}`}</span></div>
-        <div class="row" style="gap:6px;flex-wrap:nowrap">${S.confirmHome === t.id
-          ? `<span class="small">Delete for everyone?</span><button class="btn sm danger-fill" data-homedo="${esc(t.id)}">Delete</button><button class="btn sm ghost" data-act="homeCancel">Cancel</button>`
-          : `${canDelete(t) ? `<button class="btn sm ghost danger" data-homedel="${esc(t.id)}" aria-label="Delete ${esc(t.name)}">Delete</button>` : ''}<button class="btn sm primary" data-open="${esc(t.id)}">Open</button>`}</div></div>`; }).join('')
-    : '';
-  return `${topBar()}
-  <section class="hero ${has ? 'hero-sm' : ''}">
-    <span class="label">Group trips that actually happen</span>
-    <h1>${has ? 'Where to next?' : 'Get the group chat out the door.'}</h1>
-    ${has ? '' : '<p>Everyone drops their dates, budget and home airport. The AI pitches trips that fit, the crew swipes, and when everyone matches, you book flights and a stay together. Then the app runs the trip, from “I’m lost” to your Trip Wrapped.</p>'}
-    <div class="row"><button class="btn primary big" data-act="newTrip" ${canSave ? '' : 'disabled'}>Plan a trip</button><button class="btn" data-act="demo">See the demo</button></div>
-    ${!canSave && !S.loading ? '<span class="small muted">Can’t reach the local server. Start it with npm run dev, then reload.</span>' : ''}
-    ${canSave && !S.loading && !S.sample ? '<span class="small muted">AI features are off. Add your Anthropic API key to .env.local and restart to turn them on (see the README).</span>' : ''}
-  </section>
-  ${canSave ? `${has || !S.tripsLoaded ? `<section class="stack"><h2>Your trips</h2>${list}</section>` : ''}${crewsHome()}` : ''}`;
-}
-function modePicker() {
-  return `${topBar()}
-  <section class="stack"><button class="linkbtn small" data-act="cancelNew" style="align-self:flex-start">‹ Back</button>
-    <span class="label">Step 1 of 2</span><h1 style="font-size:clamp(30px,6vw,44px)">What kind of trip is this?</h1>
-    <p class="muted">We’ll tune the AI picks, the awards and the features to your group.</p></section>
-  <div class="modes">${Object.entries(MODES).map(([k, v]) => `<button class="mode" data-mode="${k}" style="--mc:${v.color}"><b>${esc(v.label)}</b><span class="small muted">${esc(v.desc)}</span>${v.honoree ? `<span class="label" style="color:var(--mc)">Guest of honor mode</span>` : ''}</button>`).join('')}</div>`;
-}
-function newTripForm() {
-  const m = MODES[S.newMode] || MODES.friends, start = add(TODAY, 30), end = add(TODAY, 75), crew = S.crews.find(c => c.id === S.newCrew);
-  const ph = { bachelorette: 'Sarah’s Last Fling', bachelor: 'Mike’s Last Ride', birthday: 'Dev turns 30', family: 'Family beach week', work: 'Q3 team offsite', festival: 'Coachella weekend', sports: 'Super Bowl trip', couples: 'Couples in Tulum', college: 'Spring break ’27' }[S.newMode] || 'Vegas, finally';
-  return `${topBar()}
-  <section class="stack"><button class="linkbtn small" data-act="backModes" style="align-self:flex-start">‹ Trip type</button>
-    <span class="label">Step 2 of 2</span><div class="row" style="gap:10px"><h1 style="font-size:clamp(30px,6vw,44px)">The basics</h1><span class="mode-chip" style="--mc:${m.color}">${esc(m.label)}</span></div></section>
-  <section class="card stack">
-    ${crew ? `<div class="banner"><span>With <b>${esc(crew.name)}</b>: everyone gets added automatically.</span><button class="btn sm ghost" data-act="clearCrew">Remove</button></div>` : ''}
-    <form id="newTrip" class="stack">
-      <label class="field"><span class="label">Trip name</span><input id="nt-name" required maxlength="60" placeholder="${esc(ph)}"></label>
-      ${m.honoree ? `<label class="field"><span class="label">Who’s the ${esc(m.honoree)}?</span><input id="nt-honoree" maxlength="40" placeholder="Their name"></label>` : ''}
-      <div class="row">
-        <label class="field"><span class="label">Earliest date</span><input id="nt-start" type="date" value="${start}" min="${TODAY}" required></label>
-        <label class="field"><span class="label">Latest date</span><input id="nt-end" type="date" value="${end}" min="${TODAY}" required></label>
-        <label class="field" style="flex:0 1 110px"><span class="label">Nights</span><select id="nt-nights">${[1, 2, 3, 4, 5, 6, 7, 10, 14].map(n => `<option ${n === 3 ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
-      </div>
-      <p class="small muted">Not sure on dates yet? Give a wide window. The crew picks the exact nights later.</p>
-      <div><button class="btn primary big" type="submit">Create trip</button></div>
-    </form>
-  </section>`;
-}
-
 /* ---------- book: flights ---------- */
 function skyscanner(from, d, ds) { const y = s => s.slice(2).replace(/-/g, ''); return `https://www.skyscanner.com/transport/flights/${from.toLowerCase()}/${ds.code.toLowerCase()}/${y(d.start)}/${y(d.end)}/`; }
 function flightsTab() {
@@ -1674,6 +1614,7 @@ function wrappedTab() {
     w.wrecked && { c: ['#5C6A7A', '#151A33'], k: 'Most wrecked', h: esc(nameOf(w.wrecked[0])), s: `average hangover score ${w.wrecked[1].toFixed(1)}/5` },
     w.hyper && { c: ['#E64980', '#7048E8'], k: 'Hype machine', h: esc(nameOf(w.hyper[0])), s: `${w.hyper[1]} messages in the hype feed` },
     w.awards.length && { c: ['#FFC94D', '#E8590C'], k: 'The awards', h: '', list: w.awards.map(r => [r.c, r.winners.map(nameOf).join(' & ')]) },
+    songOfPlan()?.song && { c: ['#12B5A6', '#7048E8'], k: `Song of the ${isSmall() ? 'night' : 'trip'}`, h: esc(songOfPlan().song.title), s: `${esc(songOfPlan().song.artist || '')}${songOfPlan().song.artist ? ' · ' : ''}${songOfPlan().n} vote${songOfPlan().n === 1 ? '' : 's'}` },
     w.b && { c: ['#D41C78', '#151A33'], k: 'You were', h: esc(w.b.persona), s: 'Same time next year?' },
   ].filter(Boolean);
   const i = Math.min(S.wrapI || 0, slides.length - 1), sl = slides[i];
@@ -1757,13 +1698,13 @@ function guide() {
   if (me.status === 'out') return null;
   const tk = tickets(), items = t.pitches?.items || [];
   for (const s of steps().filter(x => !x.done)) {
-    if (s.go === 'crew') return { tab: 'crew', sel: '[data-act="copyInvite"]', label: 'Invite your friends' };
+    if (s.go === 'crew') return S.members.length >= 2 ? { tab: 'crew', sel: '[data-act="copyNudge"]', label: 'Nudge the crew to say they’re in' } : { tab: 'crew', sel: '[data-act="copyInvite"]', label: 'Invite your friends' };
     if (s.go === 'match') {
-      if (items.some(x => !swipeOf(x.id, S.uid))) return { tab: 'match', sel: '#pitch', label: 'Swipe on the trip pitches' };
-      if (!items.length && S.sample) return { tab: 'match', sel: '[data-act="genPitches"]', label: 'Get AI trip pitches' };
-      if (!(t.destinations || []).length) return { tab: 'where', sel: '#ad-city', label: 'Suggest a destination' };
+      if (items.some(x => !swipeOf(x.id, S.uid))) return { tab: 'match', sel: '#pitch', label: 'Swipe on the pitches' };
+      if (!items.length && S.sample) return { tab: 'match', sel: '[data-act="genPitches"]', label: isSmall() ? 'Get AI plan pitches' : 'Get AI trip pitches' };
+      if (!(t.destinations || []).length) return { tab: 'where', sel: '#ad-city', label: isSmall() ? 'Suggest a plan' : 'Suggest a destination' };
       if (!(me.votes || []).length) return { tab: 'where', sel: '[data-vote]', label: 'Vote on where to go' };
-      return { tab: 'where', sel: '[data-lockdest]', label: 'Lock the destination' };
+      return { tab: 'where', sel: '[data-lockdest]', label: isSmall() ? 'Lock the plan' : 'Lock the destination' };
     }
     if (s.go === 'dates') {
       if (!(me.days || []).length) return { tab: 'dates', sel: '.cal', label: 'Tap the days you’re free' };
@@ -1786,7 +1727,7 @@ function guide() {
   if (!me.budget) return { tab: 'crew', sel: '#me-budget', label: 'Set your budget' };
   return null;
 }
-const DONE_TEXT = { 'Get the crew in': 'The crew’s in', 'Pick where': 'Destination locked', 'Lock the dates': 'Dates locked', 'Book flights': 'Everyone’s booked. Trip is ON', 'Book the stay': 'Stay locked', 'Plan the days': 'Days planned' };
+const DONE_TEXT = { 'Pick the plan': 'Plan locked', 'Pick the day': 'Day locked. It’s on', 'Plan the night': 'Night planned', 'Plan the day': 'Day planned', 'Get the crew in': 'The crew’s in', 'Pick where': 'Destination locked', 'Lock the dates': 'Dates locked', 'Book flights': 'Everyone’s booked. Trip is ON', 'Book the stay': 'Stay locked', 'Plan the days': 'Days planned' };
 function checkMilestones() {
   if (!S.trip || S.demo) return;
   const done = steps().filter(s => s.done).map(s => s.label), key = 'outta_done_' + S.tid;
@@ -1825,6 +1766,345 @@ window.addEventListener('scroll', () => {
   if (f) f.classList.toggle('tucked', y > lastY + 4 && y > 120);
   lastY = y;
 }, { passive: true });
+
+/* ---------- plans of every size ----------
+   The crew is the center; everything you do together is a plan. A plan's size decides how much of the
+   app it shows: a hangout is one evening (no flights, no packing), a trip is the full thing. */
+const SIZES = {
+  hangout: { label: 'Hangout', desc: 'Dinner, drinks, game night. One evening.', nights: 0, win: 6, ph: 'Friday dinner', color: '#14915F' },
+  day: { label: 'Day out', desc: 'Beach day, concert, a day trip nearby.', nights: 0, win: 13, ph: 'Beach day', color: '#1098AD' },
+  weekend: { label: 'Weekend', desc: 'A night or two away. Cabin, road trip, nearby city.', nights: 2, win: 45, ph: 'Cabin weekend', color: '#E8590C' },
+  trip: { label: 'Trip', desc: 'Flights, stays, the full thing.', nights: 3, win: 60, ph: 'Vegas, finally', color: '#D41C78' },
+};
+const size = () => SIZES[S.trip?.size] ? S.trip.size : 'trip';
+const isSmall = (t = S.trip) => ['hangout', 'day'].includes(t?.size);
+const nightsSet = t => t.nights ?? (SIZES[t.size] || SIZES.trip).nights;
+const sizeOf = t => SIZES[t.size] ? t.size : 'trip';
+const HIDE_TABS = { hangout: ['flights', 'stays', 'tickets', 'pack', 'bucket', 'pot'], day: ['flights', 'stays', 'tickets', 'pot'], weekend: ['flights', 'tickets'], trip: [] };
+const STEP_KEYS = { hangout: ['crew', 'where', 'dates'], day: ['crew', 'where', 'dates', 'plan'], weekend: ['crew', 'where', 'dates', 'stay', 'plan'], trip: ['crew', 'where', 'dates', 'flights', 'stay', 'plan'] };
+const t12 = hm => { if (!hm) return ''; const [h, m] = hm.split(':').map(Number); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
+const dayRange = (a, b) => a === b ? fmt(a) : `${fmt(a)} → ${fmt(b)}`;
+function planOn() {
+  if (size() === 'trip') return tickets().on;
+  return !!(S.trip.lockedDest && S.trip.lockedDates && S.members.filter(m => m.status === 'in').length >= 2);
+}
+function passSmall() {
+  const d = dates(), ds = dest(), t = S.trip, inN = S.members.filter(m => m.status === 'in').length, c = countdown(), on = planOn();
+  return `<section class="pass">
+    <div class="pass-main">
+      <div class="row" style="justify-content:space-between"><span class="label">${esc(SIZES[size()].label)} · ${esc(t.name)}</span>
+        ${on ? `<span class="on-pill">It’s on</span>` : `<span class="pill maybe">Still deciding</span>`}</div>
+      <div class="ev-title ${ds ? '' : 'code-tbd'}">${ds ? esc(ds.city) : 'The plan: TBD'}</div>
+      <div class="facts">
+        <div><span class="label">When${d && !d.locked ? ' · best so far' : ''}</span><b>${d ? dayRange(d.start, d.end) : 'TBD'}${t.time ? ' · ' + t12(t.time) : ''}</b></div>
+        <div><span class="label">Where</span><b style="font-family:var(--f-body)">${esc(t.venue || t.city || 'TBD')}</b></div>
+        ${c ? `<div><span class="label">Countdown</span><b style="color:var(--accent)">${c.text}</b></div>` : ''}
+      </div>
+      <div class="row" style="gap:6px"><button class="btn sm" data-act="card">Make story card</button>${size() !== 'trip' ? `<button class="btn sm ghost" data-act="growPlan">Make it a ${size() === 'weekend' ? 'trip' : 'weekend or trip'}</button>` : ''}</div>
+      ${S.cardUrl ? `<div class="row" style="align-items:flex-end;gap:14px"><img class="cardimg" src="${S.cardUrl}" alt="Story card for ${esc(t.name)}">
+        <div class="stack" style="gap:8px">${S.downloads ? `<button class="btn primary sm" data-act="saveCard">Save image</button>` : `<span class="small muted">Press and hold the image to save it.</span>`}<button class="btn sm ghost" data-act="closeCard">Close</button></div></div>` : ''}
+    </div>
+    <div class="pass-stub">
+      <div><span class="label">Crew</span><div class="code" style="font-size:40px">${inN}<span class="muted" style="font-size:22px">/${S.members.length}</span></div><span class="small muted">in</span></div>
+      ${(() => { const m = meDoc(); return `<div class="row" style="gap:6px">${['in', 'maybe', 'out'].map(s => `<button class="chip ${m && m.status === s ? 'on' : ''}" data-status="${s}">${s === 'in' ? "I'm in" : s === 'maybe' ? 'Maybe' : 'Out'}</button>`).join('')}</div>`; })()}
+    </div>
+  </section>`;
+}
+function growPlan() {
+  const t = S.trip, to = size() === 'weekend' ? 'trip' : 'weekend', end = t.winEnd < add(TODAY, SIZES[to].win) ? add(TODAY, SIZES[to].win) : t.winEnd;
+  saveTrip({ size: to, nights: SIZES[to].nights, winEnd: end, lockedDates: null });
+  flash(`It’s a ${SIZES[to].label.toLowerCase()} now. Everyone’s votes are kept. Pick the nights in Dates.`);
+}
+
+/* Plan Match for hangouts and days out: the AI pitches whole evenings, the crew swipes */
+function genPlanPitches() {
+  const opts = dateOptions().slice(0, 4); if (!opts.length) { flash('Set which days could work first.'); return; }
+  const t = S.trip, b = budgetCap(), evening = size() === 'hangout';
+  const prompt = `You're pitching plans to a friend group. Each person swipes yes or no, like a dating app, so make every pitch specific, fun and honest.
+Plan type: ${evening ? 'one evening out or in' : 'a full day out'}${mode().label !== 'Friends trip' ? ` (${mode().label}. ${mode().ai})` : ''}.
+City: ${t.city || 'unknown, assume a big US city'}.
+Crew: ${active().length} people. Max spend per person: ${b ? money(b.cap) : 'not set, keep it moderate'}.
+${blend() ? 'Crew vibe quiz:\n' + blendText() : 'Vibe: fun, social'}
+Ideas the crew already suggested: ${(t.destinations || []).map(d => d.city).join(', ') || 'none'}
+Day options (use one exactly per pitch):
+${opts.map((o, i) => `${i + 1}) ${o.start} (${dow(o.start)}, ${o.ok}/${active().length} free)`).join('\n')}
+
+Give 6 different plans that use real, well-known places in that city: mix a dinner-and-drinks night, an activity (bowling, karaoke, a class, a show), something low-key, and something new. Prefer the days most people can make.
+Reply with only JSON: {"pitches":[{"title":"the plan in 2-5 words","tagline":"punchy, 4-9 words","where":"main place or neighborhood","date":"YYYY-MM-DD","time":"HH:MM start","perPerson":"$25–40","vibeMatch":82,"why":"one or two sentences on why this crew would love it","steps":[{"time":"HH:MM","title":"place or activity"}],"weather":"short, or empty if it's indoors"}]}`;
+  askAI('pitch', prompt, data => {
+    const valid = new Map(opts.map(o => [o.start, o]));
+    const items = (Array.isArray(data?.pitches) ? data.pitches : []).filter(p => p && p.title).slice(0, 8).map(p => {
+      const o = valid.get(p.date) || opts[0], steps = (p.steps || []).slice(0, 5).map(s => ({ time: String(s.time || '').slice(0, 5), title: String(s.title || '').slice(0, 80) })).filter(s => s.title);
+      return { id: rid(6), small: true, title: String(p.title).slice(0, 50), city: String(p.title).slice(0, 50), code: '', start: o.start, end: o.start, time: /^\d\d:\d\d$/.test(p.time) ? p.time : '',
+        where: String(p.where || '').slice(0, 60), tagline: String(p.tagline || '').slice(0, 80), why: String(p.why || '').slice(0, 300), perPerson: String(p.perPerson || '').slice(0, 30),
+        vibeMatch: Math.max(0, Math.min(100, Math.round(+p.vibeMatch || 0))), highlights: steps.map(s => (s.time ? t12(s.time) + ' · ' : '') + s.title), steps, weather: String(p.weather || '').slice(0, 60) };
+    });
+    if (!items.length) { flash('No plans came back. Try again.'); return; }
+    return saveTrip({ pitches: { items, at: Date.now() } });
+  });
+}
+function lockSmallPitch(p) {
+  const ds = [...(S.trip.destinations || [])];
+  let d = ds.find(x => x.city.toLowerCase() === p.title.toLowerCase());
+  if (!d) { d = { id: rid(6), city: p.title, code: '' }; ds.push(d); }
+  const patch = { destinations: ds, lockedDest: d.id, lockedDates: { start: p.start, end: p.start }, time: p.time || '', venue: p.where || '' };
+  if (!(S.trip.itinerary || []).length && p.steps?.length) patch.itinerary = p.steps.map(s => ({ id: rid(6), date: p.start, time: s.time, title: s.title, kind: 'plan', note: '', ai: true }));
+  saveTrip(patch);
+  flash(`Locked: ${p.title}, ${fmt(p.start)}${p.time ? ' at ' + t12(p.time) : ''}.`);
+}
+
+/* ---------- crews ---------- */
+const crewMembers = c => [...new Set([...(c.ids || []), ...Object.keys(c.people || {}).filter(k => c.people[k])])];
+const myCrews = () => S.crews.filter(c => c.by === S.uid || crewMembers(c).includes(S.uid));
+const crewNick = (c, id) => c.profiles?.[id]?.nick || 'Someone';
+function myPlans() {
+  const crewIds = new Set(myCrews().map(c => c.id));
+  return S.trips.filter(t => t.createdBy === S.uid || (t.people || {})[S.uid] || (t.crewId && crewIds.has(t.crewId)));
+}
+const planWhen = t => t.lockedDates ? (t.lockedDates.start === t.lockedDates.end ? fmt(t.lockedDates.start) : `${short(t.lockedDates.start)} – ${short(t.lockedDates.end)}`) + (t.time ? ' · ' + t12(t.time) : '') : '';
+function planStatus(t) {
+  if (t.lockedDest && t.lockedDates) return 'Locked in';
+  if (t.lockedDest) return 'Picking the day';
+  if (t.lockedDates) return isSmall(t) ? 'Picking the plan' : 'Picking where';
+  return isSmall(t) ? 'Picking the plan and the day' : 'Picking where and when';
+}
+function planRow(t, opts = {}) {
+  const sz = SIZES[sizeOf(t)], crew = S.crews.find(c => c.id === t.crewId), name = (t.destinations || []).find(d => d.id === t.lockedDest)?.city;
+  const daysTo = t.lockedDates ? Math.round((D(t.lockedDates.start) - D(TODAY)) / 864e5) : null;
+  return `<div class="card plan-row" style="--pc:${sz.color}">
+    <div class="pr-date">${t.lockedDates ? `<b>${D(t.lockedDates.start).getUTCDate()}</b><span>${fmt(t.lockedDates.start, { month: 'short' })}</span>` : '<b>?</b><span>TBD</span>'}</div>
+    <div class="stack" style="gap:2px;min-width:0;flex:1">
+      <span class="label" style="color:var(--pc)">${esc(sz.label)}${crew && !opts.noCrew ? ' · ' + esc(crew.name) : ''}</span>
+      <h3>${esc(t.name)}</h3>
+      <span class="small muted">${t.lockedDates ? esc(planWhen(t)) + (name && name !== t.name ? ' · ' + esc(name) : '') : esc(planStatus(t))}${daysTo !== null && daysTo >= 0 ? ` · <b style="color:var(--pc)">${daysTo === 0 ? 'Today' : daysTo === 1 ? 'Tomorrow' : 'in ' + daysTo + ' days'}</b>` : ''}</span>
+    </div>
+    <div class="row" style="gap:6px;flex-wrap:nowrap">${S.confirmHome === t.id
+      ? `<button class="btn sm danger-fill" data-homedo="${esc(t.id)}">Delete</button><button class="btn sm ghost" data-act="homeCancel">Cancel</button>`
+      : `${opts.del && canDelete(t) ? `<button class="x" data-homedel="${esc(t.id)}" aria-label="Delete ${esc(t.name)}">×</button>` : ''}<button class="btn sm primary" data-open="${esc(t.id)}">Open</button>`}</div>
+  </div>`;
+}
+function homeView() {
+  if (S.loading && /^#[a-z0-9]{6,20}$/.test(location.hash)) return `${topBar()}<p class="muted">Loading…</p>`;
+  if (S.creating === 'crew') return pickCrewStep();
+  if (S.creating === 'size') return pickSizeStep();
+  if (S.creating === 'mode') return modePicker();
+  if (S.creating === 'form') return newTripForm();
+  if (S.crewView) return crewPage(S.crewView);
+  const canSave = !!S.db, plans = myPlans(), crews = myCrews();
+  const live = plans.filter(t => t.lockedDates && t.lockedDates.start <= TODAY && t.lockedDates.end >= TODAY);
+  const upcoming = plans.filter(t => t.lockedDates && t.lockedDates.start > TODAY).sort((a, b) => a.lockedDates.start < b.lockedDates.start ? -1 : 1);
+  const deciding = plans.filter(t => !t.lockedDates && (!t.winEnd || t.winEnd >= TODAY)).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  const past = plans.filter(t => (t.lockedDates && t.lockedDates.end < TODAY) || (!t.lockedDates && t.winEnd && t.winEnd < TODAY));
+  const fresh = canSave && S.tripsLoaded && !plans.length && !crews.length;
+  return `${topBar()}
+  <section class="hero ${fresh ? '' : 'hero-sm'}">
+    <span class="label">${S.myName ? 'Hey ' + esc(S.myName) : 'Your crew’s plans, from Friday night to Tulum'}</span>
+    <h1>${fresh ? 'Get the group chat out the door.' : 'What are we doing?'}</h1>
+    ${fresh ? '<p>Hangouts, day trips and full-on trips with your crews. The AI pitches plans that fit everyone, the crew swipes, and when everyone matches, it’s on.</p>' : ''}
+    <div class="row"><button class="btn primary big" data-act="newTrip" ${canSave ? '' : 'disabled'}>New plan</button>${canSave ? '<button class="btn" data-act="newCrew">New crew</button>' : ''}<button class="btn ghost" data-act="demo">See the demo</button></div>
+    ${!canSave && !S.loading ? `<span class="small muted">${IN_CLAUDE ? 'Couldn’t connect. Reload the page to try again.' : 'Can’t reach the local server. Start it with npm run dev, then reload.'}</span>` : ''}
+  </section>
+  ${S.creating === 'newCrew' ? `<section class="card stack"><h2>New crew</h2><p class="small muted">A crew is a group you make plans with. You’ll get an invite link for it next.</p>
+    <form id="newCrewForm" class="row" style="gap:6px"><input id="nc-name" maxlength="40" required placeholder="The Vegas Six" style="flex:1 1 200px"><button class="btn primary" type="submit">Create crew</button><button class="btn ghost" type="button" data-act="cancelNew">Cancel</button></form></section>` : ''}
+  ${!canSave ? '' : !S.tripsLoaded ? '<p class="muted">Loading your plans…</p>' : `
+  ${live.length ? `<section class="stack"><h2><i class="live-dot" aria-hidden="true"></i> Happening now</h2>${live.map(t => planRow(t)).join('')}</section>` : ''}
+  <section class="stack"><div class="row" style="justify-content:space-between"><h2>Coming up</h2><span class="small muted">${upcoming.length} locked in</span></div>
+    ${upcoming.length ? upcoming.map(t => planRow(t)).join('') : `<div class="empty"><span>Nothing locked yet. When a plan has a place and a day, it shows up here like a calendar.</span></div>`}</section>
+  ${deciding.length ? `<section class="stack"><h2>Still deciding</h2>${deciding.map(t => planRow(t, { del: true })).join('')}</section>` : ''}
+  <section class="stack"><div class="row" style="justify-content:space-between"><h2>Your crews</h2><button class="btn sm" data-act="newCrew">New crew</button></div>
+    ${crews.length ? `<div class="crew-grid">${crews.map(c => crewCard(c, plans)).join('')}</div>` : `<div class="empty"><span>Crews are the groups you make plans with. Make one, share its invite link, and every plan after that starts with everyone already in.</span><button class="btn sm primary" data-act="newCrew">Make a crew</button></div>`}</section>
+  ${past.length ? `<details class="card past"><summary><b>Past plans</b> <span class="small muted">${past.length}</span></summary><div class="stack" style="margin-top:10px">${past.map(t => planRow(t, { del: true })).join('')}</div></details>` : ''}`}`;
+}
+function crewCard(c, plans) {
+  const ids = crewMembers(c), cp = plans.filter(t => t.crewId === c.id);
+  const next = cp.filter(t => t.lockedDates && t.lockedDates.end >= TODAY).sort((a, b) => a.lockedDates.start < b.lockedDates.start ? -1 : 1)[0];
+  return `<div class="card crew-card">
+    <button class="crew-open" data-crew="${esc(c.id)}"><h3>${esc(c.name)}</h3>
+      <div class="avs">${ids.slice(0, 8).map(id => `<span class="av-sm" style="background:${colorFor(id)}" title="${esc(crewNick(c, id))}">${esc(crewNick(c, id)[0].toUpperCase())}</span>`).join('')}${ids.length > 8 ? `<span class="small muted">+${ids.length - 8}</span>` : ''}</div>
+      <span class="small muted">${next ? `Next: <b>${esc(next.name)}</b> · ${esc(planWhen(next))}` : `${cp.length} plan${cp.length === 1 ? '' : 's'} together`}</span></button>
+    <div class="row" style="gap:6px"><button class="btn sm primary" data-startcrew="${esc(c.id)}">+ Plan something</button><button class="btn sm ghost" data-crew="${esc(c.id)}">Open</button></div>
+  </div>`;
+}
+const crewLink = cid => SHARE_BASE + '#c-' + cid;
+function crewPage(cid) {
+  const c = S.crews.find(x => x.id === cid);
+  if (!c) return `${topBar()}<p class="muted">Loading crew…</p><button class="btn" data-act="home">Back home</button>`;
+  const ids = crewMembers(c), plans = myPlans().filter(t => t.crewId === cid);
+  const upcoming = plans.filter(t => !t.lockedDates || t.lockedDates.end >= TODAY).sort((a, b) => (a.lockedDates?.start || '9') < (b.lockedDates?.start || '9') ? -1 : 1);
+  const past = plans.filter(t => t.lockedDates && t.lockedDates.end < TODAY);
+  return `${topBar()}
+  <section class="stack"><button class="linkbtn small" data-act="home" style="align-self:flex-start">‹ All plans</button>
+    <span class="label">Crew</span><h1 style="font-size:clamp(32px,7vw,48px)">${esc(c.name)}</h1>
+    <div class="row" style="gap:6px">${ids.map(id => `<span class="chip" style="cursor:default"><span class="av" style="width:20px;height:20px;font-size:10px;background:${colorFor(id)}">${esc(crewNick(c, id)[0].toUpperCase())}</span>${esc(crewNick(c, id))}${id === S.uid ? ' (you)' : ''}</span>`).join('')}</div>
+    <div class="row"><button class="btn primary big" data-startcrew="${esc(cid)}">+ Plan something</button></div>
+  </section>
+  <section class="stack"><h2>Plans</h2>${upcoming.length ? upcoming.map(t => planRow(t, { noCrew: true })).join('') : `<div class="empty"><span>No plans yet. Start one and everyone in the crew is added automatically.</span></div>`}</section>
+  ${playlistCard({ crew: c })}
+  <section class="card stack"><h3>Invite to the crew</h3>
+    <p class="small muted">${IN_CLAUDE ? 'First share this page with them (Share menu, as an Editor). Then send this link.' : 'Send this link. They type their name and join the crew.'}</p>
+    <span class="invite-link mono">${esc(crewLink(cid))}</span>
+    <div><button class="btn" data-act="copyCrewInvite" data-cid="${esc(cid)}">Copy invite message</button></div></section>
+  ${past.length ? `<details class="card past"><summary><b>Past plans</b> <span class="small muted">${past.length}</span></summary><div class="stack" style="margin-top:10px">${past.map(t => planRow(t, { noCrew: true })).join('')}</div></details>` : ''}
+  ${c.by === S.uid || S.isOwner ? `<div><button class="btn sm ghost danger" data-delcrew="${esc(cid)}">Delete crew</button></div>` : ''}`;
+}
+async function createCrew(name) {
+  const cid = rid(10), body = { name: name.slice(0, 40), ids: [S.uid], people: { [S.uid]: true }, profiles: { [S.uid]: { nick: S.myName || 'Me' } }, by: S.uid, at: Date.now() };
+  try { await S.db.doc('crews/' + cid).set(body); S.creating = null; openCrew(cid); flash('Crew created. Send the invite link to add people.'); }
+  catch (e) { flash(writeErr(e)); }
+}
+async function joinCrew(cid) {
+  if (!S.db) return;
+  try {
+    const snap = await S.db.doc('crews/' + cid).get();
+    if (!snap.exists) { flash('That crew link doesn’t work anymore.'); setHash(''); return; }
+    if (!crewMembers(snap.data()).includes(S.uid)) { await S.db.doc('crews/' + cid).update({ people: { [S.uid]: true }, profiles: { [S.uid]: { nick: S.myName || 'Someone' } } }); flash(`You joined ${snap.data().name}.`); }
+    openCrew(cid);
+  } catch (e) { flash(writeErr(e)); }
+}
+function openCrew(cid) {
+  stop(); S.tid = null; resetTrip(); S.crewView = cid; S.creating = null; setHash('c-' + cid);
+  subscribeSongs(`crews/${cid}/songs`); render(); window.scrollTo({ top: 0 });
+}
+
+/* new-plan flow: crew → size → (type) → basics */
+function startNewPlan(cid) {
+  S.newCrew = cid || null; S.newSize = null; S.newMode = null;
+  S.creating = cid || !myCrews().length ? 'size' : 'crew'; S.cameFromCrewStep = !cid && !!myCrews().length;
+  if (cid) { S.crewView = null; setHash(''); }
+  render(); window.scrollTo({ top: 0 });
+}
+function stepHead(title, back) {
+  const crew = S.crews.find(c => c.id === S.newCrew), sz = SIZES[S.newSize];
+  const trail = ['New plan', crew?.name, sz?.label].filter(Boolean).join(' · ');
+  return `<section class="stack"><button class="linkbtn small" data-act="${back}" style="align-self:flex-start">‹ Back</button>
+    <span class="label">${esc(trail)}</span><h1 style="font-size:clamp(30px,6vw,44px)">${title}</h1></section>`;
+}
+function pickCrewStep() {
+  return `${topBar()}${stepHead('Who’s this with?', 'cancelNew')}
+  <div class="modes">${myCrews().map(c => `<button class="mode" data-pickcrew="${esc(c.id)}" style="--mc:${colorFor(c.id)}"><b>${esc(c.name)}</b><span class="small muted">${crewMembers(c).map(id => esc(crewNick(c, id))).join(', ')}</span></button>`).join('')}
+    <button class="mode" data-pickcrew="" style="--mc:var(--muted)"><b>Someone else</b><span class="small muted">Start it and invite people after</span></button></div>`;
+}
+function pickSizeStep() {
+  return `${topBar()}${stepHead('How big is this plan?', S.cameFromCrewStep ? 'backCrew' : 'cancelNew')}
+  <div class="modes sizes">${Object.entries(SIZES).map(([k, v]) => `<button class="mode" data-size="${k}" style="--mc:${v.color}"><b>${esc(v.label)}</b><span class="small muted">${esc(v.desc)}</span></button>`).join('')}</div>`;
+}
+function modePicker() {
+  return `${topBar()}${stepHead(`What kind of ${SIZES[S.newSize || 'trip'].label.toLowerCase()} is this?`, 'backSize')}
+  <p class="muted">We’ll tune the AI picks, the awards and the features to your group.</p>
+  <div class="modes">${Object.entries(MODES).map(([k, v]) => `<button class="mode" data-mode="${k}" style="--mc:${v.color}"><b>${esc(v.label)}</b><span class="small muted">${esc(v.desc)}</span>${v.honoree ? `<span class="label" style="color:var(--mc)">Guest of honor mode</span>` : ''}</button>`).join('')}</div>`;
+}
+function newTripForm() {
+  const sz = SIZES[S.newSize || 'trip'], small = ['hangout', 'day'].includes(S.newSize), m = MODES[S.newMode] || MODES.friends, crew = S.crews.find(c => c.id === S.newCrew);
+  const start = small ? TODAY : add(TODAY, 30), end = add(start, sz.win + (small ? 0 : 15));
+  let city = ''; try { city = localStorage.getItem('outta_city') || ''; } catch {}
+  const ph = { bachelorette: 'Sarah’s Last Fling', bachelor: 'Mike’s Last Ride', birthday: 'Dev turns 30', family: 'Family beach week', work: 'Q3 team offsite', festival: 'Coachella weekend', sports: 'Super Bowl trip', couples: 'Couples in Tulum', college: 'Spring break ’27' }[S.newMode] || sz.ph;
+  return `${topBar()}${stepHead('The basics', small ? 'backSize' : 'backModes')}
+  ${crew || !small ? `<div class="row" style="gap:8px">${!small ? `<span class="mode-chip" style="--mc:${m.color}">${esc(m.label)}</span>` : ''}${crew ? `<span class="small muted">Everyone in <b>${esc(crew.name)}</b> is added automatically.</span>` : ''}</div>` : ''}
+  <section class="card stack">
+    <form id="newTrip" class="stack">
+      <label class="field"><span class="label">Name it</span><input id="nt-name" required maxlength="60" placeholder="${esc(ph)}"></label>
+      ${small ? `<label class="field"><span class="label">Which city?</span><input id="nt-city" maxlength="50" value="${esc(city)}" placeholder="Brooklyn" required></label>` : ''}
+      ${!small && m.honoree ? `<label class="field"><span class="label">Who’s the ${esc(m.honoree)}?</span><input id="nt-honoree" maxlength="40" placeholder="Their name"></label>` : ''}
+      <div class="row">
+        <label class="field"><span class="label">${small ? 'Could happen from' : 'Earliest date'}</span><input id="nt-start" type="date" value="${start}" min="${TODAY}" required></label>
+        <label class="field"><span class="label">${small ? 'Until' : 'Latest date'}</span><input id="nt-end" type="date" value="${end}" min="${TODAY}" required></label>
+        ${small ? '' : `<label class="field" style="flex:0 1 110px"><span class="label">Nights</span><select id="nt-nights">${[1, 2, 3, 4, 5, 6, 7, 10, 14].map(n => `<option ${n === sz.nights ? 'selected' : ''}>${n}</option>`).join('')}</select></label>`}
+      </div>
+      <p class="small muted">${small ? 'Everyone taps which of these days they’re free. The crew picks the exact plan and day together.' : 'Not sure on dates yet? Give a wide window. The crew picks the exact nights later.'}</p>
+      <div><button class="btn primary big" type="submit">Create ${esc(sz.label.toLowerCase())}</button></div>
+    </form>
+  </section>`;
+}
+async function createTrip() {
+  const name = $('#nt-name').value.trim(); let a = $('#nt-start').value, b = $('#nt-end').value;
+  if (!name || !a || !b) return;
+  if (b < a) [a, b] = [b, a];
+  if (span(a, b).length >= 92) b = add(a, 90);
+  const sz = S.newSize || 'trip', small = ['hangout', 'day'].includes(sz), city = ($('#nt-city')?.value || '').trim().slice(0, 50);
+  if (small && !city) { flash('Add the city so the AI can pitch real places.'); return; }
+  if (city) { try { localStorage.setItem('outta_city', city); } catch {} }
+  const id = rid(10);
+  const trip = { name: name.slice(0, 60), size: sz, city, winStart: a, winEnd: b, nights: small ? 0 : +($('#nt-nights')?.value || SIZES[sz].nights), destinations: [], vibes: [], itinerary: [], lockedDates: null, lockedDest: null,
+    mode: small ? 'friends' : (S.newMode || 'friends'), honoreeName: ($('#nt-honoree')?.value || '').trim().slice(0, 40), honoreeFree: true, people: { [S.uid]: true }, createdBy: S.uid, createdAt: Date.now() };
+  try {
+    await S.db.doc('trips/' + id).set(trip);
+    const crew = S.crews.find(c => c.id === S.newCrew);
+    const mine = crew?.profiles?.[S.uid] || {};
+    await S.db.doc(`trips/${id}/members/${S.uid}`).set({ nick: mine.nick || S.myName || 'Me', home: mine.home || '', venmo: mine.venmo || '', cashapp: mine.cashapp || '', budget: 0, status: 'in', days: [], votes: [], updatedAt: Date.now() });
+    if (crew) {
+      const ids = crewMembers(crew);
+      for (const uid of ids) if (uid !== S.uid) { const pr = crew.profiles?.[uid] || {}; await S.db.doc(`trips/${id}/members/${uid}`).set({ nick: pr.nick || 'Someone', home: pr.home || '', venmo: pr.venmo || '', cashapp: pr.cashapp || '', budget: 0, status: 'maybe', days: [], votes: [], updatedAt: Date.now() }); }
+      await S.db.doc('trips/' + id).update({ crewId: crew.id, people: Object.fromEntries(ids.map(u => [u, true])) });
+    }
+    S.newCrew = null; S.creating = null; S.newMode = null; S.newSize = null; S.fromCrewPage = false;
+    openTrip(id, 'overview');
+  } catch (e) { flash(writeErr(e)); }
+}
+
+/* ---------- playlist ----------
+   One playlist per crew that grows with every plan (or per plan when there's no crew).
+   Each plan also votes on its own "song of the trip", which shows up in the recap. */
+function subscribeSongs(path) {
+  if (S.songPath === path) return;
+  try { S.songUnsub?.(); } catch {}
+  S.songPath = path; S.songs = []; S.songUnsub = null;
+  if (S.demo || !S.db || !path) return;
+  S.songUnsub = S.db.collection(path).orderBy('at').limit(300).onSnapshot(snap => { S.songs = snap.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, () => {});
+}
+const songVotes = s => Object.values(s.votes || {}).filter(v => v > 0).length;
+const songQ = s => encodeURIComponent(`${s.title} ${s.artist || ''}`.trim());
+function songOfPlan() {
+  const v = S.trip?.songVotes || {}, cnt = {};
+  for (const id of Object.values(v)) if (id) cnt[id] = (cnt[id] || 0) + 1;
+  const best = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0];
+  return best ? { song: S.songs.find(s => s.id === best[0]), n: best[1] } : null;
+}
+function playlistCard(ctx = {}) {
+  const crew = ctx.crew || S.crews.find(c => c.id === S.trip?.crewId), inPlan = !!S.trip && !ctx.crew;
+  const songs = [...S.songs].sort((a, b) => songVotes(b) - songVotes(a) || (a.at || 0) - (b.at || 0));
+  const mySotn = inPlan ? (S.trip.songVotes || {})[S.uid] : null, sotn = inPlan ? songOfPlan() : null;
+  const who = id => crew ? crewNick(crew, id) : nameOf(id);
+  return `<section class="card stack playlist">
+    <div class="row" style="justify-content:space-between"><h2>${crew ? esc(crew.name) + ' playlist' : 'Playlist'}</h2><span class="small muted">${songs.length} song${songs.length === 1 ? '' : 's'}</span></div>
+    <p class="small muted">${crew ? 'One playlist for the crew. It grows with every plan.' : 'Everyone adds songs.'} Upvote the ones that hit${inPlan ? ', and pick your song of the ' + (isSmall() ? 'night' : 'trip') + ' for the recap' : ''}.</p>
+    ${sotn?.song ? `<div class="sotn"><span class="label">Song of the ${isSmall() ? 'night' : 'trip'} so far</span><b>${esc(sotn.song.title)}</b><span class="small">${esc(sotn.song.artist || '')} · ${sotn.n} vote${sotn.n === 1 ? '' : 's'}</span></div>` : ''}
+    <form id="songForm" class="row" style="gap:6px;align-items:flex-end">
+      <label class="field" style="flex:2 1 150px"><span class="label">Song</span><input id="sg-title" maxlength="80" required placeholder="Dancing Queen"></label>
+      <label class="field" style="flex:1 1 120px"><span class="label">Artist</span><input id="sg-artist" maxlength="60" placeholder="ABBA"></label>
+      <label class="field" style="flex:2 1 160px"><span class="label">Link (optional)</span><input id="sg-link" maxlength="300" type="url" placeholder="Spotify or Apple Music link"></label>
+      <button class="btn primary" type="submit">Add</button></form>
+    ${songs.length ? `<ol class="songs">${songs.map((s, i) => { const v = songVotes(s), mine = (s.votes || {})[S.uid] > 0; return `<li class="song">
+      <span class="song-n mono">${i + 1}</span>
+      <div style="min-width:0;flex:1"><b>${esc(s.title)}</b>${s.artist ? ` <span class="muted">· ${esc(s.artist)}</span>` : ''}
+        <div class="small muted">Added by ${esc(who(s.by))} · <a href="${s.link || 'https://open.spotify.com/search/' + songQ(s)}" target="_blank" rel="noopener">${s.link ? 'Listen' : 'Spotify'}</a>${s.link ? '' : ` · <a href="https://music.apple.com/us/search?term=${songQ(s)}" target="_blank" rel="noopener">Apple Music</a> · <a href="https://www.youtube.com/results?search_query=${songQ(s)}" target="_blank" rel="noopener">YouTube</a>`}</div></div>
+      <div class="row" style="gap:4px;flex-wrap:nowrap">
+        <button class="chip ${mine ? 'on' : ''}" data-songvote="${esc(s.id)}" aria-label="Upvote ${esc(s.title)}">▲ ${v}</button>
+        ${inPlan ? `<button class="chip ${mySotn === s.id ? 'sotn-on' : ''}" data-sotn="${esc(s.id)}" title="My song of the ${isSmall() ? 'night' : 'trip'}">♫</button>` : ''}
+        ${s.by === S.uid ? `<button class="x" data-delsong="${esc(s.id)}" aria-label="Remove ${esc(s.title)}">×</button>` : ''}</div></li>`; }).join('')}</ol>
+      <div class="row" style="gap:6px"><button class="btn sm" data-act="copySongs">Copy the list</button><span class="small muted">Paste it into a Spotify or Apple Music playlist.</span></div>`
+    : `<div class="empty"><span>No songs yet. Add the one that has to play this ${inPlan ? (isSmall() ? 'night' : 'trip') : 'year'}.</span></div>`}
+  </section>`;
+}
+const playlistTab = () => playlistCard();
+async function addSong(title, artist, link) {
+  const s = { title: title.slice(0, 80), artist: artist.slice(0, 60), link: /^https:\/\/\S+$/.test(link) ? link.slice(0, 300) : '', by: S.uid, at: Date.now(), votes: { [S.uid]: 1 } };
+  const id = rid(8);
+  if (S.demo || !S.db) { S.songs = [...S.songs, { id, ...s }]; render(); return; }
+  S.songs = [...S.songs, { id, ...s }]; render();
+  try { await S.db.doc(`${S.songPath}/${id}`).set(s); } catch (e) { flash(writeErr(e)); }
+}
+async function voteSong(id) {
+  const s = S.songs.find(x => x.id === id); if (!s) return;
+  const v = (s.votes || {})[S.uid] > 0 ? 0 : 1;
+  s.votes = { ...(s.votes || {}), [S.uid]: v }; render();
+  if (S.demo || !S.db) return;
+  try { await S.db.doc(`${S.songPath}/${id}`).update({ votes: { [S.uid]: v } }); } catch (e) { flash(writeErr(e)); }
+}
+async function delSong(id) {
+  S.songs = S.songs.filter(x => x.id !== id); render();
+  if (S.demo || !S.db) return;
+  try { await S.db.doc(`${S.songPath}/${id}`).delete(); } catch (e) { flash(writeErr(e)); }
+}
 
 /* ---------- story card ---------- */
 async function makeCard() {
@@ -1880,15 +2160,22 @@ app.addEventListener('click', e => {
   if (ds.act === 'demo') return openDemo();
   if (ds.open) return openTrip(ds.open);
   if (ds.homedel) { S.confirmHome = ds.homedel; return render(); }
-  if (ds.startcrew) { S.newCrew = ds.startcrew; render(); const n = $('#nt-name'); if (n) { n.scrollIntoView({ block: 'center' }); n.focus(); } return; }
+  if (ds.startcrew) return startNewPlan(ds.startcrew);
   if (ds.act === 'clearCrew') { S.newCrew = null; return render(); }
-  if (ds.delcrew) { if (S.db) S.db.doc('crews/' + ds.delcrew).delete().catch(e => flash(writeErr(e))); return; }
+  if (ds.delcrew) { if (S.db) S.db.doc('crews/' + ds.delcrew).delete().then(() => { flash('Crew deleted. Its plans are kept.'); goHome(); }, e => flash(writeErr(e))); return; }
   if (ds.act === 'homeCancel') { S.confirmHome = null; return render(); }
   if (ds.homedo) return deleteTrip(ds.homedo);
-  if (ds.act === 'newTrip') { S.creating = 'mode'; render(); window.scrollTo({ top: 0 }); return; }
+  if (ds.act === 'newTrip') return startNewPlan();
+  if (ds.pickcrew !== undefined) { S.newCrew = ds.pickcrew || null; S.creating = 'size'; render(); window.scrollTo({ top: 0 }); return; }
+  if (ds.size) { S.newSize = ds.size; S.creating = ['hangout', 'day'].includes(ds.size) ? 'form' : 'mode'; render(); window.scrollTo({ top: 0 }); return; }
+  if (ds.act === 'backSize') { S.creating = 'size'; return render(); }
+  if (ds.act === 'backCrew') { S.creating = 'crew'; return render(); }
+  if (ds.act === 'newCrew') { S.crewView = null; S.creating = 'newCrew'; render(); setTimeout(() => $('#nc-name')?.focus(), 50); return; }
+  if (ds.crew) return openCrew(ds.crew);
+  if (ds.act === 'copyCrewInvite') { const c = S.crews.find(x => x.id === ds.cid); return copy(`Join our crew "${c?.name || ''}" on Outta Here: ${crewLink(ds.cid)}\nWe plan everything there, from Friday dinners to trips.`); }
   if (ds.mode) { S.newMode = ds.mode; S.creating = 'form'; render(); window.scrollTo({ top: 0 }); return; }
   if (ds.act === 'backModes') { S.creating = 'mode'; return render(); }
-  if (ds.act === 'cancelNew') { S.creating = null; return render(); }
+  if (ds.act === 'cancelNew') { S.creating = null; S.newCrew = null; S.newSize = null; return render(); }
   if (ds.sec) { const sec = sections().find(x => x.k === ds.sec); S.tab = S.secTab[ds.sec] || (ds.sec === 'live' && !isLive() && !S.secTab.live ? 'live' : sec.tabs[0][0]); S.tabPicked = true; S.show = null; clearInterval(showTimer); render(); window.scrollTo({ top: 0 }); return; }
   if (ds.tab) { S.guideJump = !!ds.guide; S.tab = TAB_ALIAS[ds.tab] || ds.tab; S.secTab[secOf(S.tab).k] = S.tab; S.tabPicked = true; if (ds.tab !== 'recap') { S.show = null; clearInterval(showTimer); } render(); window.scrollTo({ top: 0 }); return; }
   if (!S.trip) return;
@@ -1906,6 +2193,12 @@ app.addEventListener('click', e => {
   if (ds.vibe) { const set = new Set(S.trip.vibes || []); set.has(ds.vibe) ? set.delete(ds.vibe) : set.add(ds.vibe); return saveTrip({ vibes: [...set] }); }
   if (ds.act === 'card') return makeCard();
   if (ds.act === 'genPitches') return genPitches();
+  if (ds.act === 'growPlan') return growPlan();
+  if (ds.setsize) { const k = ds.setsize, small = ['hangout', 'day'].includes(k), n = small ? 0 : (isSmall() ? SIZES[k].nights : nightsSet(S.trip)); return saveTrip({ size: k, nights: n, ...(n !== nightsSet(S.trip) ? { lockedDates: null } : {}), ...(S.trip.winEnd < add(TODAY, SIZES[k].win) ? { winEnd: add(TODAY, SIZES[k].win) } : {}) }); }
+  if (ds.songvote) return voteSong(ds.songvote);
+  if (ds.sotn) { const cur = (S.trip.songVotes || {})[S.uid]; return saveTrip({ songVotes: { [S.uid]: cur === ds.sotn ? '' : ds.sotn } }); }
+  if (ds.delsong) return delSong(ds.delsong);
+  if (ds.act === 'copySongs') return copy([...S.songs].sort((a, b) => songVotes(b) - songVotes(a)).map((s, i) => `${i + 1}. ${s.title}${s.artist ? ' – ' + s.artist : ''}`).join('\n'));
   if (ds.act === 'copyInvite') return copy(`Join our trip "${S.trip.name}" on Outta Here: ${inviteLink()}\nTap “I’m in”, then add your free days and budget. Takes 2 minutes.`);
   if (ds.setnights) return saveTrip({ nights: +ds.setnights, lockedDates: null });
   if (ds.act === 'ciJump') return jumpTo('#ci-text');
@@ -2031,7 +2324,7 @@ app.addEventListener('touchend', e => {
   render(); window.scrollTo({ top: 0 });
 }, { passive: true });
 // opening an invite link while the app is already open only changes the #code, so watch for it
-window.addEventListener('hashchange', () => { const h = (location.hash || '').slice(1); if (S.db && /^[a-z0-9]{6,20}$/.test(h) && h !== S.tid) openTrip(h); });
+window.addEventListener('hashchange', () => { const h = (location.hash || '').slice(1); if (!S.db) return; const cm = h.match(/^c-([a-z0-9]{6,20})$/); if (cm && cm[1] !== S.crewView) return joinCrew(cm[1]); if (/^[a-z0-9]{6,20}$/.test(h) && h !== S.tid) openTrip(h); });
 let lastDown = null;
 app.addEventListener('pointerdown', e => { const f = e.target.closest && e.target.closest('input,textarea,select'); lastDown = f && f.id ? { id: f.id, at: Date.now() } : null; }, true);
 // keep half-typed text when someone else's change re-renders the page
@@ -2043,6 +2336,8 @@ app.addEventListener('submit', async e => {
   const f = e.target;
   clearDrafts(f);
   if (f.id === 'newTrip') return createTrip();
+  if (f.id === 'newCrewForm') { const n = $('#nc-name').value.trim(); if (n) return createCrew(n); return; }
+  if (f.id === 'songForm') { const title = $('#sg-title').value.trim(); if (!title) return; return addSong(title, $('#sg-artist').value.trim(), $('#sg-link').value.trim()); }
   if (f.id === 'tkForm') return sendTicket();
   if (f.id === 'lostForm') return sendLost($('#lost-where').value);
   if (f.id === 'spendForm') { const note = $('#sp-note').value.trim(), amount = Math.round(+$('#sp-amt').value * 100) / 100; if (!note || !(amount > 0)) return; return saveMySpend([...(S.mySpend || []), { id: rid(6), note: note.slice(0, 50), amount, at: Date.now() }]); }
@@ -2094,36 +2389,15 @@ function resetTrip() {
   S.cardUrl = null; S.cardBlob = null; S.copyText = ''; S.split = null; S.confirm = null; S.tkFile = null; S.feed = []; S.bucket = []; S.photos = []; S.pot = []; S.mySpend = []; S.lostOpen = false; S.pinSel = null; S.hangPlan = null; S.wrapI = 0; S.img = null; S.show = null; clearInterval(showTimer);
   for (const k of Object.keys(DRAFT)) delete DRAFT[k];
 }
-function goHome() { stop(); if (S.meDirty) flushMe(); S.tid = null; S.creating = null; S.demo = false; resetTrip(); setHash(''); render(); }
-
-async function createTrip() {
-  const name = $('#nt-name').value.trim(); let a = $('#nt-start').value, b = $('#nt-end').value;
-  if (!name || !a || !b) return;
-  if (b < a) [a, b] = [b, a];
-  if (span(a, b).length >= 92) b = add(a, 90);
-  const id = rid(10);
-  const trip = { name: name.slice(0, 60), winStart: a, winEnd: b, nights: +$('#nt-nights').value, destinations: [], vibes: [], itinerary: [], lockedDates: null, lockedDest: null, mode: S.newMode || 'friends', honoreeName: ($('#nt-honoree')?.value || '').trim().slice(0, 40), honoreeFree: true, people: { [S.uid]: true }, createdBy: S.uid, createdAt: Date.now() };
-  try {
-    await S.db.doc('trips/' + id).set(trip);
-    const crew = S.crews.find(c => c.id === S.newCrew);
-    const mine = crew?.profiles?.[S.uid] || {};
-    await S.db.doc(`trips/${id}/members/${S.uid}`).set({ nick: mine.nick || S.myName || 'Me', home: mine.home || '', venmo: mine.venmo || '', cashapp: mine.cashapp || '', budget: 0, status: 'in', days: [], votes: [], updatedAt: Date.now() });
-    if (crew) {
-      for (const uid of crew.ids || []) if (uid !== S.uid) { const pr = crew.profiles?.[uid] || {}; await S.db.doc(`trips/${id}/members/${uid}`).set({ nick: pr.nick || 'Someone', home: pr.home || '', venmo: pr.venmo || '', cashapp: pr.cashapp || '', budget: 0, status: 'maybe', days: [], votes: [], updatedAt: Date.now() }); }
-      await S.db.doc('trips/' + id).update({ crewId: crew.id, people: Object.fromEntries((crew.ids || []).map(u => [u, true])) });
-    }
-    S.newCrew = null; S.creating = null; S.newMode = null;
-    openTrip(id, 'overview');
-  } catch (e) { flash(writeErr(e)); }
-}
+function goHome() { stop(); if (S.meDirty) flushMe(); S.tid = null; S.creating = null; S.crewView = null; subscribeSongs(null); S.demo = false; resetTrip(); setHash(''); render(); }
 
 function openTrip(id, tab) {
   if (!S.db) { flash('Can’t reach the local server. Is npm run dev still running?'); return; }
-  stop(); S.demo = false; S.tid = id; S.tab = tab || 'overview'; S.tabPicked = !!tab; S.secTab = {}; resetTrip(); setHash(id);
+  stop(); S.demo = false; S.crewView = null; S.tid = id; S.tab = tab || 'overview'; S.tabPicked = !!tab; S.secTab = {}; resetTrip(); setHash(id);
   app.innerHTML = `${topBar()}<p class="muted">Loading trip…</p>`;
   S.unsub.push(S.db.doc('trips/' + id).onSnapshot(snap => {
     if (!snap.exists) { flash('That trip doesn’t exist anymore.'); goHome(); return; }
-    const first = !S.trip; S.trip = { ...snap.data() }; if (first && !S.tabPicked && isLive()) S.tab = 'live'; render();
+    const first = !S.trip; S.trip = { ...snap.data() }; subscribeSongs(S.trip.crewId ? `crews/${S.trip.crewId}/songs` : `trips/${id}/songs`); if (first && !S.tabPicked && isLive()) S.tab = 'live'; render();
   }, () => flash('Lost the connection to this trip. Reload to reconnect.')));
   S.unsub.push(S.db.collection(`trips/${id}/members`).onSnapshot(snap => {
     const local = meDoc();
@@ -2144,7 +2418,7 @@ function openTrip(id, tab) {
 }
 
 function openDemo() {
-  stop(); resetTrip(); S.demo = true; S.tid = 'demo'; S.tab = 'overview'; S.secTab = {}; S.tabPicked = true; S.creating = null; setHash('');
+  stop(); resetTrip(); S.crewView = null; subscribeSongs(null); S.demo = true; S.tid = 'demo'; S.tab = 'overview'; S.secTab = {}; S.tabPicked = true; S.creating = null; setHash('');
   S.uid = S.uid || 'you';
   const start = add(TODAY, -1), end = add(TODAY, 2), y = start, t0 = Date.now(), H = 36e5;
   const at = (day, hm) => new Date(day + 'T' + hm + ':00').getTime();
@@ -2236,6 +2510,13 @@ function openDemo() {
     { id: 'b2', text: 'Talk our way into VIP', points: 3, doneBy: [], at: 2 },
     { id: 'b3', text: 'Order the 3am sandwich', points: 1, doneBy: [m1.id, m2.id, m4.id], at: 3 },
   ];
+  S.songs = [
+    { id: 'sg1', title: 'Dancing Queen', artist: 'ABBA', by: m2.id, at: 1, votes: { d2: 1, d4: 1, d1: 1, [S.uid]: 1 } },
+    { id: 'sg2', title: 'Tití Me Preguntó', artist: 'Bad Bunny', by: m1.id, at: 2, votes: { d1: 1, d2: 1, d3: 1 } },
+    { id: 'sg3', title: 'Mr. Brightside', artist: 'The Killers', by: S.uid, at: 3, votes: { [S.uid]: 1, d5: 1 } },
+    { id: 'sg4', title: 'Espresso', artist: 'Sabrina Carpenter', by: m4.id, at: 4, votes: { d4: 1 } },
+  ];
+  S.trip.songVotes = { d1: 'sg2', d2: 'sg1', d4: 'sg1', d3: 'sg2', d5: 'sg1' };
   S.trip.superVotes = { s0: { d1: 'd2', d4: 'd2', d3: 'd2' }, s1: { d2: 'd3' }, s2: { d2: 'd1', d4: 'd1' }, s5: { d2: 'd1', d3: 'd1' } };
   render(); window.scrollTo({ top: 0 });
 }
@@ -2263,6 +2544,7 @@ render();
       S.crews = snap.docs.map(d => ({ id: d.id, ...d.data() })); if (!S.tid) render();
     }, () => {});
     const h = (location.hash || '').slice(1);
+    const cm = h.match(/^c-([a-z0-9]{6,20})$/); if (cm) { joinCrew(cm[1]); return; }
     if (/^[a-z0-9]{6,20}$/.test(h)) { openTrip(h); return; }
   }
   if (!S.tid) render(); else if (S.demo) render();

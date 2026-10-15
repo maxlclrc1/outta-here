@@ -416,3 +416,27 @@ body{transition:background-color .6s ease}
   .bottomnav{left:50%;right:auto;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));width:min(620px,calc(100% - 32px));border:1px solid var(--line);border-radius:20px;padding:0 6px;box-shadow:0 16px 40px -20px rgba(0,0,0,.4)}
   .fab-lost{right:calc((100vw - 880px) / 2 + 4px);bottom:calc(96px + env(safe-area-inset-bottom,0px))}
 }
+
+/* ---------- master planner ---------- */
+.plan-row{display:flex;align-items:center;gap:14px;padding:12px 14px;border-left:4px solid var(--pc)}
+.pr-date{flex:0 0 52px;height:56px;border-radius:12px;background:color-mix(in oklab,var(--pc) 12%,var(--surface));color:var(--pc);display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1}
+.pr-date b{font:900 24px var(--f-display);font-variation-settings:"wdth" 70}
+.pr-date span{font:700 10px var(--f-mono);text-transform:uppercase;letter-spacing:.06em;margin-top:3px}
+.crew-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.crew-card{display:flex;flex-direction:column;gap:10px}
+.crew-open{all:unset;cursor:pointer;display:flex;flex-direction:column;gap:8px}
+.crew-open:focus-visible{outline:2px solid var(--accent);outline-offset:4px;border-radius:8px}
+.avs{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+.past summary{cursor:pointer;list-style:none;display:flex;gap:8px;align-items:center}
+.past summary::-webkit-details-marker{display:none}
+.past summary::before{content:"›";font-weight:700;transition:transform .2s}
+.past[open] summary::before{transform:rotate(90deg)}
+.sizes{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+.ev-title{font:900 clamp(30px,8vw,46px) var(--f-display);font-variation-settings:"wdth" 70;line-height:1.02;color:var(--accent);overflow-wrap:anywhere}
+.songs{list-style:none;margin:0;padding:0}
+.song{display:flex;gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--line)}
+.song:first-child{border-top:0}
+.song-n{width:22px;text-align:right;color:var(--muted);font-size:13px;flex:0 0 auto}
+.sotn{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border-radius:12px;background:linear-gradient(135deg,color-mix(in oklab,var(--accent) 18%,var(--surface)),var(--surface));border:1px solid color-mix(in oklab,var(--accent) 40%,var(--line))}
+.sotn b{font:800 20px var(--f-display);font-variation-settings:"wdth" 85}
+.chip.sotn-on{background:var(--gold);border-color:var(--gold);color:#1A1405}
