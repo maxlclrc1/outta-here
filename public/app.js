@@ -333,10 +333,13 @@ function render() {
   const a = document.activeElement, fid = a && a.id, sel = a && 'selectionStart' in a ? [a.selectionStart, a.selectionEnd] : null;
   const scrollTabs = $('.tabs')?.scrollLeft;
   app.innerHTML = S.tid && S.trip ? tripView() : homeView();
+  const sk = S.tid && S.trip ? secOf(S.tab).k : 'none';
+  app.dataset.sec = sk; document.body.dataset.sec = sk;
   for (const [id, v] of Object.entries(DRAFT)) { const el = document.getElementById(id); if (el && el.tagName !== 'BUTTON') el.value = v; }
   if (fid) { const el = document.getElementById(fid); if (el) { el.focus(); if (sel && el.setSelectionRange) try { el.setSelectionRange(...sel); } catch {} } }
   if (scrollTabs) { const t = $('.tabs'); if (t) t.scrollLeft = scrollTabs; }
   bindSwipe();
+  const stb = $('.subtabs'), son = $('.subtab.on'); if (stb && son) stb.scrollLeft = son.offsetLeft - stb.clientWidth / 2 + son.clientWidth / 2;
   const fd = $('#feed'); if (fd) fd.scrollTop = fd.scrollHeight;
 }
 
@@ -842,8 +845,9 @@ function liveTab() {
   const meet = S.trip.meet, myCi = meDoc()?.checkin;
   return `${live ? '' : `<div class="banner"><span><b>Preview.</b> Live mode switches on by itself on ${fmt(d.start)}. This is what Day 1 will look like.</span></div>`}
   <section class="card stack">
-    <div class="row" style="justify-content:space-between"><div class="row" style="gap:8px">${live ? '<i class="live-dot" aria-hidden="true"></i><span class="label">Live</span>' : ''}<h2>Day ${idx + 1} of ${days.length} · ${fmt(day)}</h2></div><button class="btn sm lost-btn" data-act="lostOpen">I’m lost</button></div>
+    <div class="row" style="justify-content:space-between"><div class="row" style="gap:8px">${live ? '<i class="live-dot" aria-hidden="true"></i><span class="label">Live</span>' : ''}<h2>Day ${idx + 1} of ${days.length} · ${fmt(day)}</h2></div></div>
   </section>
+  ${live ? liveQuick() : ''}
   ${recapCard(day)}
   ${hangoverCard(day)}
   <section class="grid2">
@@ -1090,7 +1094,7 @@ function tripView() {
   if (TAB_ALIAS[S.tab]) S.tab = TAB_ALIAS[S.tab];
   const fns = TABFN(); if (!fns[S.tab]) S.tab = 'overview';
   const sec = secOf(S.tab), cd = countdown(), m = mode();
-  const head = S.tab === 'overview' ? '' : `<div class="mini"><button class="mini-name" data-tab="overview">${esc(S.trip.name)}</button>
+  const head = S.tab === 'overview' ? '' : `<div class="mini"><span class="sec-eyebrow">${esc(sec.label)}</span><button class="mini-name" data-tab="overview">${esc(S.trip.name)}</button>
       <span class="mode-chip" style="--mc:${m.color}">${esc(m.label)}</span>${cd ? `<span class="small muted">${esc(cd.n > 0 ? cd.text + ' to go' : cd.text)}</span>` : ''}</div>`;
   return `${topBar()}
   ${S.demo ? `<div class="banner"><span><b>Demo trip.</b> Sample crew, nothing is saved. Try switching the trip type in Home › Settings.</span><button class="btn sm" data-act="home">Back</button></div>` : ''}
@@ -1099,6 +1103,7 @@ function tripView() {
   ${head}
   ${sec.tabs.length > 1 ? `<nav class="subtabs" aria-label="${esc(sec.label)}">${sec.tabs.map(([k, l]) => `<button class="subtab ${S.tab === k ? 'on' : ''}" data-tab="${k}" aria-current="${S.tab === k}">${esc(l)}</button>`).join('')}</nav>` : ''}
   ${fns[S.tab]()}
+  ${isLive() && !S.lostOpen && !['live', 'map', 'overview'].includes(S.tab) ? '<button class="fab-lost" data-act="lostOpen" aria-label="I’m lost: send the crew my spot">SOS</button>' : ''}
   ${S.lostOpen ? lostSheet() : ''}
   <nav class="bottomnav" aria-label="Trip sections"><div class="bn-inner">${sections().map(s => `<button class="bn ${s.k === sec.k ? 'on' : ''}" data-sec="${s.k}" aria-current="${s.k === sec.k}">${icon(s.k)}<span>${s.label}${s.k === 'live' && isLive() ? ' ●' : ''}</span></button>`).join('')}</div></nav>`;
 }
@@ -1675,6 +1680,18 @@ const SETTINGS_HTML = () => `  ${crewSection()}
     : `<div class="row" style="gap:8px">${meDoc() && !S.demo ? `<button class="btn sm danger" data-act="askLeave">Leave trip</button>` : ''}${canDelete(S.trip) ? `<button class="btn sm danger" data-act="askDelete">Delete trip</button>` : `<span class="small muted">Only the person who created the trip can delete it.</span>`}</div>`}
   </section>`;
 
+/* ---------- live quick actions + mobile gestures ---------- */
+function liveQuick() {
+  const meet = S.trip.meet, myCi = meDoc()?.checkin;
+  return `<section class="quick" aria-label="Quick actions">
+    <button class="qa qa-lost" data-act="lostOpen"><b>I’m lost</b><span>Send the crew my spot</span></button>
+    <button class="qa" data-act="ciJump"><b>Check in</b><span>${myCi ? 'You: ' + esc(myCi.text) : 'Where are you?'}</span></button>
+    <button class="qa" data-act="meetJump"><b>Meet-up</b><span>${meet?.text ? esc(meet.text) + (meet.time ? ' · ' + esc(meet.time) : '') : 'Not set yet'}</span></button>
+    <button class="qa" data-tab="map"><b>Map</b><span>${mapPoints().length} places pinned</span></button>
+  </section>`;
+}
+function jumpTo(sel) { const el = $(sel); if (!el) return; el.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); setTimeout(() => el.focus({ preventScroll: true }), 300); }
+
 /* ---------- story card ---------- */
 async function makeCard() {
   const W = 1080, H = 1920, c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d');
@@ -1755,6 +1772,8 @@ app.addEventListener('click', e => {
   if (ds.vibe) { const set = new Set(S.trip.vibes || []); set.has(ds.vibe) ? set.delete(ds.vibe) : set.add(ds.vibe); return saveTrip({ vibes: [...set] }); }
   if (ds.act === 'card') return makeCard();
   if (ds.act === 'genPitches') return genPitches();
+  if (ds.act === 'ciJump') return jumpTo('#ci-text');
+  if (ds.act === 'meetJump') return jumpTo('#meet-where');
   if (ds.pin) { S.pinSel = S.pinSel === ds.pin ? null : ds.pin; return render(); }
   if (ds.act === 'pinPlaces') return pinPlaces();
   if (ds.act === 'lostOpen') { S.lostOpen = true; return render(); }
@@ -1847,6 +1866,23 @@ app.addEventListener('change', e => {
   if (id.startsWith('me-') || id === 'nights') delete DRAFT[id];
 });
 app.addEventListener('keydown', e => { const p = e.target.closest && e.target.closest('[data-pin]'); if (p && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); p.dispatchEvent(new MouseEvent('click', { bubbles: true })); } });
+// swipe left/right on a phone to move between the tabs of a menu
+let swipe0 = null;
+app.addEventListener('touchstart', e => {
+  swipe0 = null;
+  if (!S.tid || e.touches.length !== 1 || e.target.closest('input,textarea,select,.pitch,.map,.subtabs,.wslide,.show,.sheet,.cal,.feed,.board,.photos')) return;
+  swipe0 = { x: e.touches[0].clientX, y: e.touches[0].clientY, at: Date.now() };
+}, { passive: true });
+app.addEventListener('touchend', e => {
+  if (!swipe0) return;
+  const t = e.changedTouches[0], dx = t.clientX - swipe0.x, dy = t.clientY - swipe0.y, quick = Date.now() - swipe0.at < 600;
+  swipe0 = null;
+  if (!quick || Math.abs(dx) < 80 || Math.abs(dy) > 50) return;
+  const sec = secOf(S.tab), i = sec.tabs.findIndex(x => x[0] === S.tab), j = i + (dx < 0 ? 1 : -1);
+  if (i < 0 || j < 0 || j >= sec.tabs.length) return;
+  S.tab = sec.tabs[j][0]; S.secTab[sec.k] = S.tab; S.tabPicked = true;
+  render(); window.scrollTo({ top: 0 });
+}, { passive: true });
 // keep half-typed text when someone else's change re-renders the page
 const DRAFT = {};
 app.addEventListener('input', e => { if (e.target.id && e.target.type !== 'file') DRAFT[e.target.id] = e.target.value; });
