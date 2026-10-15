@@ -356,6 +356,7 @@ function paint() {
   if (fid) { const el = document.getElementById(fid); if (el) { el.focus(); if (sel && el.setSelectionRange) try { el.setSelectionRange(...sel); } catch {} } }
   if (scrollTabs) { const t = $('.tabs'); if (t) t.scrollLeft = scrollTabs; }
   bindSwipe();
+  applyBeacon(); checkMilestones();
   const stb = $('.subtabs'), son = $('.subtab.on'); if (stb && son) stb.scrollLeft = son.offsetLeft - stb.clientWidth / 2 + son.clientWidth / 2;
   const fd = $('#feed'); if (fd) fd.scrollTop = fd.scrollHeight;
 }
@@ -424,7 +425,7 @@ function crewTab() {
     <p class="small muted">Payment handles are shown to the crew so they can pay you back.</p>
   </section>
   <section class="card">
-    <div class="row" style="justify-content:space-between;margin-bottom:6px"><h2>The crew</h2><span class="small muted">Share this page so friends can join</span></div>
+    <div class="row" style="justify-content:space-between;margin-bottom:6px"><h2>The crew</h2><span class="small muted">Invite more with the card above</span></div>
     ${S.members.length ? S.members.map(x => `<div class="crew-row">
       <div class="av" style="background:${colorFor(x.id)}">${esc((x.nick || '?')[0].toUpperCase())}</div>
       <div style="min-width:0"><b>${esc(x.nick || 'Someone')}${x.id === S.uid ? ' <span class="muted small">(you)</span>' : ''}</b>
@@ -565,7 +566,7 @@ function spotsTab() {
   </section>
   <section class="card stack">
     <div class="row" style="justify-content:space-between"><h2>Where we’re going out in ${esc(ds.city)}</h2></div>
-    ${S.sample !== null ? `<div><button class="btn primary" data-act="spots" ${S.busy.spots ? 'disabled' : ''}>${S.busy.spots ? '<i class="spin"></i>Scouting spots…' : spots ? 'Find new spots' : 'Find our spots'}</button></div>` : `<p class="small muted">AI picks need this page opened in Claude.</p>`}
+    ${S.sample !== null ? `<div><button class="btn primary" data-act="spots" ${S.busy.spots ? 'disabled' : ''}>${S.busy.spots ? '<i class="spin"></i>Scouting spots…' : spots ? 'Find new spots' : 'Find our spots'}</button></div>` : `<p class="small muted">${IN_CLAUDE ? "AI picks aren’t available for you right now." : "AI picks are off. Add your Anthropic API key to turn them on."}</p>`}
   </section>
   ${spots ? `<section class="grid2">${ranked.map(({ s, i }) => `<article class="card spot">
       <div class="spot-head"><div style="min-width:0"><span class="kind">${esc(s.type)}</span><h3>${esc(s.name)}</h3><span class="small muted">${esc(s.area)}</span></div><span class="mono" style="color:var(--accent)">${esc(s.price)}</span></div>
@@ -588,7 +589,7 @@ function planTab() {
       ${S.sample !== null ? `<button class="btn primary" data-act="plan" ${S.busy.plan ? 'disabled' : ''}>${S.busy.plan ? '<i class="spin"></i>Drafting…' : items.some(i => i.ai) ? 'Redraft with AI' : 'Draft it with AI'}</button>` : ''}</div></div>
     ${!d.locked ? `<p class="small muted">Using the best dates so far. Lock dates in Dates so the plan doesn't shift.</p>` : ''}
   </section>
-  ${days.map((day, i) => { const list = items.filter(x => x.date === day).sort((a, b) => (a.time || '99').localeCompare(b.time || '99')); return `<section class="card">
+  ${days.map((day, i) => { const list = items.filter(x => x.date === day).sort(byTime); return `<section class="card">
     <div class="row" style="justify-content:space-between;margin-bottom:4px"><h3>Day ${i + 1} · ${fmt(day)}</h3>${i === 0 ? '<span class="label">Arrive</span>' : i === days.length - 1 ? '<span class="label">Head home</span>' : ''}</div>
     ${list.length ? list.map(x => `<div class="tline"><span class="mono small">${esc(x.time || '—')}</span><div style="min-width:0"><span class="kind">${esc(x.kind || '')}</span> <b>${esc(x.title)}</b>${x.secret && !x.hidden ? (x.revealed ? ' <span class="secret-tag">Revealed surprise</span>' : ` <span class="secret-tag">Surprise · hidden from the ${esc(mode().honoree || 'guest')}</span> <button class="linkbtn small" data-reveal="${esc(x.id)}">Reveal</button>`) : ''}${x.note ? `<div class="small muted">${esc(x.note)}</div>` : ''}</div>${x.hidden ? '<span></span>' : `<div class="row" style="gap:4px;flex-wrap:nowrap">${voteBtns(rkey('it' + x.id))}<button class="x" data-delitem="${esc(x.id)}" aria-label="Remove">×</button></div>`}</div>`).join('') : `<p class="small muted">Nothing planned yet.</p>`}
     <form class="row addItem" data-date="${day}" style="margin-top:8px;gap:6px">
@@ -871,8 +872,8 @@ function liveTab() {
   const live = isLive(), days = span(d.start, d.end);
   const day = live ? TODAY : d.start, idx = days.indexOf(day);
   const now = new Date().toTimeString().slice(0, 5);
-  const items = visItems().filter(i => i.date === day).sort((a, b) => (a.time || '99').localeCompare(b.time || '99'));
-  const nextId = live ? (items.find(i => (i.time || '') >= now) || {}).id : items[0]?.id;
+  const items = visItems().filter(i => i.date === day).sort(byTime);
+  const nextId = live ? (items.find(i => timeKey(i.time) >= timeKey(now)) || {}).id : items[0]?.id;
   const meet = S.trip.meet, myCi = meDoc()?.checkin;
   return `${live ? '' : `<div class="banner"><span><b>Preview.</b> Live mode switches on by itself on ${fmt(d.start)}. This is what Day 1 will look like.</span></div>`}
   <section class="card stack">
@@ -1125,19 +1126,19 @@ const TABFN = () => ({ overview: overviewTab, crew: crewTab, settings: settingsT
 function tripView() {
   if (TAB_ALIAS[S.tab]) S.tab = TAB_ALIAS[S.tab];
   const fns = TABFN(); if (!fns[S.tab]) S.tab = 'overview';
-  const sec = secOf(S.tab), cd = countdown(), m = mode();
+  const sec = secOf(S.tab), cd = countdown(), m = mode(), gd = guide(), crumbTab = gd && !gd.wait && gd.tab !== S.tab ? gd.tab : null;
   const head = S.tab === 'overview' ? '' : `<div class="mini"><span class="sec-eyebrow">${esc(sec.label)}</span><button class="mini-name" data-tab="overview">${esc(S.trip.name)}</button>
-      <span class="mode-chip" style="--mc:${m.color}">${esc(m.label)}</span>${cd ? `<span class="small muted">${esc(cd.n > 0 ? cd.text + ' to go' : cd.text)}</span>` : ''}</div>`;
+      <span class="mode-chip" style="--mc:${m.color}">${esc(m.label)}</span>${cd ? `<span class="small muted">${esc(cd.n > 0 ? cd.text + ' to go' : cd.text)}</span>` : ''}${nextPill(gd)}</div>`;
   return `${topBar()}
   ${S.demo ? `<div class="banner"><span><b>Demo trip.</b> Sample crew, nothing is saved. Try switching the trip type in Home › Settings.</span><button class="btn sm" data-act="home">Back</button></div>` : ''}
   ${S.readOnly ? `<div class="banner"><span>You can view this trip but not edit it. Ask the owner to share it with you as a Contributor.</span></div>` : ''}
   ${lostBanner()}
   ${head}
-  ${sec.tabs.length > 1 ? `<nav class="subtabs" aria-label="${esc(sec.label)}">${sec.tabs.map(([k, l]) => `<button class="subtab ${S.tab === k ? 'on' : ''}" data-tab="${k}" aria-current="${S.tab === k}">${esc(l)}</button>`).join('')}</nav>` : ''}
+  ${sec.tabs.length > 1 ? `<nav class="subtabs" aria-label="${esc(sec.label)}">${sec.tabs.map(([k, l]) => `<button class="subtab ${S.tab === k ? 'on' : ''}" data-tab="${k}" aria-current="${S.tab === k}">${esc(l)}${crumbTab === k ? '<i class="crumb" aria-hidden="true"></i>' : ''}</button>`).join('')}</nav>` : ''}
   ${fns[S.tab]()}
   ${isLive() && !S.lostOpen && !['live', 'map', 'overview'].includes(S.tab) ? '<button class="fab-lost" data-act="lostOpen" aria-label="I’m lost: send the crew my spot">SOS</button>' : ''}
   ${S.lostOpen ? lostSheet() : ''}
-  <nav class="bottomnav" aria-label="Trip sections"><div class="bn-inner">${sections().map(s => `<button class="bn ${s.k === sec.k ? 'on' : ''}" data-sec="${s.k}" aria-current="${s.k === sec.k}">${icon(s.k)}<span>${s.label}${s.k === 'live' && isLive() ? ' ●' : ''}</span></button>`).join('')}</div></nav>`;
+  <nav class="bottomnav" aria-label="Trip sections"><div class="bn-inner">${sections().map(s => `<button class="bn ${s.k === sec.k ? 'on' : ''}" data-sec="${s.k}" aria-current="${s.k === sec.k}">${icon(s.k)}${crumbTab && secOf(crumbTab).k === s.k && s.k !== sec.k ? '<i class="crumb" aria-hidden="true"></i>' : ''}<span>${s.label}${s.k === 'live' && isLive() ? ' ●' : ''}</span></button>`).join('')}</div></nav>`;
 }
 
 /* ---------- home: overview ---------- */
@@ -1155,8 +1156,8 @@ function steps() {
 function overviewTab() {
   const st = steps(), next = st.find(s => !s.done), live = isLive(), d = dates(), over = d && TODAY > d.end;
   const tk = tickets(), t = S.trip, ns = nudges();
-  const today = live ? visItems().filter(i => i.date === TODAY).sort((a, b) => (a.time || '99').localeCompare(b.time || '99')) : [];
-  const nowT = new Date().toTimeString().slice(0, 5), upNext = today.find(i => (i.time || '') >= nowT);
+  const today = live ? visItems().filter(i => i.date === TODAY).sort(byTime) : [];
+  const nowT = new Date().toTimeString().slice(0, 5), upNext = today.find(i => timeKey(i.time) >= timeKey(nowT));
   const fl = S.trip.deals?.data?.flights || [];
   return `${honoreeMode() && !t.honoree ? `<section class="card row" style="justify-content:space-between"><span><b>Who’s the ${esc(mode().honoree)}?</b> <span class="small muted">${t.honoreeName ? esc(t.honoreeName) + ' · ' : ''}Their share is covered and surprises stay hidden from them.</span></span>
     <select id="set-honoree" style="width:auto"><option value="">Pick someone</option>${S.members.map(m => `<option value="${esc(m.id)}">${esc(m.nick || 'Someone')}</option>`).join('')}</select></section>` : ''}
@@ -1164,7 +1165,7 @@ function overviewTab() {
       <h2>${upNext ? `Up next: ${esc(upNext.title)}` : 'Nothing else planned today'}</h2>${upNext ? `<span>${esc(upNext.time || '')}</span>` : ''}
       <div class="row" style="gap:8px"><button class="btn" data-tab="live">Open today</button><button class="btn ghost-light" data-tab="map">Map</button><button class="btn lost-btn" data-act="lostOpen">I’m lost</button></div></section>`
   : over ? `<section class="hero-card" style="--hc:#7048E8"><span class="label" style="color:inherit">That’s a wrap</span><h2>Your ${esc(dest()?.city || 'trip')} Wrapped is ready</h2><div><button class="btn" data-tab="wrapped">Watch it</button></div></section>`
-  : next ? `<section class="hero-card"><span class="label" style="color:inherit">Next step · ${st.indexOf(next) + 1} of ${st.length}</span><h2>${esc(next.label)}</h2><p>${esc(next.sub)}</p><div><button class="btn" data-tab="${next.go}">${esc(next.cta)}</button></div></section>`
+  : next ? (() => { const g = guide(); return `<section class="hero-card"><span class="label" style="color:inherit">Step ${st.indexOf(next) + 1} of ${st.length} · ${esc(next.label)}</span><h2>${esc(g && !g.wait ? g.label : g ? g.label : next.label)}</h2><p>${esc(next.sub)}</p>${g && !g.wait ? `<div><button class="btn" data-tab="${g.tab}" data-guide="1">Let’s go</button></div>` : ''}</section>`; })()
   : `<section class="hero-card" style="--hc:#14915F"><span class="label" style="color:inherit">All set</span><h2>Everything’s booked. Now you just wait.</h2></section>`}
   ${pass()}
   <section class="card"><div class="steps">${st.map((s, i) => `<button class="step ${s.done ? 'ok' : s === next ? 'cur' : ''}" data-tab="${s.go}"><span class="dot">${s.done ? '✓' : i + 1}</span><span>${esc(s.label)}</span></button>`).join('')}</div></section>
@@ -1263,7 +1264,7 @@ function flightsTab() {
       ${S.sample !== null ? `<div><button class="btn" data-act="deals" ${S.busy.deals ? 'disabled' : ''}>${S.busy.deals ? '<i class="spin"></i>Checking prices…' : deals ? 'Re-check typical prices' : 'Check typical prices with AI'}</button></div>` : ''}</section>
   ${groups.map(([key, home]) => { const who = active().filter(m => (m.home || '').trim().toLowerCase() === key), e = est[key] || Object.values(est).find(f => key.includes(String(f.from || '').toLowerCase().slice(0, 3)));
     const code = isCode(home) ? home.toUpperCase() : home;
-    return `<section class="card fl-route">
+    return `<section class="card fl-route ${who.some(m => m.id === S.uid) ? 'mine' : ''}">
       <div class="route-top"><span class="code" style="font-size:clamp(30px,8vw,44px)">${esc(code)}</span><span class="plane">✈</span><span class="code" style="font-size:clamp(30px,8vw,44px);color:var(--accent)">${esc(to)}</span>
         ${e ? `<span class="price">${esc(e.roundTrip)}<small>typical round trip</small></span>` : ''}</div>
       ${e?.tip ? `<p class="small">${esc(e.tip)}</p>` : ''}
@@ -1481,7 +1482,7 @@ function hangoverCard(day) {
   </section>`;
 }
 function hangPlan(day) {
-  const items = visItems().filter(i => i.date === day && !i.hidden).sort((a, b) => (a.time || '99').localeCompare(b.time || '99'));
+  const items = visItems().filter(i => i.date === day && !i.hidden).sort(byTime);
   const votes = Object.values((S.trip.hangover || {})[day] || {}), avg = votes.reduce((a, b) => a + b, 0) / Math.max(1, votes.length);
   const prompt = `A group on a trip is hungover. Hangover index ${avg.toFixed(1)} out of 5 (5 = dead).
 ${context()}
@@ -1741,6 +1742,90 @@ function inviteCard() {
   </section>`;
 }
 
+/* ---------- guidance ----------
+   Like a landmark on the horizon: the app always shows your next move (the pill under the trip name),
+   drops a breadcrumb on the menu and tab where it lives, and makes the exact control glow when you get
+   there. Nothing is forced; you can go anywhere. Finishing a stage gets a short celebration. */
+const timeKey = t => !t ? '9' : (t < '05:00' ? '2' : '1') + t; // after-midnight plans belong at the end of the night
+const byTime = (a, b) => timeKey(a.time).localeCompare(timeKey(b.time));
+function guide() {
+  if (!S.trip) return null;
+  const me = meDoc(), t = S.trip, d = dates();
+  if (isLive()) return null; // live mode has its own quick actions
+  if (d && TODAY > d.end) return { tab: 'wrapped', sel: '.wslide', label: 'Watch your Trip Wrapped' };
+  if (!me || me.status === 'maybe') return { tab: 'overview', sel: '.pass-stub [data-status="in"]', label: 'Tell the crew if you’re in' };
+  if (me.status === 'out') return null;
+  const tk = tickets(), items = t.pitches?.items || [];
+  for (const s of steps().filter(x => !x.done)) {
+    if (s.go === 'crew') return { tab: 'crew', sel: '[data-act="copyInvite"]', label: 'Invite your friends' };
+    if (s.go === 'match') {
+      if (items.some(x => !swipeOf(x.id, S.uid))) return { tab: 'match', sel: '#pitch', label: 'Swipe on the trip pitches' };
+      if (!items.length && S.sample) return { tab: 'match', sel: '[data-act="genPitches"]', label: 'Get AI trip pitches' };
+      if (!(t.destinations || []).length) return { tab: 'where', sel: '#ad-city', label: 'Suggest a destination' };
+      if (!(me.votes || []).length) return { tab: 'where', sel: '[data-vote]', label: 'Vote on where to go' };
+      return { tab: 'where', sel: '[data-lockdest]', label: 'Lock the destination' };
+    }
+    if (s.go === 'dates') {
+      if (!(me.days || []).length) return { tab: 'dates', sel: '.cal', label: 'Tap the days you’re free' };
+      return bestWindows()[0] ? { tab: 'dates', sel: '[data-lockdates]', label: 'Lock the best dates' } : { tab: 'dates', sel: '[data-setnights]', label: 'Find dates that work' };
+    }
+    if (s.go === 'flights' && !tk.tk[S.uid]) {
+      if (!me.home) return { tab: 'crew', sel: '#me-home', label: 'Add where you fly from' };
+      return { tab: 'flights', sel: '.fl-route.mine .btn.primary', label: 'Book your flight' };
+    }
+    if (s.go === 'stays') {
+      const opts = t.stays?.items || [];
+      if (opts.length && !opts.some(o => score(rkey('st' + o.name)).mine)) return { tab: 'stays', sel: '.stay .votes', label: 'Vote on where to stay' };
+      if (opts.length) return { tab: 'stays', sel: '[data-lockstay]', label: 'Lock the stay' };
+      return S.sample ? { tab: 'stays', sel: '[data-act="findStays"]', label: 'Find places to stay' } : { tab: 'stays', sel: '.linkrow .btn', label: 'Search for a place to stay' };
+    }
+    if (s.go === 'plan') return S.sample ? { tab: 'plan', sel: '[data-act="plan"]', label: 'Plan the days' } : { tab: 'plan', sel: '.addItem input[id^="ai-title"]', label: 'Plan the days' };
+  }
+  const left = steps().find(x => !x.done);
+  if (left) return { tab: left.go, wait: true, label: 'Waiting on the crew to ' + left.label.toLowerCase().replace(/^book/, 'book') };
+  if (!me.budget) return { tab: 'crew', sel: '#me-budget', label: 'Set your budget' };
+  return null;
+}
+const DONE_TEXT = { 'Get the crew in': 'The crew’s in', 'Pick where': 'Destination locked', 'Lock the dates': 'Dates locked', 'Book flights': 'Everyone’s booked. Trip is ON', 'Book the stay': 'Stay locked', 'Plan the days': 'Days planned' };
+function checkMilestones() {
+  if (!S.trip || S.demo) return;
+  const done = steps().filter(s => s.done).map(s => s.label), key = 'outta_done_' + S.tid;
+  let seen = null; try { seen = JSON.parse(localStorage.getItem(key) || 'null'); } catch {}
+  try { localStorage.setItem(key, JSON.stringify(done)); } catch {}
+  if (!seen) return; // first visit to this trip on this device: no fanfare for old progress
+  const fresh = done.filter(l => !seen.includes(l));
+  if (!fresh.length) return;
+  const g = guide();
+  showMilestone(DONE_TEXT[fresh[fresh.length - 1]] || fresh[fresh.length - 1], g && !g.wait ? g : null);
+}
+let msTimer;
+function showMilestone(title, g) {
+  document.querySelector('.milestone')?.remove();
+  const el = document.createElement('div');
+  el.className = 'milestone'; el.setAttribute('role', 'status');
+  el.innerHTML = `<span class="ms-check" aria-hidden="true">✓</span><div style="min-width:0;flex:1"><b>${esc(title)}</b>${g ? `<span class="ms-next">Next: ${esc(g.label)}</span>` : ''}</div>${g ? `<button class="btn sm primary" data-ms-go="${g.tab}">Go</button>` : ''}`;
+  document.body.appendChild(el);
+  el.addEventListener('click', e => { const b = e.target.closest('[data-ms-go]'); if (b) { S.tab = b.dataset.msGo; S.secTab[secOf(S.tab).k] = S.tab; S.guideJump = true; render(); window.scrollTo({ top: 0 }); } el.remove(); });
+  clearTimeout(msTimer); msTimer = setTimeout(() => el.remove(), 6500);
+}
+function nextPill(g) {
+  if (!g || S.tab === g.tab && !g.wait) return '';
+  return g.wait ? `<div class="next-pill wait"><span><span class="np-k">Next</span><br>${esc(g.label)}</span></div>`
+    : `<button class="next-pill" data-tab="${g.tab}" data-guide="1"><span><span class="np-k">Your next move</span><br>${esc(g.label)}</span><span class="np-go">Go →</span></button>`;
+}
+function applyBeacon() {
+  const g = guide(); if (!g || g.wait || !g.sel || S.tab !== g.tab) { S.guideJump = false; return; }
+  const el = document.querySelector(g.sel); if (!el) return;
+  el.classList.add('beacon');
+  if (S.guideJump) { S.guideJump = false; setTimeout(() => el.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }), 120); }
+}
+let lastY = 0;
+window.addEventListener('scroll', () => {
+  const f = document.querySelector('.fab-lost'); const y = window.scrollY;
+  if (f) f.classList.toggle('tucked', y > lastY + 4 && y > 120);
+  lastY = y;
+}, { passive: true });
+
 /* ---------- story card ---------- */
 async function makeCard() {
   const W = 1080, H = 1920, c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d');
@@ -1805,7 +1890,7 @@ app.addEventListener('click', e => {
   if (ds.act === 'backModes') { S.creating = 'mode'; return render(); }
   if (ds.act === 'cancelNew') { S.creating = null; return render(); }
   if (ds.sec) { const sec = sections().find(x => x.k === ds.sec); S.tab = S.secTab[ds.sec] || (ds.sec === 'live' && !isLive() && !S.secTab.live ? 'live' : sec.tabs[0][0]); S.tabPicked = true; S.show = null; clearInterval(showTimer); render(); window.scrollTo({ top: 0 }); return; }
-  if (ds.tab) { S.tab = TAB_ALIAS[ds.tab] || ds.tab; S.secTab[secOf(S.tab).k] = S.tab; S.tabPicked = true; if (ds.tab !== 'recap') { S.show = null; clearInterval(showTimer); } render(); window.scrollTo({ top: 0 }); return; }
+  if (ds.tab) { S.guideJump = !!ds.guide; S.tab = TAB_ALIAS[ds.tab] || ds.tab; S.secTab[secOf(S.tab).k] = S.tab; S.tabPicked = true; if (ds.tab !== 'recap') { S.show = null; clearInterval(showTimer); } render(); window.scrollTo({ top: 0 }); return; }
   if (!S.trip) return;
   if (ds.status) return saveMe({ status: ds.status }, true);
   if (ds.day) { const set = new Set(meDoc()?.days || []); set.has(ds.day) ? set.delete(ds.day) : set.add(ds.day); return saveMe({ days: [...set].sort() }); }

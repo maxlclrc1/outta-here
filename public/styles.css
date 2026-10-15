@@ -389,3 +389,30 @@ body[data-sec="live"] .mini-name{color:var(--ink)}
 :root[data-vt="live"]::view-transition-old(root),:root[data-vt="live"]::view-transition-new(root){animation-duration:.7s;animation-timing-function:ease-in-out}
 body{transition:background-color .6s ease}
 @media (prefers-reduced-motion:reduce){body{transition:none}}
+
+/* ---------- guidance: landmark, breadcrumbs, glow, milestone ---------- */
+.next-pill{flex-basis:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;font:600 13px var(--f-body);color:var(--ink);background:color-mix(in oklab,var(--gold) 14%,var(--surface));border:1px solid color-mix(in oklab,var(--gold) 55%,var(--line));border-radius:12px;padding:9px 12px;cursor:pointer;margin-top:4px}
+.next-pill .np-k{font:700 10px var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--warn)}
+.next-pill .np-go{font-weight:700;white-space:nowrap}
+.next-pill.wait{background:var(--surface);border-color:var(--line);cursor:default;color:var(--muted)}
+.bn,.subtab{position:relative}
+.crumb{position:absolute;top:5px;left:calc(50% + 12px);width:9px;height:9px;border-radius:50%;background:var(--gold);border:2px solid var(--surface);animation:crumb 2.2s ease-out infinite;pointer-events:none}
+.subtab .crumb{top:-3px;left:auto;right:-2px}
+@keyframes crumb{0%{box-shadow:0 0 0 0 rgba(242,179,43,.65)}70%{box-shadow:0 0 0 9px rgba(242,179,43,0)}100%{box-shadow:0 0 0 0 rgba(242,179,43,0)}}
+.beacon{animation:beacon 2.6s ease-in-out infinite;position:relative;z-index:1}
+@keyframes beacon{0%,100%{box-shadow:0 0 0 0 rgba(242,179,43,0),0 0 0 0 rgba(242,179,43,0)}50%{box-shadow:0 0 0 4px rgba(242,179,43,.55),0 0 26px 6px rgba(242,179,43,.35)}}
+.milestone{position:fixed;left:50%;top:calc(14px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:30;width:min(420px,calc(100% - 32px));background:var(--surface);color:var(--ink);border:1px solid color-mix(in oklab,var(--gold) 60%,var(--line));border-radius:16px;padding:14px 16px;box-shadow:0 18px 40px -18px rgba(0,0,0,.45);display:flex;gap:12px;align-items:center;animation:ms-in .45s cubic-bezier(.2,.9,.3,1.2)}
+.milestone .ms-check{flex:0 0 auto;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:var(--good);color:#fff;font-weight:800;font-size:18px}
+.milestone b{display:block;font:800 17px var(--f-display);font-variation-settings:"wdth" 85}
+.milestone .ms-next{font-size:13px;color:var(--muted)}
+@keyframes ms-in{from{opacity:0;transform:translate(-50%,-14px) scale(.96)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
+@media (prefers-reduced-motion:reduce){.crumb,.beacon,.milestone{animation:none}.beacon{outline:3px solid var(--gold);outline-offset:3px}}
+
+/* SOS tucks away while you scroll down so it never sits on top of what you're reading */
+.fab-lost{transition:transform .25s ease,opacity .25s ease}
+.fab-lost.tucked{transform:translateY(140%);opacity:0;pointer-events:none}
+/* desktop: floating nav pill and SOS aligned to the content column */
+@media (min-width:900px){
+  .bottomnav{left:50%;right:auto;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));width:min(620px,calc(100% - 32px));border:1px solid var(--line);border-radius:20px;padding:0 6px;box-shadow:0 16px 40px -20px rgba(0,0,0,.4)}
+  .fab-lost{right:calc((100vw - 880px) / 2 + 4px);bottom:calc(96px + env(safe-area-inset-bottom,0px))}
+}
