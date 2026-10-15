@@ -227,7 +227,7 @@ async function flushMe() {
   const { id, ...body } = m;
   try {
     await S.db.doc(`trips/${S.tid}/members/${S.uid}`).set({ ...body, updatedAt: Date.now() });
-    if (!(S.trip?.people || {})[S.uid]) S.db.doc('trips/' + S.tid).update({ people: { [S.uid]: true } }).catch(() => {});
+    if (!(S.trip?.people || {})[S.uid] || (S.trip?.left || {})[S.uid]) S.db.doc('trips/' + S.tid).update({ people: { [S.uid]: true }, left: { [S.uid]: null } }).catch(() => {});
   }
   catch (e) { flash(writeErr(e)); }
   meWriting = false; if (seq === meSeq) S.meDirty = false;
@@ -429,6 +429,7 @@ function paint() {
   const a = document.activeElement, fid = (a && a !== document.body && a.id) || (lastDown && Date.now() - lastDown.at < 800 ? lastDown.id : ''), sel = a && 'selectionStart' in a ? [a.selectionStart, a.selectionEnd] : null;
   const scrollTabs = $('.tabs')?.scrollLeft;
   const vk = viewKey(), fresh = vk !== lastView || !app.firstChild; lastView = vk;
+  if (S.tid && S.trip && !S.demo) try { sessionStorage.setItem('outta_tab_' + S.tid, S.tab); } catch {}
   const html = S.tid && S.trip ? tripView() : homeView();
   let born = [];
   if (fresh) app.innerHTML = html; else born = morph(app, html);
@@ -458,9 +459,9 @@ function pass() {
   return `<section class="pass">
     <div class="pass-main">
       <div class="row" style="justify-content:space-between"><span class="label">${esc(S.trip.name)}</span>
-        ${planOn() ? `<span class="on-pill">Trip is on</span>` : booking_time() ? `<span class="pill in">${size() === 'trip' ? 'Booking flights' : 'Booking'}</span>` : `<span class="pill maybe">Still deciding</span>`}</div>
+        ${planOn() ? `<span class="on-pill">${size() === 'trip' ? 'Trip' : 'Weekend'} is on</span>` : booking_time() ? `<span class="pill in">${size() === 'trip' ? 'Booking flights' : 'Booking'}</span>` : `<span class="pill maybe">Still deciding</span>`}</div>
       <div class="route">
-        <span class="code ${from.length ? '' : 'code-tbd'}">${from.length ? esc(homes().length > 1 ? homes().length + ' CITIES' : from[0]) : 'HOME'}</span>
+        <span class="code ${from.length ? '' : 'code-tbd'}">${from.length ? esc(homes().length > 1 ? homes().length + ' CITIES' : from[0]) : 'US'}</span>
         <span class="plane" aria-hidden="true">${size() === 'trip' ? '✈' : '→'}</span>
         <span class="code ${ds ? '' : 'code-tbd'}" style="color:var(--accent)">${ds ? esc(ds.code ? ds.code.toUpperCase() : ds.city) : 'TBD'}</span>
       </div>
@@ -471,14 +472,14 @@ function pass() {
         ${(() => { const c = countdown(); return c ? `<div><span class="label">Countdown</span><b style="color:var(--accent)">${c.text}</b></div>` : ''; })()}
       </div>
       ${(() => { const t = tickets(); if (size() !== 'trip' || (!booking_time() && !t.have.length)) return ''; return `<button class="stack" data-tab="tickets" style="gap:6px;background:none;border:0;padding:0;text-align:left;color:inherit;font:inherit;cursor:pointer">
-        <div class="row" style="justify-content:space-between"><span class="small"><b>${t.have.length}/${t.goal}</b> boarding passes in</span>${t.on ? '<span class="on-pill">Trip is on</span>' : `<span class="small muted">${t.goal - t.have.length} more to make it official</span>`}</div>
+        <div class="row" style="justify-content:space-between"><span class="small"><b>${t.have.length}/${t.goal}</b> boarding passes in</span>${t.on ? '<span class="small" style="color:var(--good)">Everyone’s booked</span>' : `<span class="small muted">${t.goal - t.have.length} more to make it official</span>`}</div>
         <div class="bigbar"><i style="width:${t.goal ? Math.min(100, t.have.length / t.goal * 100) : 0}%"></i></div></button>`; })()}
       <div class="row" style="gap:6px"><button class="btn sm" data-act="card">Make story card</button></div>
       ${S.cardUrl ? `<div class="row" style="align-items:flex-end;gap:14px"><img class="cardimg" src="${S.cardUrl}" alt="Story card for ${esc(S.trip.name)}">
         <div class="stack" style="gap:8px">${S.downloads ? `<button class="btn primary sm" data-act="saveCard">Save image</button>` : `<span class="small muted">Press and hold the image to save it.</span>`}<button class="btn sm ghost" data-act="closeCard">Close</button></div></div>` : ''}
     </div>
     <div class="pass-stub">
-      <div><span class="label">Crew</span><div class="code" style="font-size:40px">${inN}<span class="muted" style="font-size:22px">/${S.members.length}</span></div><span class="small muted">confirmed</span></div>
+      <div><span class="label">Crew</span><div class="code" style="font-size:40px">${inN}<span class="muted" style="font-size:22px">/${S.members.length}</span></div><span class="small muted">in</span></div>
       ${(() => { const m = meDoc(); return `<div class="row" style="gap:6px">${['in','maybe','out'].map(s => `<button class="chip ${m && m.status===s?'on':''}" data-status="${s}">${s === 'in' ? "I'm in" : s === 'maybe' ? 'Maybe' : 'Out'}</button>`).join('')}</div>`; })()}
     </div>
   </section>`;
@@ -520,22 +521,23 @@ function crewTab() {
   </section>`;
 }
 
+const monthName = d => D(d).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' });
 function datesTab() {
   const t = S.trip, days = span(t.winStart, t.winEnd), ms = active(), mine = new Set(meDoc()?.days || []);
   const best = bestWindows(), bestSet = new Set(best[0] ? span(best[0].start, best[0].end) : []);
   const max = Math.max(1, ms.length);
-  const lead = days.length ? (D(days[0]).getUTCDay() + 6) % 7 : 0;
-  const cells = days.map(d => {
+  const cells = days.map((d, i) => {
+    const head = i === 0 ? '<span></span>'.repeat((D(d).getUTCDay() + 6) % 7) : D(d).getUTCDate() === 1 ? `<span class="cal-month">${monthName(d)}</span>${'<span></span>'.repeat((D(d).getUTCDay() + 6) % 7)}` : '';
     const n = ms.filter(m => (m.days || []).includes(d)).length;
     const pct = Math.round(n / max * 70);
-    return `<button class="day ${mine.has(d) ? 'mine' : ''} ${bestSet.has(d) ? 'best' : ''}" data-day="${d}" aria-pressed="${mine.has(d)}" title="${fmt(d)} · ${n} free"
+    return `${head}<button class="day ${mine.has(d) ? 'mine' : ''} ${bestSet.has(d) ? 'best' : ''}" data-day="${d}" aria-pressed="${mine.has(d)}" title="${fmt(d)} · ${n} free"
       style="background:color-mix(in oklab,var(--accent) ${pct}%,var(--surface));${pct > 40 ? 'color:var(--accent-ink)' : ''}">${D(d).getUTCDate()}<small style="${pct > 40 ? 'color:inherit' : ''}">${n ? n + '/' + ms.length : ''}</small></button>`;
   });
   return `<section class="grid2">
     <div class="card stack">
       <div class="row" style="justify-content:space-between"><h2>${isSmall() ? 'Which days work for you?' : 'Tap the days you’re free'}</h2>
         <div class="row" style="gap:6px"><button class="btn sm ghost" data-act="allDays">All</button><button class="btn sm ghost" data-act="weekends">Fri–Sun</button><button class="btn sm ghost" data-act="noDays">Clear</button></div></div>
-      <div class="cal">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x => `<span class="dow">${x}</span>`).join('')}${'<span></span>'.repeat(lead)}${cells.join('')}</div>
+      <div class="cal">${days.length ? `<span class="cal-month first">${monthName(days[0])}</span>` : ''}${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x => `<span class="dow">${x}</span>`).join('')}${cells.join('')}</div>
       <div class="legend"><span><i class="sw" style="background:var(--accent)"></i>More people free</span><span><i class="sw" style="outline:2px solid var(--ink)"></i>You</span><span><i class="sw" style="box-shadow:inset 0 -3px 0 var(--gold)"></i>${isSmall() ? 'Best day' : 'Best window'}</span></div>
       <div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:12px">
         <span class="label">${isSmall() ? 'Days that could work' : 'Trip window'}</span>
@@ -554,7 +556,7 @@ function datesTab() {
         <div class="row" style="justify-content:space-between"><b class="mono">${dayRange(w.start, w.end)}</b><span class="small"><b>${w.ok.length}/${ms.length}</b> can go</span></div>
         <div class="bar"><i style="width:${Math.round(w.ok.length / max * 100)}%"></i></div>
         ${w.miss.length ? `<span class="small muted">Missing: ${w.miss.map(m => esc(m.nick || 'Someone')).join(', ')}</span>` : `<span class="small" style="color:var(--good)">Everyone can make it</span>`}
-        <div><button class="btn sm ${i === 0 ? 'primary' : ''}" data-lockdates="${w.start}|${w.end}">${isSmall() ? 'Lock this day' : 'Lock these dates'}</button></div>
+        <div>${t.lockedDates && t.lockedDates.start === w.start && t.lockedDates.end === w.end ? '<span class="pill in">Locked</span>' : `<button class="btn sm ${i === 0 && !t.lockedDates ? 'primary' : ''}" data-lockdates="${w.start}|${w.end}">${t.lockedDates ? 'Switch to these' : isSmall() ? 'Lock this day' : 'Lock these dates'}</button>`}</div>
       </div>`).join('') : `<div class="empty">${(() => { const f = shorterFit(); return f
         ? `<b>No ${nightsSet(t) ? nightsSet(t) + '-night stretch' : 'day'} works yet</b><span>But a ${f.n}-night trip, ${fmt(f.w.start)} → ${fmt(f.w.end)}, works for ${f.w.ok.length} of ${ms.length}.</span><button class="btn sm primary" data-setnights="${f.n}">Switch to ${f.n} night${f.n === 1 ? '' : 's'}</button>`
         : `<span>No ${nightsSet(t) ? nightsSet(t) + '-night stretch' : 'day'} overlaps yet. Once people tap their free days, the best windows show up here.</span>`; })()}</div>`}
@@ -584,12 +586,13 @@ function whereTab() {
   </section>`;
 }
 
-function needDestDates(what) {
-  const hasDest = !!dest(), hasDates = !!dates();
-  const need = !hasDest && !hasDates ? 'a destination and dates' : !hasDest ? 'a destination' : 'dates';
-  return `<div class="empty"><b>${!hasDest && !hasDates ? 'First, decide where and when' : !hasDest ? 'First, pick where you’re going' : 'First, pick your dates'}</b>
-    <span>You’ll need ${need} for ${esc(what)}. ${isSmall() ? 'Plan Match settles both at once: the AI pitches plans' : 'Trip Match settles both at once: the AI pitches trips'} that fit everyone and the crew swipes.</span>
-    <div class="row" style="gap:6px"><button class="btn sm primary" data-tab="match">Open ${isSmall() ? 'Plan' : 'Trip'} Match</button>${!hasDest ? '<button class="btn sm" data-tab="where">Vote on where</button>' : ''}${!hasDates ? '<button class="btn sm" data-tab="dates">Pick dates</button>' : ''}</div></div>`;
+function needDestDates(what, need = 'both') {
+  const small = isSmall(), noDest = need !== 'dates' && !dest(), noDates = need !== 'dest' && !dates();
+  const W = small ? 'the plan' : 'where you’re going', N = small ? 'the day' : 'your dates';
+  const title = noDest && noDates ? (small ? 'First, pick the plan and the day' : 'First, decide where and when') : noDest ? `First, pick ${W}` : `First, pick ${N}`;
+  return `<div class="empty"><b>${title}</b>
+    <span>${esc(what)} ${/s$/.test(what) ? 'show' : 'shows'} up once you have ${noDest && noDates ? `${W} and ${N}` : noDest ? W : N}. ${small ? 'Plan Match settles it: the AI pitches plans' : 'Trip Match settles both: the AI pitches trips'} that fit everyone and the crew swipes.</span>
+    <div class="row" style="gap:6px"><button class="btn sm primary" data-tab="match">Open ${small ? 'Plan' : 'Trip'} Match</button>${noDest ? `<button class="btn sm" data-tab="where">${small ? 'Add ideas' : 'Vote on where'}</button>` : ''}${noDates ? `<button class="btn sm" data-tab="dates">${small ? 'Pick the day' : 'Pick dates'}</button>` : ''}</div></div>`;
 }
 
 function ticketsSection() {
@@ -629,7 +632,7 @@ function dealsBody(x, cap) {
 
 function spotsTab() {
   const d = dates(), ds = dest();
-  if (!ds) return needDestDates('nightlife picks');
+  if (!ds) return needDestDates(isSmall() ? 'Spot picks' : 'Nightlife picks', 'dest');
   const spots = S.trip.spots && S.trip.spots.city === ds.city ? S.trip.spots.items : null;
   const mq = meDoc()?.quiz || {}, b = blend();
   const ranked = spots ? spots.map((s, i) => ({ s, i, sc: score(rkey('sp' + s.name)) })).sort((a, b) => b.sc.net - a.sc.net || a.i - b.i) : [];
@@ -666,7 +669,7 @@ function spotsTab() {
 
 function planTab() {
   const d = dates();
-  if (!d) return needDestDates('the itinerary');
+  if (!d) return needDestDates(isSmall() ? 'The plan' : 'The itinerary', 'dates');
   const days = span(d.start, d.end), items = visItems();
   return `<section class="card stack">
     <div class="row" style="justify-content:space-between"><h2>${isSmall() ? 'The plan' : 'Itinerary'}</h2>
@@ -676,7 +679,7 @@ function planTab() {
   </section>
   ${days.map((day, i) => { const list = items.filter(x => x.date === day).sort(byTime); return `<section class="card">
     <div class="row" style="justify-content:space-between;margin-bottom:4px"><h3>${days.length === 1 ? fmt(day) : `Day ${i + 1} · ${fmt(day)}`}</h3>${days.length === 1 ? '' : i === 0 ? `<span class="label">${size() === 'trip' ? 'Arrive' : 'Head out'}</span>` : i === days.length - 1 ? '<span class="label">Head home</span>' : ''}</div>
-    ${list.length ? list.map(x => `<div class="tline"><span class="mono small">${esc(x.time || '—')}</span><div style="min-width:0"><span class="kind">${esc(x.kind || '')}</span> <b>${esc(x.title)}</b>${x.secret && !x.hidden ? (x.revealed ? ' <span class="secret-tag">Revealed surprise</span>' : ` <span class="secret-tag">Surprise · hidden from the ${esc(mode().honoree || 'guest')}</span> <button class="linkbtn small" data-reveal="${esc(x.id)}">Reveal</button>`) : ''}${x.note ? `<div class="small muted">${esc(x.note)}</div>` : ''}</div>${x.hidden ? '<span></span>' : `<div class="row" style="gap:4px;flex-wrap:nowrap">${voteBtns(rkey('it' + x.id))}<button class="x" data-delitem="${esc(x.id)}" aria-label="Remove">×</button></div>`}</div>`).join('') : `<p class="small muted">Nothing planned yet.</p>`}
+    ${list.length ? list.map(x => `<div class="tline"><span class="mono small">${esc(tShow(x.time) || '—')}</span><div style="min-width:0"><span class="kind">${esc(x.kind || '')}</span> <b>${esc(x.title)}</b>${x.secret && !x.hidden ? (x.revealed ? ' <span class="secret-tag">Revealed surprise</span>' : ` <span class="secret-tag">Surprise · hidden from the ${esc(mode().honoree || 'guest')}</span> <button class="linkbtn small" data-reveal="${esc(x.id)}">Reveal</button>`) : ''}${x.note ? `<div class="small muted">${esc(x.note)}</div>` : ''}</div>${x.hidden ? '<span></span>' : `<div class="row" style="gap:4px;flex-wrap:nowrap">${voteBtns(rkey('it' + x.id))}<button class="x" data-delitem="${esc(x.id)}" aria-label="Remove">×</button></div>`}</div>`).join('') : `<p class="small muted">Nothing planned yet.</p>`}
     <form class="row addItem" data-date="${day}" style="margin-top:8px;gap:6px">
       <input id="ai-time-${day}" type="time" style="width:auto;flex:0 0 auto" aria-label="Time">
       <input id="ai-title-${day}" maxlength="120" placeholder="Add something" style="flex:1 1 160px" aria-label="What">
@@ -775,9 +778,11 @@ async function leaveTrip() {
   stop(); clearTimeout(meT); S.meDirty = false;
   try {
     if (mine) { if (mine.asset && S.assets) await S.assets.delete(mine.asset).catch(() => {}); await S.db.doc('trips/' + tid).update({ tickets: { [S.uid]: null } }); }
-    await S.db.doc('trips/' + tid).update({ people: { [S.uid]: null } }).catch(() => {});
+    const word = planWord();
+    try { sessionStorage.removeItem('outta_tab_' + tid); } catch {}
+    await S.db.doc('trips/' + tid).update({ people: { [S.uid]: null }, left: { [S.uid]: true } }).catch(() => {});
     await S.db.doc(`trips/${tid}/members/${S.uid}`).delete();
-    goHome(); flash('You left the trip.');
+    goHome(); flash(`You left the ${word}.`);
   } catch (e) { flash(writeErr(e)); openTrip(tid, 'crew'); }
 }
 async function sendTicket() {
@@ -887,8 +892,9 @@ function matchTab() {
   </section>
   ${m ? `<section class="match"><span class="label" style="color:rgba(255,255,255,.85)">Everyone swiped yes</span><h1 style="color:#fff">It’s a match!</h1>
       <p style="font-size:17px">${esc(m.city)} · ${dayRange(m.start, m.end)}${m.time ? ' · ' + t12(m.time) : ''} · ${esc(m.perPerson)}</p>
-      <div>${S.trip.lockedDest && dest()?.city === m.city && S.trip.lockedDates?.start === m.start ? `<span class="on-pill" style="background:#fff;color:var(--accent)">Locked in</span>` : `<button class="btn" data-lockpitch="${esc(m.id)}">Lock it in</button>`}</div></section>` : ''}
-  ${!items.length ? `<div class="empty"><b>No pitches yet.</b><span>The more the crew fills in (${size() === 'trip' ? 'home airports, ' : size() === 'weekend' ? 'where everyone’s coming from, ' : ''}budgets, free days, the vibe quiz), the better the pitches get.</span></div>`
+      <div>${S.trip.lockedDest && dest()?.city === m.city && S.trip.lockedDates?.start === m.start ? `<span class="on-pill" style="background:#fff;color:#151A33">Locked in</span>` : `<button class="btn" data-lockpitch="${esc(m.id)}">Lock it in</button>`}</div></section>` : ''}
+  ${!items.length && S.sample === null ? `<div class="empty"><b>AI pitches are off ${IN_CLAUDE ? 'for you right now' : 'until you add your Anthropic API key'}.</b><span>You can still settle it by hand: add ideas, everyone votes, and you lock the winner.</span><button class="btn sm primary" data-tab="where">${isSmall() ? 'Add plan ideas' : 'Add places to vote on'}</button></div>`
+  : !items.length ? `<div class="empty"><b>No pitches yet.</b><span>The more the crew fills in (${size() === 'trip' ? 'home airports, ' : size() === 'weekend' ? 'where everyone’s coming from, ' : ''}budgets, free days, the vibe quiz), the better the pitches get.</span></div>`
   : next ? `<section class="stack" style="align-items:center">${pitchCard(next)}
       <div class="row" style="justify-content:center;gap:22px"><button class="swipe-btn no" data-swipe="${esc(next.id)}|-1" aria-label="Pass">✕</button><button class="swipe-btn yes" data-swipe="${esc(next.id)}|1" aria-label="I'd go">♥</button></div>
       <span class="small muted">Drag the card or tap the buttons</span></section>`
@@ -957,7 +963,7 @@ function ago(at) { const m = Math.round((Date.now() - at) / 6e4); return m < 1 ?
 // live only once the dates are actually locked, never from a best guess
 const isLive = () => { const L = S.trip?.lockedDates; return !!L && TODAY >= L.start && TODAY <= L.end; };
 function liveTab() {
-  const d = dates(); if (!d) return needDestDates('live mode');
+  const d = dates(); if (!d) return needDestDates('Live mode', 'dates');
   const live = isLive(), days = span(d.start, d.end);
   const day = live ? TODAY : d.start, idx = days.indexOf(day);
   const now = new Date().toTimeString().slice(0, 5);
@@ -973,11 +979,11 @@ function liveTab() {
   ${isSmall() ? '' : hangoverCard(day)}
   <section class="grid2">
     <div class="card stack"><h3>Today’s plan</h3>
-      ${items.length ? `<div>${items.map(i => `<div class="tline ${i.id === nextId ? 'today-next' : ''}"><span class="mono small">${esc(i.time || '—')}</span><div style="min-width:0">${i.id === nextId ? '<span class="kind">Up next</span> ' : ''}<b>${esc(i.title)}</b>${i.note ? `<div class="small muted">${esc(i.note)}</div>` : ''}</div><span></span></div>`).join('')}</div>`
+      ${items.length ? `<div>${items.map(i => `<div class="tline ${i.id === nextId ? 'today-next' : ''}"><span class="mono small">${esc(tShow(i.time) || '—')}</span><div style="min-width:0">${i.id === nextId ? '<span class="kind">Up next</span> ' : ''}<b>${esc(i.title)}</b>${i.note ? `<div class="small muted">${esc(i.note)}</div>` : ''}</div><span></span></div>`).join('')}</div>`
         : `<p class="small muted">Nothing on the itinerary for today. <button class="btn sm ghost" data-tab="plan">Plan it</button></p>`}
     </div>
     <div class="card stack"><h3>Meet-up</h3>
-      ${meet && meet.text ? `<div class="stack" style="gap:2px"><b style="font-size:18px">${esc(meet.text)}</b><span class="small muted">${meet.time ? 'at ' + esc(meet.time) + ' · ' : ''}set by ${esc(nameOf(meet.by))} ${ago(meet.at)}</span>
+      ${meet && meet.text ? `<div class="stack" style="gap:2px"><b style="font-size:18px">${esc(meet.text)}</b><span class="small muted">${meet.time ? 'at ' + esc(tShow(meet.time)) + ' · ' : ''}set by ${esc(nameOf(meet.by))} ${ago(meet.at)}</span>
         <div class="row" style="gap:6px"><a class="btn sm" href="${maps(meet.text, dest()?.city || '')}" target="_blank" rel="noopener">Map</a><button class="btn sm ghost" data-act="clearMeet">Clear</button></div></div>` : `<p class="small muted">No meet-up set.</p>`}
       <form id="meetForm" class="row" style="gap:6px;align-items:flex-end">
         <label class="field" style="flex:2 1 150px"><span class="label">Where</span><input id="meet-where" maxlength="80" placeholder="Hotel lobby"></label>
@@ -1009,7 +1015,7 @@ function bucketSection() {
         ${(i.doneBy || []).length ? `<div class="small muted">Done by ${(i.doneBy || []).map(id => esc(nameOf(id))).join(', ')}</div>` : ''}</span>
       <button class="x" data-delbk="${esc(i.id)}" aria-label="Remove ${esc(i.text)}">×</button></div>`; }).join('') : '<p class="small muted">Add the stuff the crew wants to do: “Get on stage at karaoke”, “Watch the sunrise”, “Talk our way into VIP”.</p>'}</div>
     <form id="bkForm" class="row" style="gap:6px;align-items:flex-end">
-      <label class="field" style="flex:2 1 180px"><span class="label">Add a challenge</span><input id="bk-text" maxlength="80" required placeholder="Win something at the casino"></label>
+      <label class="field" style="flex:2 1 180px"><span class="label">Add a challenge</span><input id="bk-text" maxlength="80" required placeholder="Karaoke solo"></label>
       <label class="field" style="flex:0 1 140px"><span class="label">Points</span><select id="bk-pts"><option value="1">Easy · 1</option><option value="2">Bold · 2</option><option value="3">Legendary · 3</option></select></label>
       <button class="btn" type="submit">Add</button></form>
   </section>`;
@@ -1017,6 +1023,8 @@ function bucketSection() {
 
 /* ---------- hype feed ---------- */
 const HYPES = ['LET’S GOOO', 'Outfit check tonight?', 'Who’s packing already?', 'I just booked!'];
+const HYPES_LIVE = ['LET’S GOOO', 'Where is everyone?', 'Who’s still up?', 'Best night yet'];
+const tShow = t => /^\d{1,2}:\d{2}$/.test(t || '') ? t12(t) : t;
 const linkify = t => esc(t).replace(/https?:\/\/[^\s<]+/g, u => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
 function hypeTab() {
   const cd = countdown(), ds = dest();
@@ -1026,7 +1034,7 @@ function hypeTab() {
   <section class="card stack">
     <div class="feed" id="feed">${feed.length ? feed.map(f => `<div class="bubble ${f.by === S.uid ? 'mine' : ''} ${f.by === 'ai' ? 'ai' : ''}">${f.secret ? '<span class="secret-tag">Planners only</span><br>' : ''}${f.by !== S.uid ? `<span class="small" style="font-weight:700">${esc(nameOf(f.by))}</span><br>` : ''}${linkify(f.text)}
       <span class="small" style="opacity:.7;display:block;margin-top:2px">${ago(f.at)}${f.by === S.uid ? ` · <button class="linkbtn" data-delfeed="${esc(f.id)}">delete</button>` : ''}</span></div>`).join('') : '<p class="small muted">Drop links, outfit ideas and hype here so they don’t get buried in the group chat.</p>'}</div>
-    <div class="row" style="gap:6px">${(isSmall() ? HYPES_SMALL : HYPES).map(h => `<button class="chip" data-hype="${esc(h)}">${esc(h)}</button>`).join('')}</div>
+    <div class="row" style="gap:6px">${(isLive() ? HYPES_LIVE : isSmall() ? HYPES_SMALL : HYPES).map(h => `<button class="chip" data-hype="${esc(h)}">${esc(h)}</button>`).join('')}</div>
     <form id="feedForm" class="row" style="gap:6px"><input id="fd-text" maxlength="500" placeholder="Say something…" style="flex:1 1 200px" autocomplete="off"><button class="btn primary" type="submit">Send</button>
       ${honoreeMode() && !isHonoree() ? `<label class="row small" style="gap:6px;flex:1 1 100%"><input type="checkbox" id="fd-secret" style="width:auto"> Planners only (hidden from the ${esc(mode().honoree)})</label>` : ''}</form>
   </section>`;
@@ -1139,36 +1147,37 @@ function crewSection() {
 /* ---------- trip modes ---------- */
 const SUPERS_DEFAULT = ['MVP', 'Most likely to lose their ID', 'Biggest spender', 'Best dressed', 'First to fall asleep', 'Last one standing', 'Main character', 'Most likely to miss the flight'];
 const MODES = {
-  friends: { label: 'Friends trip', desc: 'The crew, a new city, zero plans to sleep.', color: '#D41C78', ai: 'A friend group trip.', supers: SUPERS_DEFAULT },
-  bachelorette: { label: 'Bachelorette', desc: 'Last fling before the ring. Matching outfits encouraged.', color: '#E64980', honoree: 'bride',
+  friends: { label: 'Friends trip', desc: 'Your friends, somewhere new.', color: '#D41C78', ai: 'A friend group trip.', supers: SUPERS_DEFAULT },
+  bachelorette: { label: 'Bachelorette', desc: 'Brunch, a big dinner, one wild night.', color: '#E64980', honoree: 'bride',
     ai: 'A bachelorette party. Think brunch, a nice dinner, one wild night out, matching outfits and photo moments. The bride is the guest of honor.',
     supers: ['Best bridesmaid energy', 'Most likely to cry at the wedding', 'Most likely to get us kicked out', 'Best dressed', 'First one asleep', 'Hype queen', 'Main character', 'Best dance moves'] },
-  bachelor: { label: 'Bachelor', desc: 'One last weekend with the boys.', color: '#3B5BDB', honoree: 'groom',
+  bachelor: { label: 'Bachelor', desc: 'A steak, a day out, a long night.', color: '#3B5BDB', honoree: 'groom',
     ai: 'A bachelor party. Think steakhouse, golf or a day activity, a big night out, sports bars, a casino or a boat. The groom is the guest of honor.',
     supers: ['Best man energy', 'Most likely to lose the groom', 'Biggest spender', 'Worst decision', 'First one asleep', 'Last one standing', 'Best wingman', 'Most likely to miss the flight'] },
-  birthday: { label: 'Birthday trip', desc: 'Somebody’s turning up. And a year older.', color: '#F08C00', honoree: 'birthday star',
+  birthday: { label: 'Birthday trip', desc: 'Planned around one dinner and one big night.', color: '#F08C00', honoree: 'birthday star',
     ai: 'A birthday trip. Plan one special birthday dinner and one big birthday night. The birthday person is the guest of honor.',
     supers: ['Best birthday toast', 'Most likely to forget whose birthday it is', 'Biggest spender', 'Best dressed', 'First one asleep', 'Last one standing', 'Main character', 'Best gift'] },
-  couples: { label: 'Couples trip', desc: 'Double dates, good dinners, better views.', color: '#C2255C',
+  couples: { label: 'Couples trip', desc: 'Good dinners, nice views, real downtime.', color: '#C2255C',
     ai: 'A trip with several couples. Favor great dinners, wine and cocktail bars, scenic spots, one fun night out, and real downtime.',
     supers: ['Cutest couple', 'Most likely to argue about directions', 'Best dinner pick', 'Best dressed couple', 'First couple asleep', 'Most PDA', 'Best photographer', 'Most likely to miss the flight'] },
-  family: { label: 'Family trip', desc: 'All ages, one plan nobody argues about.', color: '#0E9F6E', nightlife: 'Things to do',
+  family: { label: 'Family trip', desc: 'All ages. Easy days, early nights.', color: '#0E9F6E', nightlife: 'Things to do',
     ai: 'A family trip with mixed ages, possibly kids. Keep everything family-friendly: no clubs. Favor activities, parks, easy food spots and early evenings.',
     supers: ['Trip MVP', 'Best snack supply', 'Most likely to get lost', 'Best navigator', 'First one asleep', 'Most photos taken', 'Best attitude', 'Funniest moment'] },
-  college: { label: 'Spring break', desc: 'Cheap flights, cheaper drinks, big memories.', color: '#1098AD',
+  college: { label: 'Spring break', desc: 'Tight budget, beach, happy hours.', color: '#1098AD',
     ai: 'A spring break or college trip on a tight budget. Favor cheap eats, beach or pool parties, happy hours, and budget stays like hostels or shared rentals.',
     supers: SUPERS_DEFAULT },
-  festival: { label: 'Festival or concert', desc: 'Get there, survive the set times, get home.', color: '#7048E8',
+  festival: { label: 'Festival or concert', desc: 'Planned around the set times.', color: '#7048E8',
     ai: 'A trip built around a music festival or concert. Favor pre-game spots, after-parties, easy transport to the venue, and recovery brunches.',
     supers: ['Best festival outfit', 'Most likely to lose the group', 'Front row energy', 'Best set pick', 'First one asleep', 'Last one standing', 'Main character', 'Most likely to miss the flight'] },
-  sports: { label: 'Sports trip', desc: 'The game is the excuse. The weekend is the point.', color: '#E8590C',
+  sports: { label: 'Sports trip', desc: 'The game, the tailgate, the night after.', color: '#E8590C',
     ai: 'A trip built around a sports game or event. Favor sports bars, tailgates, a great steak or BBQ dinner, and a fun night out after the game.',
     supers: ['Loudest fan', 'Worst bet', 'Biggest spender', 'Best jersey', 'First one asleep', 'Last one standing', 'Best tailgate snack', 'Most likely to miss the flight'] },
-  work: { label: 'Team offsite', desc: 'Work hard, team dinner harder.', color: '#5C6A7A', nightlife: 'Things to do',
+  work: { label: 'Team offsite', desc: 'Team dinners, one activity, time to work.', color: '#5C6A7A', nightlife: 'Things to do',
     ai: 'A work team offsite. Keep it professional but fun: team dinners, one group activity, a nice bar for the evening, and quiet time to work.',
     supers: ['Team MVP', 'Best idea of the trip', 'Most likely to answer email at dinner', 'Best dressed', 'First one asleep', 'Best karaoke', 'Most likely to miss the flight', 'Best team spirit'] },
 };
 const mode = () => MODES[S.trip?.mode] || MODES.friends;
+const modeLabel = (v, sz) => sz === 'weekend' ? v.label.replace(/ trip$/, ' weekend') : v.label;
 const honoreeMode = () => !!mode().honoree;
 const isHonoree = () => honoreeMode() && S.trip.honoree && S.trip.honoree === S.uid;
 const honoreeFree = () => honoreeMode() && S.trip.honoree && S.trip.honoreeFree !== false;
@@ -1204,7 +1213,7 @@ function tripView() {
   const fns = TABFN(); if (!fns[S.tab]) S.tab = 'overview';
   const sec = secOf(S.tab), cd = countdown(), m = mode(), gd = guide(), crumbTab = gd && !gd.wait && gd.tab !== S.tab ? gd.tab : null;
   const head = S.tab === 'overview' ? '' : `<div class="mini"><span class="sec-eyebrow">${esc(sec.label)}</span><button class="mini-name" data-tab="overview">${esc(S.trip.name)}</button>
-      ${isSmall() ? `<span class="mode-chip" style="--mc:${SIZES[size()].color}">${esc(SIZES[size()].label)}</span>` : `<span class="mode-chip" style="--mc:${m.color}">${esc(m.label)}</span>`}${cd ? `<span class="small muted">${esc(cd.n > 0 ? cd.text + ' to go' : cd.text)}</span>` : ''}${nextPill(gd)}</div>`;
+      ${isSmall() ? `<span class="mode-chip" style="--mc:${SIZES[size()].color}">${esc(SIZES[size()].label)}</span>` : `<span class="mode-chip" style="--mc:${m.color}">${esc(modeLabel(m, size()))}</span>`}${cd ? `<span class="small muted">${esc(cd.n > 0 ? cd.text + ' to go' : cd.text)}</span>` : ''}${nextPill(gd)}</div>`;
   return `${topBar()}
   ${S.demo ? `<div class="banner"><span><b>Demo trip.</b> Sample crew, nothing is saved. Try switching the trip type in Home › Settings.</span><button class="btn sm" data-act="home">Back</button></div>` : ''}
   ${S.readOnly ? `<div class="banner"><span>You can view this plan but not edit it. Ask the owner to share it with you as a Contributor.</span></div>` : ''}
@@ -1241,7 +1250,7 @@ function overviewTab() {
   return `${honoreeMode() && !t.honoree ? `<section class="card row" style="justify-content:space-between"><span><b>Who’s the ${esc(mode().honoree)}?</b> <span class="small muted">${t.honoreeName ? esc(t.honoreeName) + ' · ' : ''}Their share is covered and surprises stay hidden from them.</span></span>
     <select id="set-honoree" style="width:auto"><option value="">Pick someone</option>${S.members.map(m => `<option value="${esc(m.id)}">${esc(m.nick || 'Someone')}</option>`).join('')}</select></section>` : ''}
   ${live ? `<section class="hero-card live-card"><div class="row" style="gap:8px"><i class="live-dot" aria-hidden="true"></i><span class="label" style="color:inherit">${isSmall() ? 'Happening today' : 'Trip is live · Day ' + (span(d.start, d.end).indexOf(TODAY) + 1)}</span></div>
-      <h2>${upNext ? `Up next: ${esc(upNext.title)}` : 'Nothing else planned today'}</h2>${upNext ? `<span>${esc(upNext.time || '')}</span>` : ''}
+      <h2>${upNext ? `Up next: ${esc(upNext.title)}` : 'Nothing else planned today'}</h2>${upNext ? `<span>${esc(tShow(upNext.time) || '')}</span>` : ''}
       <div class="row" style="gap:8px"><button class="btn" data-tab="live">Open today</button><button class="btn ghost-light" data-tab="map">Map</button><button class="btn lost-btn" data-act="lostOpen">I’m lost</button></div></section>`
   : over ? `<section class="hero-card" style="--hc:#7048E8"><span class="label" style="color:inherit">That’s a wrap</span><h2>${isSmall() ? 'Your recap is ready' : `Your ${esc(dest()?.city || 'trip')} Wrapped is ready`}</h2><div><button class="btn" data-tab="wrapped">Watch it</button></div></section>`
   : next ? (() => { const g = guide(); return `<section class="hero-card"><span class="label" style="color:inherit">Step ${st.indexOf(next) + 1} of ${st.length} · ${esc(next.label)}</span><h2>${esc(g && !g.wait ? g.label : g ? g.label : next.label)}</h2><p>${esc(next.sub)}</p>${g && !g.wait ? `<div><button class="btn" data-tab="${g.tab}" data-guide="1">Let’s go</button></div>` : ''}</section>`; })()
@@ -1263,13 +1272,13 @@ function overviewTab() {
 function settingsTab() {
   const m = mode();
   return `<section class="card stack"><h3>Plan size</h3><div class="row" style="gap:6px">${Object.entries(SIZES).map(([k, v]) => `<button class="chip ${size() === k ? 'on' : ''}" data-setsize="${k}">${esc(v.label)}</button>`).join('')}</div><p class="small muted">Changing the size keeps everyone’s votes and free days.</p></section>
-  <section class="card stack"><h3>Type</h3>
-    <div class="modes compact">${Object.entries(MODES).map(([k, v]) => `<button class="mode ${S.trip.mode === k || (!S.trip.mode && k === 'friends') ? 'on' : ''}" data-setmode="${k}" style="--mc:${v.color}"><b>${esc(v.label)}</b></button>`).join('')}</div>
+  ${isSmall() ? '' : `<section class="card stack"><h3>Type</h3>
+    <div class="modes compact">${Object.entries(MODES).map(([k, v]) => `<button class="mode ${S.trip.mode === k || (!S.trip.mode && k === 'friends') ? 'on' : ''}" data-setmode="${k}" style="--mc:${v.color}"><b>${esc(modeLabel(v, size()))}</b></button>`).join('')}</div>
     ${m.honoree ? `<div class="row" style="gap:10px">
       <label class="field"><span class="label">The ${esc(m.honoree)}</span><select id="set-honoree"><option value="">Pick someone</option>${S.members.map(x => `<option value="${esc(x.id)}" ${S.trip.honoree === x.id ? 'selected' : ''}>${esc(x.nick || 'Someone')}</option>`).join('')}</select></label>
       <label class="row small" style="gap:8px;flex:1 1 200px"><input type="checkbox" id="set-free" style="width:auto" ${S.trip.honoreeFree !== false ? 'checked' : ''}> The ${esc(m.honoree)} pays nothing (their share is split across everyone else)</label></div>
       <p class="small muted">Surprise plans and the planners-only chat are hidden from the ${esc(m.honoree)} in the app.</p>` : ''}
-  </section>
+  </section>`}
   ${SETTINGS_HTML()}`;
 }
 
@@ -1277,7 +1286,7 @@ function settingsTab() {
 /* ---------- book: flights ---------- */
 function skyscanner(from, d, ds) { const y = s => s.slice(2).replace(/-/g, ''); return `https://www.skyscanner.com/transport/flights/${from.toLowerCase()}/${ds.code.toLowerCase()}/${y(d.start)}/${y(d.end)}/`; }
 function flightsTab() {
-  const d = dates(), ds = dest(); if (!d || !ds) return needDestDates('flight search');
+  const d = dates(), ds = dest(); if (!d || !ds) return needDestDates('Flight search');
   const tk = tickets(), b = budgetCap(), nights = Math.max(1, nightsOf(d));
   const deals = S.trip.deals && S.trip.deals.city === ds.city && S.trip.deals.start === d.start ? S.trip.deals.data : null;
   const est = {}; for (const f of deals?.flights || []) est[String(f.from || '').toLowerCase()] = f;
@@ -1330,7 +1339,7 @@ function stayLinks(s, ds, d, n) {
   return `<a class="btn sm primary" href="https://www.google.com/travel/search?q=${q}" target="_blank" rel="noopener">Check prices</a><a class="btn sm" href="https://www.booking.com/searchresults.html?ss=${q}&checkin=${d.start}&checkout=${d.end}&group_adults=${n}&no_rooms=${Math.max(1, Math.ceil(n / 2))}" target="_blank" rel="noopener">Booking.com</a>`;
 }
 function staysTab() {
-  const d = dates(), ds = dest(); if (!d || !ds) return needDestDates('stay ideas');
+  const d = dates(), ds = dest(); if (!d || !ds) return needDestDates('Stay ideas');
   const n = Math.max(1, active().length), nights = Math.max(1, nightsOf(d)), b = budgetCap(), st = S.trip.stay;
   const opts = S.trip.stays && S.trip.stays.city === ds.city ? S.trip.stays.items : [];
   const ranked = opts.map((s, i) => ({ s, i, sc: score(rkey('st' + s.name)) })).sort((a, b2) => b2.sc.net - a.sc.net || a.i - b2.i);
@@ -1374,11 +1383,14 @@ function mapPoints() {
   for (const [k, g] of Object.entries(geo)) push({ key: k, name: g.name, lat: g.lat, lng: g.lng, kind: g.kind || 'plan' });
   return pts;
 }
+let mapW = 0;
+window.addEventListener('resize', () => { clearTimeout(mapW); mapW = setTimeout(() => { if (document.querySelector('.map')) render(); }, 150); });
 function lostAt() { return active().filter(m => m.lost && !m.lost.found && Date.now() - m.lost.at < 6 * 36e5); }
 function mapView(height) {
   const pts = mapPoints(); if (!pts.length) return '';
   const lost = lostAt();
-  const W = 600, H = height || 420, P = 46;
+  // draw in roughly real pixels so labels stay the same size on a phone and a laptop
+  const W = Math.round(Math.max(300, Math.min(840, (app.clientWidth || 600) - 34))), H = Math.round(Math.min(W * .72, height || 440)), P = 40;
   const lats = pts.map(p => p.lat), lngs = pts.map(p => p.lng);
   let minLa = Math.min(...lats), maxLa = Math.max(...lats), minLo = Math.min(...lngs), maxLo = Math.max(...lngs);
   const mid = (minLa + maxLa) / 2, kx = Math.cos(mid * Math.PI / 180);
@@ -1399,10 +1411,11 @@ function mapView(height) {
       const hit = r => placed.some(o => r.x < o.x + o.w && r.x + r.w > o.x && r.y < o.y + o.h && r.y + r.h > o.y);
       const lab = new Map();
       for (const p of pts) placed.push({ x: X(p.lng) - 12, y: Y(p.lat) - 12, w: 24, h: 24 });
+      placed.push({ x: 8, y: H - 40, w: barPx + 74, h: 34 }, { x: W - 54, y: 10, w: 44, h: 44 }); // scale bar, compass
       for (const p of order) {
-        const lm = lostPts.get(p.key), txt = lm ? (lm.nick || 'Someone') + ' is here' : p.name.length > 22 ? p.name.slice(0, 21) + '…' : p.name;
-        const w = txt.length * 9 + 8, x = Math.max(w / 2 + 4, Math.min(W - w / 2 - 4, X(p.lng))), y = Y(p.lat);
-        for (const dy of [-18, 32]) { const r = { x: x - w / 2, y: y + dy - 16, w, h: 20 }; if (!hit(r)) { placed.push(r); lab.set(p, { txt, y: y + dy, x }); break; } }
+        const lm = lostPts.get(p.key), cut = W < 500 ? 20 : 30, txt = lm ? (lm.nick || 'Someone') + ' is here' : p.name.length > cut ? p.name.slice(0, cut - 1) + '…' : p.name;
+        const w = txt.length * 7.4 + 10, x = Math.max(w / 2 + 4, Math.min(W - w / 2 - 4, X(p.lng))), y = Y(p.lat);
+        for (const dy of [-17, 28]) { const r = { x: x - w / 2, y: y + dy - 13, w, h: 17 }; if (!hit(r)) { placed.push(r); lab.set(p, { txt, y: y + dy, x }); break; } }
       }
       return pts.map(p => { const x = X(p.lng), y = Y(p.lat), on = sel === p, lm = lostPts.get(p.key), l = lab.get(p);
         return `<g class="pin" data-pin="${esc(p.key)}" tabindex="0" role="button" aria-label="${esc(p.name)}">
@@ -1448,7 +1461,7 @@ Reply with only JSON: {"places":[{"name":"exactly as given","lat":0,"lng":0,"kin
   });
 }
 function mapTab() {
-  const ds = dest(); if (!ds) return needDestDates('the crew map');
+  const ds = dest(); if (!ds) return needDestDates('The crew map', 'dest');
   const pts = mapPoints();
   return `<section class="card stack">
     <div class="row" style="justify-content:space-between"><div class="stack" style="gap:2px"><h2>Crew map</h2><span class="small muted">${isSmall() ? 'Your spots and plans' + (S.trip.city ? ' in ' + esc(S.trip.city) : '') : 'Your stay, spots and plans in ' + esc(ds.city)}. Tap a pin for walking time and directions.</span></div>
@@ -1501,7 +1514,7 @@ function hangoverCard(day) {
     <div class="row" style="gap:6px">${HANG.map((h, i) => `<button class="chip ${mine === i + 1 ? 'on' : ''}" data-hang="${i + 1}">${i + 1} · ${h}</button>`).join('')}</div>
     ${vals.length ? `<span class="small muted">${vals.length} voted: ${active().filter(m => votes[m.id]).map(m => `${esc(m.nick || 'Someone')} ${votes[m.id]}`).join(', ')}</span>` : ''}
     ${S.hangPlan ? `<div class="card stack" style="background:var(--bg)"><b>Easier plan for today</b>${S.hangPlan.note ? `<span class="small">${esc(S.hangPlan.note)}</span>` : ''}
-        ${S.hangPlan.items.map(i => `<div class="tline"><span class="mono small">${esc(i.time)}</span><div><b>${esc(i.title)}</b>${i.note ? `<div class="small muted">${esc(i.note)}</div>` : ''}</div><span></span></div>`).join('')}
+        ${S.hangPlan.items.map(i => `<div class="tline"><span class="mono small">${esc(tShow(i.time))}</span><div><b>${esc(i.title)}</b>${i.note ? `<div class="small muted">${esc(i.note)}</div>` : ''}</div><span></span></div>`).join('')}
         <div class="row" style="gap:6px"><button class="btn sm primary" data-act="hangApply">Use this plan</button><button class="btn sm ghost" data-act="hangCancel">Keep the original</button></div></div>`
     : avg >= 3 && today.length && S.sample !== null ? `<div class="row" style="justify-content:space-between;gap:8px"><span class="small"><b>The crew is ${HANG[Math.round(avg) - 1].toLowerCase()}.</b> Want a gentler day?</span><button class="btn sm primary" data-act="hangPlan" ${S.busy.hang ? 'disabled' : ''}>${S.busy.hang ? '<i class="spin"></i>Rewriting…' : 'Make today easier'}</button></div>` : ''}
   </section>`;
@@ -1594,10 +1607,10 @@ function meterTab() {
         ${state === 'warn' ? `<span class="pill maybe" style="align-self:flex-start">Heads up: ${Math.round(pct * 100)}% used</span>` : state === 'over' ? `<span class="pill out" style="align-self:flex-start;color:var(--meter-over)">Over budget</span>` : ''}
       </div></div>
     <div><div class="linkrow"><span>Your share of group expenses</span><span class="mono">${money2(exp)}</span></div>
-      <div class="linkrow"><span>Put in the group pot</span><span class="mono">${money2(pot)}</span></div>
+      ${HIDE_TABS[size()].includes('pot') ? '' : `<div class="linkrow"><span>Put in the group pot</span><span class="mono">${money2(pot)}</span></div>`}
       ${(S.mySpend || []).map(x => `<div class="linkrow"><span>${esc(x.note)}</span><span class="row" style="gap:6px"><span class="mono">${money2(+x.amount)}</span><button class="x" data-delspend="${esc(x.id)}" aria-label="Remove ${esc(x.note)}">×</button></span></div>`).join('')}</div>
     <form id="spendForm" class="row" style="gap:6px;align-items:flex-end">
-      <label class="field" style="flex:2 1 160px"><span class="label">Log something you paid yourself</span><input id="sp-note" maxlength="50" required placeholder="My flight"></label>
+      <label class="field" style="flex:2 1 160px"><span class="label">Log something you paid yourself</span><input id="sp-note" maxlength="50" required placeholder="${({ hangout: 'Cab home', day: 'Train tickets', weekend: 'Gas', trip: 'My flight' })[size()]}"></label>
       <label class="field" style="flex:0 1 110px"><span class="label">Amount</span><input id="sp-amt" type="number" min="0.01" step="0.01" inputmode="decimal" required placeholder="248"></label>
       <button class="btn" type="submit">Add</button></form>
   </section>`;
@@ -1612,8 +1625,9 @@ async function saveMySpend(items) {
 function potTab() {
   const ins = S.pot.filter(p => p.kind === 'in'), outs = S.pot.filter(p => p.kind === 'out');
   const tin = ins.reduce((a, p) => a + p.amount, 0), tout = outs.reduce((a, p) => a + p.amount, 0), bal = tin - tout;
-  const ms = active().filter(m => !(honoreeFree() && m.id === S.trip.honoree)), fair = ms.length ? tin / ms.length : 0;
+  const ms = active().filter(m => !(honoreeFree() && m.id === S.trip.honoree));
   const by = {}; for (const p of ins) by[p.by] = (by[p.by] || 0) + p.amount;
+  const fair = Math.max(0, ...ms.map(m => by[m.id] || 0)); // everyone matches whoever put in the most
   const behind = ms.filter(m => (by[m.id] || 0) < fair - 0.5);
   const low = tin > 0 && (bal <= 0 || bal < tin * .25);
   const keeper = S.trip.potKeeper || S.trip.createdBy;
@@ -1687,7 +1701,7 @@ function wrapData() {
   return { d, ds, ms, total, topSpot: spots[0]?.s, owl: owl && owl.n ? owl : null, photo: photo?.p, champ, hyper, wrecked, awards, over: d && TODAY > d.end, b: blend() };
 }
 function wrappedTab() {
-  const w = wrapData(); if (!w.d || !w.ds) return needDestDates('your Trip Wrapped');
+  const w = wrapData(); if (!w.d || !w.ds) return needDestDates(isSmall() ? 'The recap' : 'Your Trip Wrapped');
   const nights = nightsOf(w.d);
   const slides = [
     { c: ['#D41C78', '#7048E8'], k: `${w.over ? '' : 'So far · '}${esc(S.trip.name)}`, h: `Your ${esc(w.ds.city)} Wrapped`, s: `${nights ? nights + ' night' + (nights === 1 ? '' : 's') + ' · ' : ''}${w.ms.length} ${w.ms.length === 1 ? 'person' : 'people'} · ${dayRange(w.d.start, w.d.end)}` },
@@ -1737,7 +1751,7 @@ const SETTINGS_HTML = () => `  ${crewSection()}
   <section class="card stack">
     <h3>Settings</h3>
     ${S.confirm === 'delete' ? `<div class="banner"><span><b>Delete “${esc(S.trip.name)}” for everyone?</b> The crew, votes, expenses and packing list all go. This can’t be undone.</span><div class="row" style="gap:6px"><button class="btn sm danger-fill" data-act="doDelete">Delete ${planWord()}</button><button class="btn sm" data-act="cancelConfirm">Cancel</button></div></div>`
-    : S.confirm === 'leave' ? `<div class="banner"><span><b>Leave this ${planWord()}?</b> Your days, votes${size() === 'trip' ? ' and boarding pass' : ''} are removed.</span><div class="row" style="gap:6px"><button class="btn sm danger-fill" data-act="doLeave">Leave ${planWord()}</button><button class="btn sm" data-act="cancelConfirm">Cancel</button></div></div>`
+    : S.confirm === 'leave' ? `<div class="banner"><span><b>Leave this ${planWord()}?</b> ${size() === 'trip' ? 'Your days, votes and boarding pass are removed.' : 'Your days and votes are removed.'} It disappears from your plans.</span><div class="row" style="gap:6px"><button class="btn sm danger-fill" data-act="doLeave">Leave ${planWord()}</button><button class="btn sm" data-act="cancelConfirm">Cancel</button></div></div>`
     : `<div class="row" style="gap:8px">${meDoc() && !S.demo ? `<button class="btn sm danger" data-act="askLeave">Leave ${planWord()}</button>` : ''}${canDelete(S.trip) ? `<button class="btn sm danger" data-act="askDelete">Delete ${planWord()}</button>` : `<span class="small muted">Only the person who created it can delete it.</span>`}</div>`}
   </section>`;
 
@@ -1747,7 +1761,7 @@ function liveQuick() {
   return `<section class="quick" aria-label="Quick actions">
     <button class="qa qa-lost" data-act="lostOpen"><b>I’m lost</b><span>Send the crew my spot</span></button>
     <button class="qa" data-act="ciJump"><b>Check in</b><span>${myCi ? 'You: ' + esc(myCi.text) : 'Where are you?'}</span></button>
-    <button class="qa" data-act="meetJump"><b>Meet-up</b><span>${meet?.text ? esc(meet.text) + (meet.time ? ' · ' + esc(meet.time) : '') : 'Not set yet'}</span></button>
+    <button class="qa" data-act="meetJump"><b>Meet-up</b><span>${meet?.text ? esc(meet.text) + (meet.time ? ' · ' + esc(tShow(meet.time)) : '') : 'Not set yet'}</span></button>
     <button class="qa" data-tab="map"><b>Map</b><span>${mapPoints().length} places pinned</span></button>
   </section>`;
 }
@@ -1944,7 +1958,7 @@ const myCrews = () => S.crews.filter(c => c.by === S.uid || crewMembers(c).inclu
 const crewNick = (c, id) => c.profiles?.[id]?.nick || 'Someone';
 function myPlans() {
   const crewIds = new Set(myCrews().map(c => c.id));
-  return S.trips.filter(t => t.createdBy === S.uid || (t.people || {})[S.uid] || (t.crewId && crewIds.has(t.crewId)));
+  return S.trips.filter(t => (t.people || {})[S.uid] || (!(t.left || {})[S.uid] && (t.createdBy === S.uid || (t.crewId && crewIds.has(t.crewId)))));
 }
 const planWhen = t => t.lockedDates ? (t.lockedDates.start === t.lockedDates.end ? fmt(t.lockedDates.start) : `${short(t.lockedDates.start)} – ${short(t.lockedDates.end)}`) + (t.time ? ' · ' + t12(t.time) : '') : '';
 function planStatus(t) {
@@ -1963,9 +1977,9 @@ function planRow(t, opts = {}) {
       <h3>${esc(t.name)}</h3>
       <span class="small muted">${t.lockedDates ? esc(planWhen(t)) + (name && name !== t.name ? ' · ' + esc(name) : '') : esc(planStatus(t))}${daysTo !== null && daysTo >= 0 ? ` · <b style="color:var(--pc)">${daysTo === 0 ? 'Today' : daysTo === 1 ? 'Tomorrow' : 'in ' + daysTo + ' days'}</b>` : ''}</span>
     </div>
-    <div class="row" style="gap:6px;flex-wrap:nowrap">${S.confirmHome === t.id
-      ? `<button class="btn sm danger-fill" data-homedo="${esc(t.id)}">Delete</button><button class="btn sm ghost" data-act="homeCancel">Cancel</button>`
-      : `${canDelete(t) ? `<button class="x" data-homedel="${esc(t.id)}" aria-label="Delete ${esc(t.name)}">×</button>` : ''}<button class="btn sm" data-share="${esc(t.id)}" aria-label="Share ${esc(t.name)}">Share</button><button class="btn sm primary" data-open="${esc(t.id)}">Open</button>`}</div>
+    <div class="pr-acts">${S.confirmHome === t.id
+      ? `<span class="small pr-ask">Delete for everyone?</span><button class="btn sm ghost" data-act="homeCancel">Cancel</button><button class="btn sm danger-fill" data-homedo="${esc(t.id)}">Delete</button>`
+      : `${canDelete(t) ? `<button class="btn sm ghost icon pr-del" data-homedel="${esc(t.id)}" aria-label="Delete ${esc(t.name)}" title="Delete"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg></button>` : ''}<button class="btn sm" data-share="${esc(t.id)}" aria-label="Share ${esc(t.name)}">Share</button><button class="btn sm primary" data-open="${esc(t.id)}">Open</button>`}</div>
     ${S.shareHome === t.id && S.copyText ? `<textarea class="pr-copy" id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
   </div>`;
 }
@@ -2077,7 +2091,7 @@ function pickSizeStep() {
 function modePicker() {
   return `${topBar()}${stepHead(`What kind of ${SIZES[S.newSize || 'trip'].label.toLowerCase()} is this?`, 'backSize')}
   <p class="muted">We’ll tune the AI picks, the awards and the features to your group.</p>
-  <div class="modes">${Object.entries(MODES).map(([k, v]) => `<button class="mode" data-mode="${k}" style="--mc:${v.color}"><b>${esc(v.label)}</b><span class="small muted">${esc(v.desc)}</span>${v.honoree ? `<span class="label" style="color:var(--mc)">Guest of honor mode</span>` : ''}</button>`).join('')}</div>`;
+  <div class="modes">${Object.entries(MODES).map(([k, v]) => `<button class="mode" data-mode="${k}" style="--mc:${v.color}"><b>${esc(modeLabel(v, S.newSize))}</b><span class="small muted">${esc(v.desc)}</span>${v.honoree ? `<span class="label" style="color:color-mix(in oklab,var(--mc) 70%,var(--ink))">Guest of honor mode</span>` : ''}</button>`).join('')}</div>`;
 }
 function newTripForm() {
   const sz = SIZES[S.newSize || 'trip'], small = ['hangout', 'day'].includes(S.newSize), m = MODES[S.newMode] || MODES.friends, crew = S.crews.find(c => c.id === S.newCrew);
@@ -2085,7 +2099,7 @@ function newTripForm() {
   let city = ''; try { city = localStorage.getItem('outta_city') || ''; } catch {}
   const ph = { bachelorette: 'Sarah’s Last Fling', bachelor: 'Mike’s Last Ride', birthday: 'Dev turns 30', family: 'Family beach week', work: 'Q3 team offsite', festival: 'Coachella weekend', sports: 'Super Bowl trip', couples: 'Couples in Tulum', college: 'Spring break ’27' }[S.newMode] || sz.ph;
   return `${topBar()}${stepHead('The basics', small ? 'backSize' : 'backModes')}
-  ${crew || !small ? `<div class="row" style="gap:8px">${!small ? `<span class="mode-chip" style="--mc:${m.color}">${esc(m.label)}</span>` : ''}${crew ? `<span class="small muted">Everyone in <b>${esc(crew.name)}</b> is added automatically.</span>` : ''}</div>` : ''}
+  ${crew || !small ? `<div class="row" style="gap:8px">${!small ? `<span class="mode-chip" style="--mc:${m.color}">${esc(modeLabel(m, S.newSize))}</span>` : ''}${crew ? `<span class="small muted">Everyone in <b>${esc(crew.name)}</b> is added automatically.</span>` : ''}</div>` : ''}
   <section class="card stack">
     <form id="newTrip" class="stack">
       <label class="field"><span class="label">Name it</span><input id="nt-name" required maxlength="60" placeholder="${esc(ph)}"></label>
@@ -2153,7 +2167,7 @@ function playlistCard(ctx = {}) {
   return `<section class="card stack playlist">
     <div class="row" style="justify-content:space-between"><h2>${crew ? esc(crew.name) + ' playlist' : 'Playlist'}</h2><span class="small muted">${songs.length} song${songs.length === 1 ? '' : 's'}</span></div>
     <p class="small muted">${crew ? 'One playlist for the crew. It grows with every plan.' : 'Everyone adds songs.'} Upvote the ones that hit${inPlan ? ', and pick your song of the ' + (isSmall() ? 'night' : 'trip') + ' for the recap' : ''}.</p>
-    ${sotn?.song ? `<div class="sotn"><span class="label">Song of the ${isSmall() ? 'night' : 'trip'} so far</span><b>${esc(sotn.song.title)}</b><span class="small">${esc(sotn.song.artist || '')} · ${sotn.n} vote${sotn.n === 1 ? '' : 's'}</span></div>` : ''}
+    ${sotn?.song ? `<div class="sotn"><span class="label">Song of the ${isSmall() ? 'night' : 'trip'} so far</span><b>${esc(sotn.song.title)}</b><span class="small">${sotn.song.artist ? esc(sotn.song.artist) + ' · ' : ''}${sotn.n} vote${sotn.n === 1 ? '' : 's'}</span></div>` : ''}
     <form id="songForm" class="row" style="gap:6px;align-items:flex-end">
       <label class="field" style="flex:2 1 150px"><span class="label">Song</span><input id="sg-title" maxlength="80" required placeholder="Dancing Queen"></label>
       <label class="field" style="flex:1 1 120px"><span class="label">Artist</span><input id="sg-artist" maxlength="60" placeholder="ABBA"></label>
@@ -2607,7 +2621,7 @@ function openDemo() {
   S.trip.geo = { [rkey('Wynwood Walls')]: { name: 'Wynwood Walls', lat: 25.8010, lng: -80.1994, kind: 'activity' } };
   S.trip.meet = { text: 'Our Airbnb · South Beach', time: '22:45', by: m2.id, at: t0 - .6 * H };
   S.trip.hangover = { [TODAY]: { d1: 4, d2: 2, d4: 5, d3: 3 } };
-  S.trip.recaps = { [y]: { title: 'Day One, No Survivors', text: 'The crew landed, ate their body weight in Wynwood tacos, then took Sweet Liberty hostage until close. Jay checked in “Still out” at 2:40am, which explains a lot. Tasha clocked out at 4am and scored a 5 on the hangover index, the highest possible honor. Nobody has explained the receipt for 14 espresso martinis.', at: t0 - 3 * H } };
+  S.trip.recaps = { [y]: { title: 'Day one', text: 'Everyone landed by noon. Tacos in Wynwood, a nap nobody admits to, then Sweet Liberty until close. Jay checked in “Still out” at 2:40am. Tasha called it at 4 and logged a 5 on the hangover index. There’s a receipt for 14 espresso martinis and no one is claiming it.', at: t0 - 3 * H } };
   S.trip.pitches = { at: t0, items: [{ id: 'pa', city: 'Miami', code: 'MIA', start, end, tagline: 'Rooftops, Latin nights, beach recovery', why: 'Your crew splits between big clubs and rooftop cocktails, and Miami does both on the same street.', perPerson: '$780–950 all-in', vibeMatch: 91, highlights: ['LIV on Saturday', 'Wynwood walls and tacos', 'Pool day to recover'], weather: '79°F, sunny' }] };
   S.trip.swipes = { pa: Object.fromEntries(S.members.map(m => [m.id, 1])) };
   S.expenses = [
@@ -2674,7 +2688,7 @@ render();
     }, () => {});
     const h = (location.hash || '').slice(1);
     const cm = h.match(/^c-([a-z0-9]{6,20})$/); if (cm) { joinCrew(cm[1]); return; }
-    if (/^[a-z0-9]{6,20}$/.test(h)) { openTrip(h); return; }
+    if (/^[a-z0-9]{6,20}$/.test(h)) { let tab; try { tab = sessionStorage.getItem('outta_tab_' + h) || undefined; } catch {} openTrip(h, tab); return; }
   }
   if (!S.tid) render(); else if (S.demo) render();
 })();

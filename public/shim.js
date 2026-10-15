@@ -46,9 +46,10 @@
 
   const user = Object.freeze({
     id: async () => { await nameReady; return uid; },
-    me: async () => ({ id: uid, name: await nameReady, avatarUrl: '', color: '', email: null, isOwner: true, canEdit: true }),
-    // Running on your own computer, everyone who can open the page can edit.
-    isOwner: async () => true,
+    me: async () => ({ id: uid, name: await nameReady, avatarUrl: '', color: '', email: null, isOwner: false, canEdit: true }),
+    // Everyone who can open the page can edit, but nobody is the page's owner:
+    // only the person who made a plan or crew can delete it.
+    isOwner: async () => false,
     canEdit: async () => true,
     can: async () => true,
     profiles: async ids => Object.fromEntries([].concat(ids).map(id => [id, { id, name: '', avatarUrl: '', color: '', email: null, isMe: id === uid, guest: false }])),
