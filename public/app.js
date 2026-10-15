@@ -44,7 +44,7 @@ const rid = (n = 10) => Array.from(crypto.getRandomValues(new Uint8Array(n)), b 
 let toastT;
 function flash(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 4200); }
 function writeErr(e) {
-  if (e && e.code === 'invalid_argument') { S.readOnly = true; return "You can view this trip but not edit it. Ask the owner to share it with you as a Contributor."; }
+  if (e && e.code === 'invalid_argument') { S.readOnly = true; return "You can view this plan but not edit it. Ask the owner to share it with you as a Contributor."; }
   if (e && e.code === 'quota_exceeded') return 'Storage is full. Delete an old trip and try again.';
   return 'Couldn’t save that. Check your connection and try again.';
 }
@@ -115,10 +115,10 @@ function nudges() {
   return active().map(m => {
     const todo = [];
     if (m.status === 'maybe') todo.push('say if you’re in');
-    if (!(m.days || []).length && !S.trip.lockedDates) todo.push('pick your dates');
+    if (!(m.days || []).length && !S.trip.lockedDates) todo.push(isSmall() ? 'say which days work' : 'pick your dates');
     if (!m.budget) todo.push('set your budget');
-    if (hasDest && !(m.votes || []).length && !S.trip.lockedDest) todo.push('vote on where');
-    if (booking_time() && m.status === 'in' && !tk[m.id]) todo.push('book your flight and upload your boarding pass');
+    if (hasDest && !(m.votes || []).length && !S.trip.lockedDest) todo.push(isSmall() ? 'vote on the plan' : 'vote on where');
+    if (size() === 'trip' && booking_time() && m.status === 'in' && !tk[m.id]) todo.push('book your flight and upload your boarding pass');
     if (!m.quiz || Object.keys(m.quiz).length < QUIZ.length) todo.push('take the vibe quiz');
     return { m, todo };
   }).filter(x => x.todo.length);
@@ -244,12 +244,20 @@ async function askAI(kind, prompt, done) {
 function context() {
   const d = dates(), ds = dest(), b = budgetCap();
   const days = d ? span(d.start, d.end).map(x => `${x} (${dow(x)})`).join(', ') : 'not set';
-  return `Trip type: ${mode().label}. ${mode().ai}
+  if (isSmall()) return `Plan type: ${size() === 'hangout' ? 'one evening out' : 'a day out'} with friends. ${mode().label !== 'Friends trip' ? mode().ai : ''}
+City: ${S.trip.city || 'not set'}
+The plan: ${ds ? ds.city : 'not decided'}${S.trip.venue ? ' at ' + S.trip.venue : ''}
+Day: ${d ? `${d.start} (${dow(d.start)})` : 'not set'}${S.trip.time ? ', starting ' + S.trip.time : ''}
+Group size: ${active().length} adults
+Max spend per person: ${b ? money(b.cap) : 'not given'}${blend() ? `
+Crew vibe quiz results (${blend().n} answered):
+${blendText()}` : ''}`;
+  return `Trip type: ${mode().label}. ${mode().ai}${size() === 'weekend' ? ' It is a weekend getaway (1–2 nights), likely by car.' : ''}
 Destination: ${ds ? ds.city + (ds.code ? ' (' + ds.code + ')' : '') : 'not set'}
 Trip days: ${days} — ${nightsOf(d)} nights
 Group size: ${active().length} adults
-Flying from: ${homes().join(', ') || 'unknown'}
-Per-person total budget (everything incl. flights): ${b ? money(b.cap) : 'not given'}
+${size() === 'trip' ? 'Flying from' : 'Coming from'}: ${homes().join(', ') || 'unknown'}
+Per-person total budget (everything${size() === 'trip' ? ' incl. flights' : ''}): ${b ? money(b.cap) : 'not given'}
 Group vibe: ${(S.trip.vibes || []).join(', ') || 'mixed, fun'}${blend() ? `
 Crew vibe quiz results (${blend().n} answered):
 ${blendText()}` : ''}`;
@@ -279,7 +287,7 @@ Reply with only JSON: {"weather":"one line on expected weather","items":[{"text"
   });
 }
 function findSpots() {
-  const prompt = `You're a nightlife scout planning a group trip. Recommend real, well-known venues that are open as of your latest knowledge.
+  const prompt = `You're a nightlife scout planning ${isSmall() ? 'a night out for a friend group' : 'a group trip'}. Recommend real, well-known venues that are open as of your latest knowledge.
 ${context()}
 
 Give 9 picks that fit the trip type and vibe. For nightlife trips: mostly clubs and bars, plus at least one rooftop or lounge and one late-night food spot. For family or work trips: activities, good restaurants and relaxed evening spots instead of clubs. Favor places that work for a group this size (table or guestlist options for clubs). Match the night each place is best to the trip days.
@@ -309,6 +317,7 @@ Be realistic and give ranges. Reply with only JSON:
 function draftPlan() {
   const d = dates(); if (!d) return;
   const spots = (S.trip.spots?.items || []).map(s => `${s.name} (${s.type}, best ${s.bestNight})`).join('; ');
+  if (isSmall()) return draftNight();
   const prompt = `Build a fun, realistic day-by-day itinerary for this group trip.
 ${context()}
 Nightlife picks the group already likes: ${spots || 'none yet — suggest real venues'}
@@ -363,7 +372,7 @@ function paint() {
 
 function topBar() {
   return `<div class="top"><button class="logo" data-act="home">Outta<span>/</span>Here</button>
-    ${S.tid ? `<span class="label">Trip code <span class="mono">${esc(S.demo ? 'DEMO' : S.tid)}</span></span>` : ''}</div>`;
+    ${S.tid ? `<span class="label">Code <span class="mono">${esc(S.demo ? 'DEMO' : S.tid)}</span></span>` : ''}</div>`;
 }
 
 function pass() {
@@ -377,7 +386,7 @@ function pass() {
         ${planOn() ? `<span class="on-pill">Trip is on</span>` : booking_time() ? `<span class="pill in">${size() === 'trip' ? 'Booking flights' : 'Booking'}</span>` : `<span class="pill maybe">Still deciding</span>`}</div>
       <div class="route">
         <span class="code ${from.length ? '' : 'code-tbd'}">${from.length ? esc(homes().length > 1 ? homes().length + ' CITIES' : from[0]) : 'HOME'}</span>
-        <span class="plane" aria-hidden="true">✈</span>
+        <span class="plane" aria-hidden="true">${size() === 'trip' ? '✈' : '→'}</span>
         <span class="code ${ds ? '' : 'code-tbd'}" style="color:var(--accent)">${ds ? esc(ds.code ? ds.code.toUpperCase() : ds.city) : 'TBD'}</span>
       </div>
       <div class="facts">
@@ -416,8 +425,8 @@ function crewTab() {
     <p class="small muted">Your budget is never shown to the group. They only see the cap that works for everyone.</p>
     <div class="row">
       <label class="field"><span class="label">Name</span><input id="me-nick" maxlength="30" value="${esc(m.nick)}" placeholder="What the crew calls you"></label>
-      <label class="field"><span class="label">Flying from</span><input id="me-home" maxlength="40" value="${esc(m.home)}" placeholder="JFK or New York"></label>
-      <label class="field"><span class="label">Max you’ll spend (total, USD)</span><input id="me-budget" type="number" min="0" step="50" inputmode="numeric" value="${m.budget ? esc(m.budget) : ''}" placeholder="800"></label>
+      ${isSmall() ? '' : `<label class="field"><span class="label">${size() === 'trip' ? 'Flying from' : 'Coming from'}</span><input id="me-home" maxlength="40" value="${esc(m.home)}" placeholder="${size() === 'trip' ? 'JFK or New York' : 'Your city or neighborhood'}"></label>`}
+      <label class="field"><span class="label">${isSmall() ? 'Max you’ll spend (USD)' : 'Max you’ll spend (total, USD)'}</span><input id="me-budget" type="number" min="0" step="${isSmall() ? 5 : 50}" inputmode="numeric" value="${m.budget ? esc(m.budget) : ''}" placeholder="${isSmall() ? '60' : size() === 'weekend' ? '400' : '800'}"></label>
     </div>
     <div class="row">
       <label class="field"><span class="label">Venmo</span><input id="me-venmo" maxlength="40" value="${esc(m.venmo || '')}" placeholder="@your-handle"></label>
@@ -430,7 +439,7 @@ function crewTab() {
     ${S.members.length ? S.members.map(x => `<div class="crew-row">
       <div class="av" style="background:${colorFor(x.id)}">${esc((x.nick || '?')[0].toUpperCase())}</div>
       <div style="min-width:0"><b>${esc(x.nick || 'Someone')}${x.id === S.uid ? ' <span class="muted small">(you)</span>' : ''}</b>
-        <div class="small muted">${x.home ? '✈ ' + esc(x.home) + ' · ' : ''}${(x.days || []).length} days free · ${(x.votes || []).length ? 'voted' : 'no vote yet'}${x.budget ? ' · budget set' : ''}</div></div>
+        <div class="small muted">${x.home && !isSmall() ? (size() === 'trip' ? '✈ ' : 'from ') + esc(x.home) + ' · ' : ''}${(x.days || []).length} ${(x.days || []).length === 1 ? 'day' : 'days'} free · ${(x.votes || []).length ? 'voted' : 'no vote yet'}${x.budget ? ' · budget set' : ''}</div></div>
       <span class="pill ${x.status || 'maybe'}">${x.status === 'in' ? 'In' : x.status === 'out' ? 'Out' : 'Maybe'}</span>
     </div>`).join('') : `<p class="muted">Nobody yet. Add your details above.</p>`}
   </section>`;
@@ -449,28 +458,28 @@ function datesTab() {
   });
   return `<section class="grid2">
     <div class="card stack">
-      <div class="row" style="justify-content:space-between"><h2>Tap the days you’re free</h2>
+      <div class="row" style="justify-content:space-between"><h2>${isSmall() ? 'Which days work for you?' : 'Tap the days you’re free'}</h2>
         <div class="row" style="gap:6px"><button class="btn sm ghost" data-act="allDays">All</button><button class="btn sm ghost" data-act="weekends">Fri–Sun</button><button class="btn sm ghost" data-act="noDays">Clear</button></div></div>
       <div class="cal">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x => `<span class="dow">${x}</span>`).join('')}${'<span></span>'.repeat(lead)}${cells.join('')}</div>
-      <div class="legend"><span><i class="sw" style="background:var(--accent)"></i>More people free</span><span><i class="sw" style="outline:2px solid var(--ink)"></i>You</span><span><i class="sw" style="box-shadow:inset 0 -3px 0 var(--gold)"></i>Best window</span></div>
+      <div class="legend"><span><i class="sw" style="background:var(--accent)"></i>More people free</span><span><i class="sw" style="outline:2px solid var(--ink)"></i>You</span><span><i class="sw" style="box-shadow:inset 0 -3px 0 var(--gold)"></i>${isSmall() ? 'Best day' : 'Best window'}</span></div>
       <div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:12px">
-        <span class="label">Trip window</span>
+        <span class="label">${isSmall() ? 'Days that could work' : 'Trip window'}</span>
         <div class="win-edit">
           <label class="field"><span class="small muted">Earliest</span><input id="win-start" type="date" value="${t.winStart}"></label>
           <label class="field"><span class="small muted">Latest</span><input id="win-end" type="date" value="${t.winEnd}"></label>
-          <label class="field"><span class="small muted">Trip length</span><select id="nights">${(isSmall() ? [0] : [1,2,3,4,5,6,7,10,14]).map(n => `<option value="${n}" ${n === nightsSet(t) ? 'selected' : ''}>${n === 0 ? 'Same day' : n + ' night' + (n === 1 ? '' : 's')}</option>`).join('')}</select></label>
+          <label class="field" ${isSmall() ? 'hidden' : ''}><span class="small muted">Trip length</span><select id="nights">${(isSmall() ? [0] : [1,2,3,4,5,6,7,10,14]).map(n => `<option value="${n}" ${n === nightsSet(t) ? 'selected' : ''}>${n === 0 ? 'Same day' : n + ' night' + (n === 1 ? '' : 's')}</option>`).join('')}</select></label>
         </div>
         <span class="small muted">Change these any time. Days people already tapped are kept.</span>
       </div>
     </div>
     <div class="card stack">
-      <h2>Best dates</h2>
+      <h2>${isSmall() ? 'Best day' : 'Best dates'}</h2>
       ${t.lockedDates ? `<div class="banner"><span><b>Locked:</b> ${dayRange(t.lockedDates.start, t.lockedDates.end)}</span><button class="btn sm" data-act="unlockDates">Unlock</button></div>` : ''}
       ${best.length ? best.map((w, i) => `<div class="stack" style="gap:6px;${i ? 'border-top:1px solid var(--line);padding-top:12px' : ''}">
         <div class="row" style="justify-content:space-between"><b class="mono">${dayRange(w.start, w.end)}</b><span class="small"><b>${w.ok.length}/${ms.length}</b> can go</span></div>
         <div class="bar"><i style="width:${Math.round(w.ok.length / max * 100)}%"></i></div>
         ${w.miss.length ? `<span class="small muted">Missing: ${w.miss.map(m => esc(m.nick || 'Someone')).join(', ')}</span>` : `<span class="small" style="color:var(--good)">Everyone can make it</span>`}
-        <div><button class="btn sm ${i === 0 ? 'primary' : ''}" data-lockdates="${w.start}|${w.end}">Lock these dates</button></div>
+        <div><button class="btn sm ${i === 0 ? 'primary' : ''}" data-lockdates="${w.start}|${w.end}">${isSmall() ? 'Lock this day' : 'Lock these dates'}</button></div>
       </div>`).join('') : `<div class="empty">${(() => { const f = shorterFit(); return f
         ? `<b>No ${nightsSet(t) ? nightsSet(t) + '-night stretch' : 'day'} works yet</b><span>But a ${f.n}-night trip, ${fmt(f.w.start)} → ${fmt(f.w.end)}, works for ${f.w.ok.length} of ${ms.length}.</span><button class="btn sm primary" data-setnights="${f.n}">Switch to ${f.n} night${f.n === 1 ? '' : 's'}</button>`
         : `<span>No ${nightsSet(t) ? nightsSet(t) + '-night stretch' : 'day'} overlaps yet. Once people tap their free days, the best windows show up here.</span>`; })()}</div>`}
@@ -482,7 +491,7 @@ function whereTab() {
   const ds = S.trip.destinations || [], my = new Set(meDoc()?.votes || []), max = Math.max(1, active().length);
   const sorted = [...ds].sort((a, b) => votesFor(b.id).length - votesFor(a.id).length);
   return `<section class="card stack">
-    <div class="row" style="justify-content:space-between"><h2>Where are we going?</h2><span class="small muted">Vote for as many as you’d do</span></div>
+    <div class="row" style="justify-content:space-between"><h2>${isSmall() ? 'What should we do?' : 'Where are we going?'}</h2><span class="small muted">Vote for as many as you’d do</span></div>
     ${S.trip.lockedDest ? `<div class="banner"><span><b>Locked:</b> ${esc(dest()?.city || '')}</span><button class="btn sm" data-act="unlockDest">Unlock</button></div>` : ''}
     ${sorted.length ? sorted.map(d => { const v = votesFor(d.id); return `<div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:12px">
       <div class="row" style="justify-content:space-between"><div class="row" style="gap:8px"><h3>${esc(d.city)}</h3>${d.code ? `<span class="mono small muted">${esc(d.code.toUpperCase())}</span>` : ''}</div>
@@ -493,8 +502,8 @@ function whereTab() {
       <span class="small muted">${v.length} vote${v.length === 1 ? '' : 's'}${v.length ? ': ' + v.map(m => esc(m.nick || 'Someone')).join(', ') : ''}</span>
     </div>`; }).join('') : `<div class="empty"><span>No ideas yet. Throw one out.</span></div>`}
     <form id="addDest" class="row" style="border-top:1px solid var(--line);padding-top:14px;align-items:flex-end">
-      <label class="field" style="flex:2 1 200px"><span class="label">City</span><input id="ad-city" maxlength="50" required placeholder="Miami"></label>
-      <label class="field" style="flex:0 1 110px"><span class="label">Airport (optional)</span><input id="ad-code" maxlength="3" placeholder="MIA"></label>
+      <label class="field" style="flex:2 1 200px"><span class="label">${isSmall() ? 'Idea' : 'City'}</span><input id="ad-city" maxlength="50" required placeholder="${isSmall() ? 'Tacos + karaoke' : size() === 'weekend' ? 'Catskills' : 'Miami'}"></label>
+      <label class="field" style="flex:0 1 110px" ${size() === 'trip' ? '' : 'hidden'}><span class="label">Airport (optional)</span><input id="ad-code" maxlength="3" placeholder="MIA"></label>
       <button class="btn primary" type="submit">Add</button>
     </form>
   </section>`;
@@ -577,7 +586,7 @@ function spotsTab() {
       <div class="row" style="gap:6px;margin-top:auto">${voteBtns(rkey('sp' + s.name))}<a class="btn sm" href="${maps(s.name, ds.city)}" target="_blank" rel="noopener">Map</a>${d ? `<button class="btn sm" data-addspot="${i}">Add to itinerary</button>` : ''}</div>
     </article>`).join('')}</section>
     <p class="small muted">AI picks. Check hours, covers and age rules before you go.</p>`
-  : `<div class="empty"><span>Take the vibe quiz, then let AI pull clubs, bars, rooftops and a late-night food spot that fit your crew, budget and the nights you're there.</span></div>`}`;
+  : `<div class="empty"><span>${isSmall() ? 'Take the vibe quiz, then let AI pull spots that fit your crew, budget and the day.' : 'Take the vibe quiz, then let AI pull clubs, bars, rooftops and a late-night food spot that fit your crew, budget and the nights you’re there.'}</span></div>`}`;
 }
 
 function planTab() {
@@ -585,13 +594,13 @@ function planTab() {
   if (!d) return needDestDates('the itinerary');
   const days = span(d.start, d.end), items = visItems();
   return `<section class="card stack">
-    <div class="row" style="justify-content:space-between"><h2>Itinerary</h2>
+    <div class="row" style="justify-content:space-between"><h2>${isSmall() ? 'The plan' : 'Itinerary'}</h2>
       <div class="row" style="gap:6px">${items.some(i => i.ai) ? `<button class="btn sm ghost" data-act="clearAI">Remove AI items</button>` : ''}
       ${S.sample !== null ? `<button class="btn primary" data-act="plan" ${S.busy.plan ? 'disabled' : ''}>${S.busy.plan ? '<i class="spin"></i>Drafting…' : items.some(i => i.ai) ? 'Redraft with AI' : 'Draft it with AI'}</button>` : ''}</div></div>
-    ${!d.locked ? `<p class="small muted">Using the best dates so far. Lock dates in Dates so the plan doesn't shift.</p>` : ''}
+    ${!d.locked ? `<p class="small muted">Using the best dates so far. ${isSmall() ? 'Lock the day in When so the plan doesn’t shift.' : 'Lock dates in Dates so the plan doesn’t shift.'}</p>` : ''}
   </section>
   ${days.map((day, i) => { const list = items.filter(x => x.date === day).sort(byTime); return `<section class="card">
-    <div class="row" style="justify-content:space-between;margin-bottom:4px"><h3>Day ${i + 1} · ${fmt(day)}</h3>${i === 0 ? '<span class="label">Arrive</span>' : i === days.length - 1 ? '<span class="label">Head home</span>' : ''}</div>
+    <div class="row" style="justify-content:space-between;margin-bottom:4px"><h3>${days.length === 1 ? fmt(day) : `Day ${i + 1} · ${fmt(day)}`}</h3>${days.length === 1 ? '' : i === 0 ? `<span class="label">${size() === 'trip' ? 'Arrive' : 'Head out'}</span>` : i === days.length - 1 ? '<span class="label">Head home</span>' : ''}</div>
     ${list.length ? list.map(x => `<div class="tline"><span class="mono small">${esc(x.time || '—')}</span><div style="min-width:0"><span class="kind">${esc(x.kind || '')}</span> <b>${esc(x.title)}</b>${x.secret && !x.hidden ? (x.revealed ? ' <span class="secret-tag">Revealed surprise</span>' : ` <span class="secret-tag">Surprise · hidden from the ${esc(mode().honoree || 'guest')}</span> <button class="linkbtn small" data-reveal="${esc(x.id)}">Reveal</button>`) : ''}${x.note ? `<div class="small muted">${esc(x.note)}</div>` : ''}</div>${x.hidden ? '<span></span>' : `<div class="row" style="gap:4px;flex-wrap:nowrap">${voteBtns(rkey('it' + x.id))}<button class="x" data-delitem="${esc(x.id)}" aria-label="Remove">×</button></div>`}</div>`).join('') : `<p class="small muted">Nothing planned yet.</p>`}
     <form class="row addItem" data-date="${day}" style="margin-top:8px;gap:6px">
       <input id="ai-time-${day}" type="time" style="width:auto;flex:0 0 auto" aria-label="Time">
@@ -620,7 +629,7 @@ function moneyTab() {
   const total = S.expenses.reduce((a, e) => a + (+e.amount || 0), 0);
   const exps = [...S.expenses].sort((a, b) => (b.at || 0) - (a.at || 0));
   return `<section class="card stack">
-    <div class="row" style="justify-content:space-between"><h2>Trip expenses</h2><span class="mono">${money2(total)} total</span></div>
+    <div class="row" style="justify-content:space-between"><h2>${isSmall() ? 'Expenses' : 'Trip expenses'}</h2><span class="mono">${money2(total)} total</span></div>
     <form id="expForm" class="stack">
       <div class="row" style="align-items:flex-end">
         <label class="field" style="flex:2 1 180px"><span class="label">What</span><input id="ex-what" maxlength="60" required placeholder="Dinner at Catch"></label>
@@ -740,9 +749,9 @@ function genPitches() {
   if (isSmall()) return genPlanPitches();
   const opts = dateOptions(); if (!opts.length) { flash('Set a date window first.'); return; }
   const b = budgetCap();
-  const prompt = `You're pitching group trips to a friend group. They will each swipe yes or no on every pitch, like a dating app, so make each pitch exciting, specific and honest.
+  const prompt = `You're pitching ${size() === 'weekend' ? 'weekend getaways (1–2 nights, ideally a few hours’ drive or a short flight away)' : 'group trips'} to a friend group. They will each swipe yes or no on every pitch, like a dating app, so make each pitch exciting, specific and honest.
 Trip type: ${mode().label}. ${mode().ai}
-Crew: ${active().length} people flying from ${homes().join(', ') || 'unknown cities'}.
+Crew: ${active().length} people ${size() === 'trip' ? 'flying' : 'coming'} from ${homes().join(', ') || 'unknown cities'}.
 Per-person budget cap (all-in, flights included): ${b ? money(b.cap) : 'not set, assume moderate'}.
 Trip length: ${nightsSet(S.trip)} nights.
 ${blend() ? 'Crew vibe quiz:\n' + blendText() : 'Vibe: fun, social, nightlife'}
@@ -803,7 +812,7 @@ function matchTab() {
   ${m ? `<section class="match"><span class="label" style="color:rgba(255,255,255,.85)">Everyone swiped yes</span><h1 style="color:#fff">It’s a match!</h1>
       <p style="font-size:17px">${esc(m.city)} · ${dayRange(m.start, m.end)}${m.time ? ' · ' + t12(m.time) : ''} · ${esc(m.perPerson)}</p>
       <div>${S.trip.lockedDest && dest()?.city === m.city && S.trip.lockedDates?.start === m.start ? `<span class="on-pill" style="background:#fff;color:var(--accent)">Locked in</span>` : `<button class="btn" data-lockpitch="${esc(m.id)}">Lock it in</button>`}</div></section>` : ''}
-  ${!items.length ? `<div class="empty"><b>No pitches yet.</b><span>The more the crew fills in (home airports, budgets, free days, the vibe quiz), the better the pitches get.</span></div>`
+  ${!items.length ? `<div class="empty"><b>No pitches yet.</b><span>The more the crew fills in (${size() === 'trip' ? 'home airports, ' : size() === 'weekend' ? 'where everyone’s coming from, ' : ''}budgets, free days, the vibe quiz), the better the pitches get.</span></div>`
   : next ? `<section class="stack" style="align-items:center">${pitchCard(next)}
       <div class="row" style="justify-content:center;gap:22px"><button class="swipe-btn no" data-swipe="${esc(next.id)}|-1" aria-label="Pass">✕</button><button class="swipe-btn yes" data-swipe="${esc(next.id)}|1" aria-label="I'd go">♥</button></div>
       <span class="small muted">Drag the card or tap the buttons</span></section>`
@@ -881,11 +890,11 @@ function liveTab() {
   const meet = S.trip.meet, myCi = meDoc()?.checkin;
   return `${live ? '' : `<div class="banner"><span><b>Preview.</b> Live mode switches on by itself on ${fmt(d.start)}. This is what Day 1 will look like.</span></div>`}
   <section class="card stack">
-    <div class="row" style="justify-content:space-between"><div class="row" style="gap:8px">${live ? '<i class="live-dot" aria-hidden="true"></i><span class="label">Live</span>' : ''}<h2>Day ${idx + 1} of ${days.length} · ${fmt(day)}</h2></div></div>
+    <div class="row" style="justify-content:space-between"><div class="row" style="gap:8px">${live ? '<i class="live-dot" aria-hidden="true"></i><span class="label">Live</span>' : ''}<h2>${days.length === 1 ? (live ? 'Today · ' : '') + fmt(day) : `Day ${idx + 1} of ${days.length} · ${fmt(day)}`}</h2></div></div>
   </section>
   ${live ? liveQuick() : ''}
   ${recapCard(day)}
-  ${hangoverCard(day)}
+  ${isSmall() ? '' : hangoverCard(day)}
   <section class="grid2">
     <div class="card stack"><h3>Today’s plan</h3>
       ${items.length ? `<div>${items.map(i => `<div class="tline ${i.id === nextId ? 'today-next' : ''}"><span class="mono small">${esc(i.time || '—')}</span><div style="min-width:0">${i.id === nextId ? '<span class="kind">Up next</span> ' : ''}<b>${esc(i.title)}</b>${i.note ? `<div class="small muted">${esc(i.note)}</div>` : ''}</div><span></span></div>`).join('')}</div>`
@@ -901,12 +910,12 @@ function liveTab() {
     </div>
   </section>
   <section class="card stack"><div class="row" style="justify-content:space-between"><h3>Where’s everyone</h3>${myCi ? `<span class="small muted">You: ${esc(myCi.text)} · ${ago(myCi.at)}</span>` : ''}</div>
-    <div class="row" style="gap:6px">${CHECKINS.map(c => `<button class="chip ${myCi?.text === c ? 'on' : ''}" data-checkin="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+    <div class="row" style="gap:6px">${(isSmall() ? CHECKINS_SMALL : CHECKINS).map(c => `<button class="chip ${myCi?.text === c ? 'on' : ''}" data-checkin="${esc(c)}">${esc(c)}</button>`).join('')}</div>
     <form id="ciForm" class="row" style="gap:6px"><input id="ci-text" maxlength="60" placeholder="Or type it: “at the bar by the pool”" style="flex:1 1 200px"><button class="btn sm" type="submit">Check in</button></form>
     <div>${active().map(m => `<div class="nudge"><b>${esc(m.nick || 'Someone')}</b><span class="small ${m.checkin ? '' : 'muted'}">${m.checkin ? esc(m.checkin.text) + ' · ' + ago(m.checkin.at) : 'No check-in yet'}</span></div>`).join('')}</div>
   </section>
   ${mapPoints().length ? `<section class="card stack"><div class="row" style="justify-content:space-between"><h3>Map</h3><button class="btn sm ghost" data-tab="map">Full map</button></div>${mapView(300)}</section>` : ''}
-  ${idx === 0 ? arrivalsSection(true) : ''}`;
+  ${idx === 0 && size() === 'trip' ? arrivalsSection(true) : ''}`;
 }
 
 /* ---------- bucket list ---------- */
@@ -941,7 +950,7 @@ function hypeTab() {
   <section class="card stack">
     <div class="feed" id="feed">${feed.length ? feed.map(f => `<div class="bubble ${f.by === S.uid ? 'mine' : ''} ${f.by === 'ai' ? 'ai' : ''}">${f.secret ? '<span class="secret-tag">Planners only</span><br>' : ''}${f.by !== S.uid ? `<span class="small" style="font-weight:700">${esc(nameOf(f.by))}</span><br>` : ''}${linkify(f.text)}
       <span class="small" style="opacity:.7;display:block;margin-top:2px">${ago(f.at)}${f.by === S.uid ? ` · <button class="linkbtn" data-delfeed="${esc(f.id)}">delete</button>` : ''}</span></div>`).join('') : '<p class="small muted">Drop links, outfit ideas and hype here so they don’t get buried in the group chat.</p>'}</div>
-    <div class="row" style="gap:6px">${HYPES.map(h => `<button class="chip" data-hype="${esc(h)}">${esc(h)}</button>`).join('')}</div>
+    <div class="row" style="gap:6px">${(isSmall() ? HYPES_SMALL : HYPES).map(h => `<button class="chip" data-hype="${esc(h)}">${esc(h)}</button>`).join('')}</div>
     <form id="feedForm" class="row" style="gap:6px"><input id="fd-text" maxlength="500" placeholder="Say something…" style="flex:1 1 200px" autocomplete="off"><button class="btn primary" type="submit">Send</button>
       ${honoreeMode() && !isHonoree() ? `<label class="row small" style="gap:6px;flex:1 1 100%"><input type="checkbox" id="fd-secret" style="width:auto"> Planners only (hidden from the ${esc(mode().honoree)})</label>` : ''}</form>
   </section>`;
@@ -952,7 +961,7 @@ function postFeed(text, secret) { text = String(text || '').trim().slice(0, 500)
 const SUPERS = ['MVP', 'Most likely to lose their ID', 'Biggest spender', 'Best dressed', 'First to fall asleep', 'Last one standing', 'Main character', 'Most likely to miss the flight'];
 function superResults() {
   const sv = S.trip.superVotes || {}, ids = new Set(S.members.map(m => m.id));
-  return (mode().supers || SUPERS).map((c, i) => {
+  return (isSmall() ? SUPERS_SMALL : (mode().supers || SUPERS).map(x => size() !== 'trip' && /flight/.test(x) ? 'Most likely to oversleep' : x)).map((c, i) => {
     const votes = sv['s' + i] || {}, cnt = {};
     for (const v of Object.values(votes)) if (v && ids.has(v)) cnt[v] = (cnt[v] || 0) + 1;
     const top = Math.max(0, ...Object.values(cnt));
@@ -1001,7 +1010,7 @@ async function makeAwards() {
   const W = 1080, H = 1920, c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d');
   const g = x.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#0C0F21'); g.addColorStop(1, '#2B0B3A'); x.fillStyle = g; x.fillRect(0, 0, W, H);
   const r = x.createRadialGradient(W * .15, H * .1, 0, W * .15, H * .1, 700); r.addColorStop(0, 'rgba(255,201,77,.45)'); r.addColorStop(1, 'rgba(255,201,77,0)'); x.fillStyle = r; x.fillRect(0, 0, W, H);
-  x.fillStyle = '#FFC94D'; x.font = CF(900, 120); x.fillText('TRIP', 80, 260); x.fillStyle = '#fff'; x.fillText('AWARDS', 80, 380);
+  x.fillStyle = '#FFC94D'; x.font = CF(900, 120); x.fillText(isSmall() ? 'NIGHT' : 'TRIP', 80, 260); x.fillStyle = '#fff'; x.fillText('AWARDS', 80, 380);
   x.fillStyle = 'rgba(255,255,255,.75)'; cfit(x, S.trip.name, W - 160, 48, 700, 'body'); x.fillText(S.trip.name, 80, 460);
   let y = 590;
   for (const res of superResults()) {
@@ -1045,9 +1054,9 @@ async function saveCrew(name) {
 function crewSection() {
   const crew = S.crews.find(c => c.id === S.trip.crewId);
   return `<section class="card stack"><h3>Recurring crew</h3>
-    ${crew ? `<p class="small">This trip belongs to <b>${esc(crew.name)}</b>. Start the next one from the home screen in one tap.</p>
-      <div><button class="btn sm" data-act="syncCrew">Update crew with this trip’s people</button></div>`
-    : `<p class="small muted">Save this group so the next trip starts with everyone already added, and keep a history of your trips together.</p>
+    ${crew ? `<p class="small">This ${planWord()} belongs to <b>${esc(crew.name)}</b>. Start the next plan from their crew page in one tap.</p>
+      <div><button class="btn sm" data-act="syncCrew">Update crew with these people</button></div>`
+    : `<p class="small muted">Save this group as a crew so the next plan starts with everyone already added, and keep a history of your plans together.</p>
       <form id="crewForm" class="row" style="gap:6px"><input id="crew-name" maxlength="40" placeholder="The Vegas Six" style="flex:1 1 180px" required><button class="btn sm primary" type="submit">Save crew</button></form>`}
   </section>`;
 }
@@ -1122,7 +1131,7 @@ function tripView() {
       ${isSmall() ? `<span class="mode-chip" style="--mc:${SIZES[size()].color}">${esc(SIZES[size()].label)}</span>` : `<span class="mode-chip" style="--mc:${m.color}">${esc(m.label)}</span>`}${cd ? `<span class="small muted">${esc(cd.n > 0 ? cd.text + ' to go' : cd.text)}</span>` : ''}${nextPill(gd)}</div>`;
   return `${topBar()}
   ${S.demo ? `<div class="banner"><span><b>Demo trip.</b> Sample crew, nothing is saved. Try switching the trip type in Home › Settings.</span><button class="btn sm" data-act="home">Back</button></div>` : ''}
-  ${S.readOnly ? `<div class="banner"><span>You can view this trip but not edit it. Ask the owner to share it with you as a Contributor.</span></div>` : ''}
+  ${S.readOnly ? `<div class="banner"><span>You can view this plan but not edit it. Ask the owner to share it with you as a Contributor.</span></div>` : ''}
   ${lostBanner()}
   ${head}
   ${sec.tabs.length > 1 ? `<nav class="subtabs" aria-label="${esc(sec.label)}">${sec.tabs.map(([k, l]) => `<button class="subtab ${S.tab === k ? 'on' : ''}" data-tab="${k}" aria-current="${S.tab === k}">${esc(l)}${crumbTab === k ? '<i class="crumb" aria-hidden="true"></i>' : ''}</button>`).join('')}</nav>` : ''}
@@ -1155,10 +1164,10 @@ function overviewTab() {
   const fl = S.trip.deals?.data?.flights || [];
   return `${honoreeMode() && !t.honoree ? `<section class="card row" style="justify-content:space-between"><span><b>Who’s the ${esc(mode().honoree)}?</b> <span class="small muted">${t.honoreeName ? esc(t.honoreeName) + ' · ' : ''}Their share is covered and surprises stay hidden from them.</span></span>
     <select id="set-honoree" style="width:auto"><option value="">Pick someone</option>${S.members.map(m => `<option value="${esc(m.id)}">${esc(m.nick || 'Someone')}</option>`).join('')}</select></section>` : ''}
-  ${live ? `<section class="hero-card live-card"><div class="row" style="gap:8px"><i class="live-dot" aria-hidden="true"></i><span class="label" style="color:inherit">Trip is live · Day ${span(d.start, d.end).indexOf(TODAY) + 1}</span></div>
+  ${live ? `<section class="hero-card live-card"><div class="row" style="gap:8px"><i class="live-dot" aria-hidden="true"></i><span class="label" style="color:inherit">${isSmall() ? 'Happening today' : 'Trip is live · Day ' + (span(d.start, d.end).indexOf(TODAY) + 1)}</span></div>
       <h2>${upNext ? `Up next: ${esc(upNext.title)}` : 'Nothing else planned today'}</h2>${upNext ? `<span>${esc(upNext.time || '')}</span>` : ''}
       <div class="row" style="gap:8px"><button class="btn" data-tab="live">Open today</button><button class="btn ghost-light" data-tab="map">Map</button><button class="btn lost-btn" data-act="lostOpen">I’m lost</button></div></section>`
-  : over ? `<section class="hero-card" style="--hc:#7048E8"><span class="label" style="color:inherit">That’s a wrap</span><h2>Your ${esc(dest()?.city || 'trip')} Wrapped is ready</h2><div><button class="btn" data-tab="wrapped">Watch it</button></div></section>`
+  : over ? `<section class="hero-card" style="--hc:#7048E8"><span class="label" style="color:inherit">That’s a wrap</span><h2>${isSmall() ? 'Your recap is ready' : `Your ${esc(dest()?.city || 'trip')} Wrapped is ready`}</h2><div><button class="btn" data-tab="wrapped">Watch it</button></div></section>`
   : next ? (() => { const g = guide(); return `<section class="hero-card"><span class="label" style="color:inherit">Step ${st.indexOf(next) + 1} of ${st.length} · ${esc(next.label)}</span><h2>${esc(g && !g.wait ? g.label : g ? g.label : next.label)}</h2><p>${esc(next.sub)}</p>${g && !g.wait ? `<div><button class="btn" data-tab="${g.tab}" data-guide="1">Let’s go</button></div>` : ''}</section>`; })()
   : `<section class="hero-card" style="--hc:#14915F"><span class="label" style="color:inherit">All set</span><h2>Everything’s booked. Now you just wait.</h2></section>`}
   ${pass()}
@@ -1366,9 +1375,9 @@ function mapTab() {
   const ds = dest(); if (!ds) return needDestDates('the crew map');
   const pts = mapPoints();
   return `<section class="card stack">
-    <div class="row" style="justify-content:space-between"><div class="stack" style="gap:2px"><h2>Crew map</h2><span class="small muted">Your stay, spots and plans in ${esc(ds.city)}. Tap a pin for walking time and directions.</span></div>
+    <div class="row" style="justify-content:space-between"><div class="stack" style="gap:2px"><h2>Crew map</h2><span class="small muted">${isSmall() ? 'Your spots and plans' + (S.trip.city ? ' in ' + esc(S.trip.city) : '') : 'Your stay, spots and plans in ' + esc(ds.city)}. Tap a pin for walking time and directions.</span></div>
       <div class="row" style="gap:6px"><button class="btn sm lost-btn" data-act="lostOpen">I’m lost</button>${S.sample !== null ? `<button class="btn sm" data-act="pinPlaces" ${S.busy.pin ? 'disabled' : ''}>${S.busy.pin ? '<i class="spin"></i>Pinning…' : 'Pin everything'}</button>` : ''}</div></div>
-    ${pts.length ? mapView() : `<div class="empty"><b>Nothing on the map yet.</b><span>Lock a stay, get nightlife picks or build the itinerary, then tap “Pin everything”.</span></div>`}
+    ${pts.length ? mapView() : `<div class="empty"><b>Nothing on the map yet.</b><span>${isSmall() ? 'Get spot picks or build the plan' : 'Lock a stay, get nightlife picks or build the itinerary'}, then tap “Pin everything”.</span></div>`}
     <p class="small muted">Pins are approximate. Use Directions for turn-by-turn.</p>
   </section>
   ${lostAt().length ? `<section class="card stack"><h3>Lost right now</h3>${lostAt().map(m => `<div class="nudge"><b>${esc(m.nick || 'Someone')}</b><span class="small">near ${esc(m.lost.where)} · ${ago(m.lost.at)}</span></div>`).join('')}</section>` : ''}`;
@@ -1539,7 +1548,7 @@ function potTab() {
     <div class="row" style="justify-content:space-between"><h2>Group pot</h2><span class="small muted">For Ubers, groceries, drinks</span></div>
     <div class="pot-big ${low ? 'low' : ''}"><span class="label">In the pot</span><b>${money2(bal)}</b><span class="small muted">${money2(tin)} in · ${money2(tout)} spent</span>
       <div class="bigbar" style="margin-top:6px"><i style="width:${tin ? Math.max(0, bal / tin * 100) : 0}%;background:${low ? 'var(--meter-over)' : 'var(--good)'}"></i></div></div>
-    ${low ? `<div class="lost-banner" style="background:color-mix(in oklab,var(--gold) 22%,var(--surface));color:var(--ink);border-color:var(--gold)"><div><b>The pot’s running low.</b><div class="small">Top up about ${money(topUp)} each to cover the rest of the trip.</div></div><button class="btn sm" data-act="copyPot">Copy reminder</button></div>` : ''}
+    ${low ? `<div class="lost-banner" style="background:color-mix(in oklab,var(--gold) 22%,var(--surface));color:var(--ink);border-color:var(--gold)"><div><b>The pot’s running low.</b><div class="small">Top up about ${money(topUp)} each to cover the rest of the ${planWord()}.</div></div><button class="btn sm" data-act="copyPot">Copy reminder</button></div>` : ''}
     <div class="row" style="gap:8px;align-items:center"><span class="small">Holding the pot:</span><select id="pot-keeper" style="width:auto">${active().map(m => `<option value="${esc(m.id)}" ${keeper === m.id ? 'selected' : ''}>${esc(m.nick || 'Someone')}</option>`).join('')}</select></div>
     <div>${ms.map(m => `<div class="nudge"><b>${esc(m.nick || 'Someone')}</b><span class="row" style="gap:8px"><span class="mono small">${money2(by[m.id] || 0)}</span>${behind.includes(m) ? `<span class="pill maybe">${money2(fair - (by[m.id] || 0))} behind</span>` : '<span class="pill in">Even</span>'}</span></div>`).join('')}</div>
     ${S.copyText ? `<textarea id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
@@ -1563,7 +1572,7 @@ function potTab() {
 function awardsTab() {
   const rs = superResults(), d = dates(), over = d && TODAY > d.end;
   return `<section class="card stack">
-    <div class="row" style="justify-content:space-between"><div class="stack" style="gap:2px"><h2>Trip awards</h2><span class="small muted">${over ? 'The trip’s over. Time to vote.' : 'Voting is for after the trip, but you can start now.'}</span></div>
+    <div class="row" style="justify-content:space-between"><div class="stack" style="gap:2px"><h2>${isSmall() ? 'Awards' : 'Trip awards'}</h2><span class="small muted">${over ? `The ${planWord()}’s over. Time to vote.` : `Voting is for after the ${planWord()}, but you can start now.`}</span></div>
       <button class="btn sm" data-act="awardsCard">Make awards card</button></div>
     ${S.img?.kind === 'awards' ? imgPanel() : ''}
     ${rs.map(r => `<div class="q"><div class="row" style="justify-content:space-between"><b>${esc(r.c)}</b>${r.winners.length ? `<span class="small">${r.winners.length > 1 ? 'Tie: ' : '♛ '}<b>${r.winners.map(id => esc(nameOf(id))).join(' & ')}</b> <span class="muted">(${r.cnt[r.winners[0]]} vote${r.cnt[r.winners[0]] === 1 ? '' : 's'})</span></span>` : '<span class="small muted">No votes yet</span>'}</div>
@@ -1580,7 +1589,7 @@ function photosTab() {
       ${S.img?.kind === 'collage' ? imgPanel() : ''}
       <div class="photos">${photos.map((p, i) => { const sc = score(rkey('ph' + p.id)); return `<div class="ph"><button class="ph-open" data-show="${i}" aria-label="Open photo ${i + 1}"><img src="/_blob/${esc(p.asset)}" alt="Photo by ${esc(nameOf(p.by))}" loading="lazy"></button>
         <button class="ph-like ${sc.mine > 0 ? 'on' : ''}" data-react="${rkey('ph' + p.id)}|1" aria-label="Like photo">♥ ${sc.up || ''}</button>${p.by === S.uid ? `<button class="x" data-delphoto="${esc(p.id)}" aria-label="Delete photo">×</button>` : ''}</div>`; }).join('')}</div>`
-      : `<div class="empty"><span>Everyone’s photos land here. Like the best ones: the top photo makes it into your Trip Wrapped.</span></div>`}
+      : `<div class="empty"><span>Everyone’s photos land here. Like the best ones: the top photo makes it into your ${isSmall() ? 'recap' : 'Trip Wrapped'}.</span></div>`}
   </section>
   ${S.show !== null && photos[S.show] ? `<div class="show" role="dialog" aria-label="Trip recap">
     <img src="/_blob/${esc(photos[S.show].asset)}" alt="Photo ${S.show + 1} of ${photos.length}">
@@ -1605,11 +1614,11 @@ function wrappedTab() {
   const w = wrapData(); if (!w.d || !w.ds) return needDestDates('your Trip Wrapped');
   const nights = nightsOf(w.d);
   const slides = [
-    { c: ['#D41C78', '#7048E8'], k: `${w.over ? '' : 'So far · '}${esc(S.trip.name)}`, h: `Your ${esc(w.ds.city)} Wrapped`, s: `${nights} nights · ${w.ms.length} people · ${short(w.d.start)} – ${short(w.d.end)}` },
+    { c: ['#D41C78', '#7048E8'], k: `${w.over ? '' : 'So far · '}${esc(S.trip.name)}`, h: `Your ${esc(w.ds.city)} Wrapped`, s: `${nights ? nights + ' night' + (nights === 1 ? '' : 's') + ' · ' : ''}${w.ms.length} ${w.ms.length === 1 ? 'person' : 'people'} · ${dayRange(w.d.start, w.d.end)}` },
     { c: ['#0E9F6E', '#1098AD'], k: 'The damage', h: money(w.total), s: w.total ? `spent as a group. That’s about ${money(w.total / Math.max(1, w.ms.length))} each.` : 'No group spending logged. Suspicious.' },
     w.topSpot && { c: ['#7048E8', '#3B5BDB'], k: 'Crew favorite spot', h: esc(w.topSpot.name), s: esc(w.topSpot.area || w.topSpot.type || '') },
     w.owl && { c: ['#151A33', '#3A0B2C'], k: 'Night owl', h: esc(w.owl.m.nick || 'Someone'), s: `${w.owl.n} check-in${w.owl.n === 1 ? '' : 's'} between midnight and 6am.` },
-    w.photo && { c: ['#F08C00', '#D41C78'], k: 'Photo of the trip', h: '', img: w.photo.asset, s: `by ${esc(nameOf(w.photo.by))}` },
+    w.photo && { c: ['#F08C00', '#D41C78'], k: `Photo of the ${isSmall() ? 'night' : 'trip'}`, h: '', img: w.photo.asset, s: `by ${esc(nameOf(w.photo.by))}` },
     w.champ && { c: ['#F2B32B', '#E8590C'], k: 'Bucket list champion', h: esc(nameOf(w.champ[0])), s: `${w.champ[1]} points of chaos` },
     w.wrecked && { c: ['#5C6A7A', '#151A33'], k: 'Most wrecked', h: esc(nameOf(w.wrecked[0])), s: `average hangover score ${w.wrecked[1].toFixed(1)}/5` },
     w.hyper && { c: ['#E64980', '#7048E8'], k: 'Hype machine', h: esc(nameOf(w.hyper[0])), s: `${w.hyper[1]} messages in the hype feed` },
@@ -1650,10 +1659,10 @@ async function makeWrappedCard() {
 
 const SETTINGS_HTML = () => `  ${crewSection()}
   <section class="card stack">
-    <h3>Trip settings</h3>
-    ${S.confirm === 'delete' ? `<div class="banner"><span><b>Delete “${esc(S.trip.name)}” for everyone?</b> The crew, votes, expenses and packing list all go. This can’t be undone.</span><div class="row" style="gap:6px"><button class="btn sm danger-fill" data-act="doDelete">Delete trip</button><button class="btn sm" data-act="cancelConfirm">Cancel</button></div></div>`
-    : S.confirm === 'leave' ? `<div class="banner"><span><b>Leave this trip?</b> Your dates, votes and boarding pass are removed.</span><div class="row" style="gap:6px"><button class="btn sm danger-fill" data-act="doLeave">Leave trip</button><button class="btn sm" data-act="cancelConfirm">Cancel</button></div></div>`
-    : `<div class="row" style="gap:8px">${meDoc() && !S.demo ? `<button class="btn sm danger" data-act="askLeave">Leave trip</button>` : ''}${canDelete(S.trip) ? `<button class="btn sm danger" data-act="askDelete">Delete trip</button>` : `<span class="small muted">Only the person who created the trip can delete it.</span>`}</div>`}
+    <h3>Settings</h3>
+    ${S.confirm === 'delete' ? `<div class="banner"><span><b>Delete “${esc(S.trip.name)}” for everyone?</b> The crew, votes, expenses and packing list all go. This can’t be undone.</span><div class="row" style="gap:6px"><button class="btn sm danger-fill" data-act="doDelete">Delete ${planWord()}</button><button class="btn sm" data-act="cancelConfirm">Cancel</button></div></div>`
+    : S.confirm === 'leave' ? `<div class="banner"><span><b>Leave this ${planWord()}?</b> Your days, votes${size() === 'trip' ? ' and boarding pass' : ''} are removed.</span><div class="row" style="gap:6px"><button class="btn sm danger-fill" data-act="doLeave">Leave ${planWord()}</button><button class="btn sm" data-act="cancelConfirm">Cancel</button></div></div>`
+    : `<div class="row" style="gap:8px">${meDoc() && !S.demo ? `<button class="btn sm danger" data-act="askLeave">Leave ${planWord()}</button>` : ''}${canDelete(S.trip) ? `<button class="btn sm danger" data-act="askDelete">Delete ${planWord()}</button>` : `<span class="small muted">Only the person who created it can delete it.</span>`}</div>`}
   </section>`;
 
 /* ---------- live quick actions + mobile gestures ---------- */
@@ -1675,9 +1684,9 @@ const inviteLink = () => SHARE_BASE + '#' + S.tid;
 function inviteCard() {
   if (S.demo) return `<section class="card stack"><h2>Invite the crew</h2><p class="small muted">Invites work on real trips. Start one from the home screen.</p></section>`;
   return `<section class="card stack">
-    <div class="row" style="justify-content:space-between"><h2>Invite the crew</h2><span class="small muted">${S.members.length} in the trip</span></div>
+    <div class="row" style="justify-content:space-between"><h2>Invite the crew</h2><span class="small muted">${S.members.length} in the ${planWord()}</span></div>
     ${IN_CLAUDE ? `<ol class="small steps-list"><li>Open this page’s <b>Share</b> menu and invite each friend by email as an <b>Editor</b>. Viewers can look but can’t vote or swipe.</li><li>Send them the invite below. It opens this trip directly.</li></ol>`
-      : `<p class="small muted">Send this link. Friends type their name and land right in this trip.</p>`}
+      : `<p class="small muted">Send this link. Friends type their name and land right in this ${planWord()}.</p>`}
     <span class="invite-link mono">${esc(inviteLink())}</span>
     <div class="row" style="gap:6px"><button class="btn primary" data-act="copyInvite">Copy invite message</button></div>
   </section>`;
@@ -1780,7 +1789,7 @@ const size = () => SIZES[S.trip?.size] ? S.trip.size : 'trip';
 const isSmall = (t = S.trip) => ['hangout', 'day'].includes(t?.size);
 const nightsSet = t => t.nights ?? (SIZES[t.size] || SIZES.trip).nights;
 const sizeOf = t => SIZES[t.size] ? t.size : 'trip';
-const HIDE_TABS = { hangout: ['flights', 'stays', 'tickets', 'pack', 'bucket', 'pot'], day: ['flights', 'stays', 'tickets', 'pot'], weekend: ['flights', 'tickets'], trip: [] };
+const HIDE_TABS = { hangout: ['flights', 'stays', 'tickets', 'pack', 'bucket', 'pot'], day: ['flights', 'stays', 'tickets', 'pack', 'pot'], weekend: ['flights', 'tickets'], trip: [] };
 const STEP_KEYS = { hangout: ['crew', 'where', 'dates'], day: ['crew', 'where', 'dates', 'plan'], weekend: ['crew', 'where', 'dates', 'stay', 'plan'], trip: ['crew', 'where', 'dates', 'flights', 'stay', 'plan'] };
 const t12 = hm => { if (!hm) return ''; const [h, m] = hm.split(':').map(Number); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
 const dayRange = (a, b) => a === b ? fmt(a) : `${fmt(a)} → ${fmt(b)}`;
@@ -2082,7 +2091,7 @@ function playlistCard(ctx = {}) {
         ${inPlan ? `<button class="chip ${mySotn === s.id ? 'sotn-on' : ''}" data-sotn="${esc(s.id)}" title="My song of the ${isSmall() ? 'night' : 'trip'}">♫</button>` : ''}
         ${s.by === S.uid ? `<button class="x" data-delsong="${esc(s.id)}" aria-label="Remove ${esc(s.title)}">×</button>` : ''}</div></li>`; }).join('')}</ol>
       <div class="row" style="gap:6px"><button class="btn sm" data-act="copySongs">Copy the list</button><span class="small muted">Paste it into a Spotify or Apple Music playlist.</span></div>`
-    : `<div class="empty"><span>No songs yet. Add the one that has to play this ${inPlan ? (isSmall() ? 'night' : 'trip') : 'year'}.</span></div>`}
+    : `<div class="empty"><span>No songs yet. Add the one that has to play ${inPlan ? 'at this ' + planWord() : 'this year'}.</span></div>`}
   </section>`;
 }
 const playlistTab = () => playlistCard();
@@ -2106,8 +2115,45 @@ async function delSong(id) {
   try { await S.db.doc(`${S.songPath}/${id}`).delete(); } catch (e) { flash(writeErr(e)); }
 }
 
+/* ---------- per-size wording ---------- */
+function draftNight() {
+  const d = dates(); if (!d) return;
+  const spots = (S.trip.spots?.items || []).map(s => s.name).join('; ');
+  const prompt = `Plan ${size() === 'hangout' ? 'this evening' : 'this day out'} for a friend group: 3–5 stops with times, in order, close to each other.
+${context()}
+Spots the crew likes: ${spots || 'none yet, suggest real places'}
+Reply with only JSON: {"items":[{"time":"HH:MM","title":"short title with the place name","kind":"food|activity|nightlife|chill","note":"one short line"}]}`;
+  askAI('plan', prompt, data => {
+    const items = (data?.items || []).filter(i => i && i.title).slice(0, 6).map(i => ({ id: rid(6), date: d.start, time: String(i.time || '').slice(0, 5), title: String(i.title).slice(0, 120), kind: i.kind || 'plan', note: String(i.note || '').slice(0, 200), ai: true }));
+    if (!items.length) { flash('No plan came back. Try again.'); return; }
+    return saveTrip({ itinerary: [...(S.trip.itinerary || []).filter(i => !i.ai), ...items] });
+  });
+}
+const planWord = () => ({ hangout: 'hangout', day: 'day out', weekend: 'weekend', trip: 'trip' })[size()];
+const SUPERS_SMALL = ['MVP of the night', 'Picked the best spot', 'Most likely to be late', 'First to leave', 'Last one standing', 'Best story of the night', 'Main character', 'Best dressed'];
+const CHECKINS_SMALL = ['On my way', 'Here', 'Running late', 'Getting food', 'Heading home'];
+const HYPES_SMALL = ['LET’S GOOO', 'Who’s driving?', 'Outfit check?', 'Running late lol'];
+// story card for hangouts and days out: an event ticket instead of a boarding pass
+async function makeEventCard() {
+  const W = 1080, H = 1920, c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d');
+  try { await Promise.all(['900 120px Anybody', '600 40px "JetBrains Mono"', '700 40px Figtree'].map(f => document.fonts.load(f))); } catch {}
+  const d = dates(), ds = dest(), cd = countdown(), t = S.trip, sz = SIZES[size()];
+  const g = x.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#0C0F21'); g.addColorStop(1, '#0B3B34'); x.fillStyle = g; x.fillRect(0, 0, W, H);
+  const r = x.createRadialGradient(W * .8, H * .15, 0, W * .8, H * .15, 720); r.addColorStop(0, 'rgba(60,203,143,.45)'); r.addColorStop(1, 'rgba(60,203,143,0)'); x.fillStyle = r; x.fillRect(0, 0, W, H);
+  x.fillStyle = '#fff'; x.font = CF(900, 60); x.fillText('OUTTA', 90, 180); let px = 90 + x.measureText('OUTTA').width; x.fillStyle = '#FF4FA3'; x.fillText('/', px, 180); px += x.measureText('/').width; x.fillStyle = '#fff'; x.fillText('HERE', px, 180);
+  x.fillStyle = '#fff'; x.beginPath(); x.roundRect(70, 300, W - 140, 1160, 52); x.fill();
+  const L = 140; x.fillStyle = '#6B7194'; x.font = CF(600, 30, 'mono'); x.fillText(`${sz.label.toUpperCase()} · ${(t.name || '').toUpperCase()}`.slice(0, 40), L, 410);
+  const title = ds ? ds.city : t.name; x.fillStyle = '#151A33'; cfit(x, title, W - 2 * L, 120, 900); x.fillText(title, L, 560);
+  const rows = [['WHEN', d ? fmt(d.start) + (t.time ? ' · ' + t12(t.time) : '') : 'TBD'], ['WHERE', t.venue || t.city || 'TBD'], ['CREW', S.members.filter(m => m.status === 'in').map(m => m.nick || 'Someone').join(' · ') || '—']];
+  let y = 700; for (const [k, v] of rows) { x.fillStyle = '#6B7194'; x.font = CF(600, 30, 'mono'); x.fillText(k, L, y); x.fillStyle = '#151A33'; cfit(x, v, W - 2 * L, 54, 700, 'body'); x.fillText(v, L, y + 66); y += 170; }
+  x.fillStyle = '#14915F'; x.font = CF(900, 110); x.fillText(cd && cd.n > 0 ? (cd.n === 1 ? 'TOMORROW' : `IN ${cd.n} DAYS`) : cd && cd.n === 0 ? 'TONIGHT' : 'SOON', L, 1330);
+  x.fillStyle = 'rgba(255,255,255,.75)'; x.font = CF(700, 40, 'body'); x.fillText('Planned on Outta Here', 90, H - 130);
+  c.toBlob(blob => { if (!blob) { flash('Couldn’t draw the card.'); return; } if (S.cardUrl) URL.revokeObjectURL(S.cardUrl); S.cardBlob = blob; S.cardUrl = URL.createObjectURL(blob); render(); }, 'image/png');
+}
+
 /* ---------- story card ---------- */
 async function makeCard() {
+  if (isSmall()) return makeEventCard();
   const W = 1080, H = 1920, c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d');
   try { await Promise.all(['900 120px Anybody', '600 40px "JetBrains Mono"', '700 40px Figtree'].map(f => document.fonts.load(f))); } catch {}
   const F = (w, s, fam) => `${w} ${s}px ${fam === 'mono' ? '"JetBrains Mono", monospace' : fam === 'body' ? 'Figtree, sans-serif' : 'Anybody, "Arial Narrow", sans-serif'}`;
@@ -2199,7 +2245,7 @@ app.addEventListener('click', e => {
   if (ds.sotn) { const cur = (S.trip.songVotes || {})[S.uid]; return saveTrip({ songVotes: { [S.uid]: cur === ds.sotn ? '' : ds.sotn } }); }
   if (ds.delsong) return delSong(ds.delsong);
   if (ds.act === 'copySongs') return copy([...S.songs].sort((a, b) => songVotes(b) - songVotes(a)).map((s, i) => `${i + 1}. ${s.title}${s.artist ? ' – ' + s.artist : ''}`).join('\n'));
-  if (ds.act === 'copyInvite') return copy(`Join our trip "${S.trip.name}" on Outta Here: ${inviteLink()}\nTap “I’m in”, then add your free days and budget. Takes 2 minutes.`);
+  if (ds.act === 'copyInvite') return copy(`Join our ${planWord()} "${S.trip.name}" on Outta Here: ${inviteLink()}\nTap “I’m in”, then add your free days and budget. Takes 2 minutes.`);
   if (ds.setnights) return saveTrip({ nights: +ds.setnights, lockedDates: null });
   if (ds.act === 'ciJump') return jumpTo('#ci-text');
   if (ds.act === 'meetJump') return jumpTo('#meet-where');
