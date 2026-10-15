@@ -1889,7 +1889,8 @@ function planRow(t, opts = {}) {
     </div>
     <div class="row" style="gap:6px;flex-wrap:nowrap">${S.confirmHome === t.id
       ? `<button class="btn sm danger-fill" data-homedo="${esc(t.id)}">Delete</button><button class="btn sm ghost" data-act="homeCancel">Cancel</button>`
-      : `${opts.del && canDelete(t) ? `<button class="x" data-homedel="${esc(t.id)}" aria-label="Delete ${esc(t.name)}">×</button>` : ''}<button class="btn sm primary" data-open="${esc(t.id)}">Open</button>`}</div>
+      : `${opts.del && canDelete(t) ? `<button class="x" data-homedel="${esc(t.id)}" aria-label="Delete ${esc(t.name)}">×</button>` : ''}<button class="btn sm" data-share="${esc(t.id)}" aria-label="Share ${esc(t.name)}">Share</button><button class="btn sm primary" data-open="${esc(t.id)}">Open</button>`}</div>
+    ${S.shareHome === t.id && S.copyText ? `<textarea class="pr-copy" id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
   </div>`;
 }
 function homeView() {
@@ -2206,6 +2207,12 @@ app.addEventListener('click', e => {
   if (ds.act === 'demo') return openDemo();
   if (ds.open) return openTrip(ds.open);
   if (ds.homedel) { S.confirmHome = ds.homedel; return render(); }
+  if (ds.share) {
+    const t = S.trips.find(x => x.id === ds.share); if (!t) return;
+    const w = SIZES[sizeOf(t)].label.toLowerCase();
+    S.shareHome = t.id;
+    return copy(`Join our ${w} "${t.name}" on Outta Here: ${SHARE_BASE + '#' + t.id}\nTap “I’m in”, then add when you’re free. Takes 2 minutes.`).then(render);
+  }
   if (ds.startcrew) return startNewPlan(ds.startcrew);
   if (ds.act === 'clearCrew') { S.newCrew = null; return render(); }
   if (ds.delcrew) { if (S.db) S.db.doc('crews/' + ds.delcrew).delete().then(() => { flash('Crew deleted. Its plans are kept.'); goHome(); }, e => flash(writeErr(e))); return; }
