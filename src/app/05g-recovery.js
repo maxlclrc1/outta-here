@@ -84,7 +84,7 @@ function changeActions(ch, imp) {
   if (ch.kind === 'dates' && ch.start && ch.end) {
     const old = S.trip.lockedDates, items = (S.trip.itinerary || []).filter(i => i.date);
     if (old && items.length) out.push({ id: 'shift', label: `Move the itinerary along with the dates (${items.length} stop${items.length === 1 ? '' : 's'})`, on: true });
-    if (Object.keys(tk).length) out.push({ id: 'flights', label: 'Add a to-do: change booked flights to the new dates', on: true });
+    if (Object.keys(tk).some(u => S.members.some(m => m.id === u && going(m)))) out.push({ id: 'flights', label: 'Add a to-do: change booked flights to the new dates', on: true });
     if (stay && stay.booked) out.push({ id: 'staymove', label: 'Add a to-do: move the stay booking', on: true });
   }
   if (ch.kind !== 'budget') out.push({ id: 'ask', label: 'Ask the crew: keep going, change the plan, or call it off?', on: worse });
@@ -169,10 +169,12 @@ async function applyChange(ch, picks = {}, opts = {}) {
     if (Object.keys(tasks).length) patch.tasks = tasks;
     if (on('ask')) patch.check = { id: rid(6), q: `${changeText(ch)}. What do we do?`, by: S.uid, at: Date.now(), votes: {} };
     // budgets are private, so a budget change isn't logged for the crew
-    if (ch.kind !== 'budget') { const id = rid(6); patch.changes = { [id]: { text: changeText(ch), fx: imp.fx.filter(f => f.level !== 'info' || f.from !== '').slice(0, 6).map(f => f.from !== '' ? `${f.area}: ${f.from} → ${f.to}` : f.text), by: S.uid, at: Date.now() } }; }
+    const fxs = imp.fx.filter(f => !(ch.kind === 'dates' && on('shift') && f.area === 'Itinerary'));
+    if (ch.kind !== 'budget') { const id = rid(6); patch.changes = { [id]: { text: changeText(ch), fx: fxs.filter(f => f.level !== 'info' || f.from !== '').slice(0, 6).map(f => f.from !== '' ? `${f.area}: ${f.from} → ${f.to}` : f.text), by: S.uid, at: Date.now() } }; }
     if (Object.keys(patch).length) await saveTrip(patch);
     S.recover = null; S.rc = null; S.alts = null; render();
-    if (!opts.quiet) flash(`${changeText(ch)}. ${imp.fx.find(f => f.from !== '') ? `${imp.fx.find(f => f.from !== '').area}: ${imp.fx.find(f => f.from !== '').from} → ${imp.fx.find(f => f.from !== '').to}.` : 'Nothing else moves.'}`);
+    const top = fxs.find(f => f.from !== '') || fxs[0];
+    if (!opts.quiet) flash(`${changeText(ch)}. ${top ? (top.from !== '' ? `${top.area}: ${top.from} → ${top.to}.` : top.text + '.') : 'Nothing else moves.'}`);
   } catch (e) { flash(writeErr(e)); }
 }
 // when someone drops out some other way, still work out what it changed and log it
@@ -192,7 +194,7 @@ function changesCard() {
   return `<section class="card stack changes">
     ${c ? `<div class="stack check" style="gap:8px"><span class="label" style="color:var(--accent)">Crew check-in</span><b>${esc(c.q)}</b>
       <div class="ro-opts">${opts.map(([k, l]) => `<button class="ro-opt ${mine === k ? 'on' : ''}" data-check="${k}" aria-pressed="${mine === k}" ${S.readOnly ? 'disabled' : ''}><b>${l}</b><span class="ro-count">${count(k)} vote${count(k) === 1 ? '' : 's'}${mine === k ? ' · yours' : ''}</span></button>`).join('')}</div>
-      <div class="row" style="justify-content:space-between;gap:8px"><span class="small muted">${answered} of ${n} answered. ${esc(ruleText())}</span>${isOrganizer() || c.by === S.uid ? '<button class="linkbtn small" data-act="checkClose">Close it</button>' : ''}</div></div>` : ''}
+      <div class="row" style="justify-content:space-between;gap:8px"><span class="small muted">${answered} of ${n} answered · ${esc(STYLES[decideOf().style][0])}</span>${isOrganizer() || c.by === S.uid ? '<button class="linkbtn small" data-act="checkClose">Close it</button>' : ''}</div></div>` : ''}
     ${list.length ? `<div class="stack" style="gap:8px"><span class="label">What changed</span>${list.map(([id, x]) => `<div class="change-row"><div class="row" style="justify-content:space-between;gap:8px"><b>${esc(x.text)}</b><span class="small muted">${ago(x.at)}</span></div>${(x.fx || []).length ? `<ul class="small muted">${x.fx.map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : ''}</div>`).join('')}</div>` : ''}
   </section>`;
 }

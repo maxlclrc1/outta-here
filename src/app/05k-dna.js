@@ -9,7 +9,7 @@ const DNA_MIN = 2;
 const crewPlans = cid => S.trips.filter(t => t.crewId === cid);
 const isLate = x => x && (x >= '22:00' || x < '04:00');
 const isFoody = i => i.kind === 'food' || /dinner|brunch|lunch|breakfast|tapas|taco|market|food|restaurant|bakery|pizza|ramen|sushi/i.test(i.title || '');
-const pitchPrice = p => { const r = moneyRange(p.perPerson); return r ? r[0] : 0; };
+const pitchPrice = (p, t, base) => { const r = moneyRange(p.perPerson); return r ? Math.round(convert(r[0], CUR_CODES.includes(t.currency) ? t.currency : 'USD', base)) : 0; };
 function crewDNA(c) {
   const ps = crewPlans(c.id), dna = c.dna || {}, traits = [], memory = [];
   const items = ps.flatMap(t => (t.itinerary || []).filter(i => !i.secret));
@@ -39,11 +39,12 @@ function crewDNA(c) {
   const starts = ps.filter(t => t.lockedDates).map(t => D(t.lockedDates.start).getUTCDay());
   if (starts.length >= DNA_MIN && starts.filter(d => [5, 6].includes(d)).length / starts.length >= 0.7) add('weekend', 'Friday-to-Sunday people', `${starts.filter(d => [5, 6].includes(d)).length} of ${starts.length} plans started on a Friday or Saturday`);
   // prices: what got passed on versus what got yeses, by the crew as a whole
-  const judged = ps.flatMap(t => (t.pitches?.items || []).map(p => { const v = Object.values((t.swipes || {})[p.id] || {}); return { p, t, yes: v.filter(x => x === 1).length, no: v.filter(x => x === -1).length, n: v.length, price: pitchPrice(p) }; })).filter(x => x.n >= 2);
+  const base = S.trip && S.trip.crewId === c.id ? cur() : (ps.find(t => CUR_CODES.includes(t.currency))?.currency || 'USD'), m$ = n => fmtMoney(n, base);
+  const judged = ps.flatMap(t => (t.pitches?.items || []).map(p => { const v = Object.values((t.swipes || {})[p.id] || {}); return { p, t, yes: v.filter(x => x === 1).length, no: v.filter(x => x === -1).length, n: v.length, price: pitchPrice(p, t, base) }; })).filter(x => x.n >= 2);
   const liked = judged.filter(x => x.yes > x.n / 2), passed = judged.filter(x => x.no > x.n / 2);
   const avg = a => a.length ? Math.round(a.reduce((n, x) => n + x.price, 0) / a.length) : 0;
   const lp = liked.filter(x => x.price), pp = passed.filter(x => x.price);
-  if (lp.length && pp.length >= DNA_MIN && avg(pp) > avg(lp) * 1.2) add('budget', 'Budget-conscious', `Passed on options around ${money(avg(pp))}, said yes around ${money(avg(lp))}`);
+  if (lp.length && pp.length >= DNA_MIN && avg(pp) > avg(lp) * 1.2) add('budget', 'Budget-conscious', `Passed on options around ${m$(avg(pp))}, said yes around ${m$(avg(lp))}`);
   // memories: prices they turned down and things they loved
   for (const x of pp.filter(x => x.price > (avg(lp) || 0)).slice(-4)) memory.push({ k: 'no-' + x.p.id, kind: 'passed', text: `${pName(x.p)} at ${x.p.perPerson}` });
   for (const x of liked.filter(x => x.yes === x.n).slice(-4)) memory.push({ k: 'yes-' + x.p.id, kind: 'loved', text: `${pName(x.p)}${x.p.tagline ? ': ' + x.p.tagline : ''}` });

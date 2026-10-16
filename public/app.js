@@ -341,6 +341,7 @@ function draftPlan() {
   const prompt = `Build a fun, realistic day-by-day itinerary for this group trip.
 ${context()}
 Nightlife picks the group already likes: ${spots || 'none yet — suggest real venues'}
+${S.trip.crewId ? dnaText(S.trip.crewId) : ''}
 
 Arrival and departure days are lighter. Mix food, daytime activities, recovery time, and nights out (use the picks on their best nights). 3–5 items per day.
 Reply with only JSON: {"days":[{"date":"YYYY-MM-DD","items":[{"time":"HH:MM","title":"short title with the place name","kind":"food|activity|nightlife|travel|chill","note":"one short line"}]}]}`;
@@ -1011,6 +1012,7 @@ function pitchMemory() {
   const past = S.trips.filter(x => x.id !== S.tid && t.crewId && x.crewId === t.crewId && x.lockedDest).map(x => (x.destinations || []).find(d => d.id === x.lockedDest)?.city || x.name).slice(0, 8);
   if (t.pitchNote) lines.push(`The crew asked for: "${t.pitchNote}". Treat this as a requirement.`);
   if (hist.length) lines.push(`How the crew (${active().length} people) swiped on earlier pitches. Lean toward what got yeses, steer away from what most people passed on, and don't repeat any of these:\n${hist.map(h => `- ${h.n}: ${h.y} yes, ${h.w || 0} could work, ${h.x} pass`).join('\n')}`);
+  if (t.crewId) { const dna = dnaText(t.crewId); if (dna) lines.push(dna); }
   if (past.length) lines.push(`Plans this crew already locked before: ${past.join(', ')}. Don't repeat them; use them as a hint about their taste.`);
   return lines.join('\n');
 }
@@ -1197,6 +1199,7 @@ function matchTab() {
       ${S.sample !== null ? `<button class="btn ${items.length ? '' : 'primary'}" data-act="genPitches" ${S.busy.pitch ? 'disabled' : ''}>${S.busy.pitch ? '<i class="spin"></i>Pitching…' : items.length ? 'New pitches' : isSmall() ? 'Pitch us some plans' : 'Pitch us some trips'}</button>` : ''}</div>
     ${steerField()}
     ${S.demo ? '' : ruleLine()}
+    ${(() => { const c = S.crews.find(x => x.id === S.trip.crewId); return c && !S.demo ? dnaCard(c, true) : ''; })()}
   </section>
   ${runoffCard()}
   ${m ? `<section class="match"><span class="label" style="color:rgba(255,255,255,.85)">Everyone swiped yes</span><h1 style="color:#fff">It’s a match!</h1>
@@ -1568,6 +1571,7 @@ function overviewTab() {
   : showWelcome() ? '' : moveCard()}
   ${STAGES.findIndex(([k]) => k === stageOf(S.trip, S.members)) >= 2 ? passport() : pass()}
   ${showWelcome() ? '' : stageTrack()}
+  ${showWelcome() ? '' : changesCard()}
   ${showWelcome() ? '' : recoveryCard()}
   ${isSmall() ? '' : `<section class="grid2">${size() === 'trip' ? `
     <button class="tile" data-tab="flights"><span class="label">Flights</span><b class="tile-big">${tk.have.length}/${tk.goal || 0} booked</b>
@@ -1761,6 +1765,7 @@ function rsvpCard() {
   const blocks = [['booked', h.booked], ['confirmed', h.confirmed], ['in', h.going], ['maybe', h.interested], ['out', h.out]];
   return `<section class="card stack rsvp">
     <div class="row" style="justify-content:space-between"><h2>Who’s coming</h2>${by ? `<span class="pill ${late ? 'out' : 'maybe'}">${late ? 'Answers closed ' + short(by) : 'Answer by ' + short(by)}</span>` : ''}</div>
+    ${meDoc() && !S.readOnly && STAGES.findIndex(([k]) => k === stageOf(S.trip, S.members)) >= 2 ? commitLadder() : ''}
     <div class="hc">${blocks.map(([k, n]) => `<div class="hc-b lvl-${k} ${n ? '' : 'zero'}"><b>${n}</b><span>${LEVEL_LABEL[k]}</span></div>`).join('')}</div>
     <p class="small muted">${h.firm ? `Plan for <b>${h.firm}</b> ${h.firm === 1 ? 'person' : 'people'}${h.going ? `, up to <b>${h.max}</b> if everyone going confirms` : ''}.` : h.going ? `Nobody has confirmed yet. <b>${h.going}</b> ${h.going === 1 ? 'is' : 'are'} planning to come.` : 'Nobody has said they’re coming yet.'} Stays and costs use this number.</p>
     ${condLines()}
@@ -1794,6 +1799,7 @@ function setStatus(st) {
     S.tab = 'tickets'; render(); window.scrollTo({ top: 0 });
     flash('Send your boarding pass or flight number here. That marks you as booked.'); return;
   }
+  if (st === 'out' && going(m)) logDrop(S.uid);
   saveMe({ status: st, seen: true, countedOut: false }, true);
   if (['in', 'confirmed'].includes(st) && fresh) startSetup();
   else if (st === 'confirmed') flash('Confirmed. The crew is counting on you now.');
@@ -2101,72 +2107,208 @@ function whatifApply(i) {
   flash(`Done. The plan is now ${[r.dest?.city, isSmall() ? fmt(r.start) : dayRange(r.start, r.end)].filter(Boolean).join(', ')}.`);
 }
 
-/* ---------- when plans change ---------- */
-// Someone drops out, the budget moves, a place closes, the dates slip. Each fix shows
-// what it affects before anything changes, and none of them start the plan over.
+/* ---------- plan recovery engine ---------- */
+// Every change goes through one path. Someone drops out, a price moves, a budget changes,
+// the dates slip, a place closes: the engine runs the plan twice (as it is, and with the
+// change), compares the two, and lists what moves: headcount, each person's share,
+// budgets, conditions, hard limits, bookings, to-dos and the itinerary. Then it offers
+// next steps that become real to-dos or a crew check-in. Nothing starts over. Changes
+// made outside this card (someone taps "Can't make it") are worked out and logged too.
+const $all = s => [...document.querySelectorAll(s)];
+const CHANGES = [['drop', 'Someone dropped out'], ['price', 'A price changed'], ['budget', 'My budget changed'], ['dates', 'Dates moved'], ['closed', 'A place closed']];
+// run fn as if the plan looked like trip/members, then put everything back
+function withPlan(trip, members, fn) { const t0 = S.trip, m0 = S.members; S.trip = trip; S.members = members; try { return fn(); } finally { S.trip = t0; S.members = m0; } }
+function planState() {
+  const sum = costSummary(), fit = budgetFit(sum), heads = planHeads(), st = S.trip.stay, stayRow = sum.rows.find(r => r.k === 'stay');
+  const L = S.trip.lockedDates, ldays = L ? span(L.start, L.end) : null;
+  return {
+    heads, low: sum.low, high: sum.high, any: sum.any,
+    stayEach: st && +st.total ? Math.round(st.total / heads) : stayRow?.v ? Math.round(stayRow.v.high) : 0,
+    over: fit.over.map(m => m.id), stretch: fit.stretch.map(m => m.id),
+    condOff: active().filter(m => +m.cond?.under > 0 && sum.any && sum.low > +m.cond.under).map(m => m.id),
+    hardBudget: active().filter(m => m.hard?.budget && +m.budget > 0 && sum.any && sum.low > +m.budget).map(m => m.id),
+    hardDays: ldays ? active().filter(m => m.hard?.days && (m.days || []).length && !fitOf(m, ldays)).map(m => m.id) : [],
+  };
+}
+// the plan with the change applied, without saving anything
+function simulate(ch) {
+  const t = JSON.parse(JSON.stringify(S.trip)), ms = S.members.map(m => ({ ...m }));
+  if (ch.kind === 'drop') { const m = ms.find(x => x.id === ch.who); if (m) m.status = 'out'; }
+  if (ch.kind === 'budget') { const m = ms.find(x => x.id === S.uid); if (m) m.budget = ch.amount; }
+  if (ch.kind === 'price') {
+    if (ch.line === 'stay' && t.stay) t.stay.total = ch.amount;
+    else t.costs = { ...(t.costs || {}), [ch.line]: { low: ch.amount, high: ch.amount, src: 'quote' } };
+  }
+  if (ch.kind === 'dates') t.lockedDates = ch.start && ch.end ? { start: ch.start, end: ch.end } : null;
+  if (ch.kind === 'closed') t.itinerary = (t.itinerary || []).filter(i => i.id !== ch.item);
+  return { trip: t, members: ms };
+}
+const nm = id => S.members.find(m => m.id === id)?.nick || 'Someone';
+const lineLabel = k => (COST_LINES[size()].find(l => l[0] === k) || [k, k])[1];
+// what a change does, as before → after rows plus the things it leaves hanging
+function changeImpact(ch) {
+  const before = planState(), sim = simulate(ch), after = withPlan(sim.trip, sim.members, planState);
+  const fx = [], add = (area, text, level = 'info', from = '', to = '') => fx.push({ area, text, level, from, to });
+  if (before.heads !== after.heads) add('Headcount', `${after.heads < before.heads ? 'Down' : 'Up'} to ${after.heads}`, 'info', before.heads, after.heads);
+  if (before.stayEach && after.stayEach && before.stayEach !== after.stayEach) add('Stay, each', after.stayEach > before.stayEach ? 'Each share goes up' : 'Each share goes down', after.stayEach > before.stayEach ? 'warn' : 'good', money(before.stayEach), money(after.stayEach));
+  if (before.any && (before.low !== after.low || before.high !== after.high)) add('All in, each', after.high > before.high ? 'More per person' : 'Less per person', after.high > before.high ? 'warn' : 'good', rangeText(before.low, before.high), rangeText(after.low, after.high));
+  const newly = (k) => after[k].filter(id => !before[k].includes(id) && id !== ch.who), cleared = k => before[k].filter(id => !after[k].includes(id) && id !== ch.who);
+  const ms = ids => S.members.filter(m => ids.includes(m.id));
+  if (newly('over').length) add('Budgets', `Now over budget for ${budgetWho(ms(newly('over')))}`, 'bad');
+  if (cleared('over').length) add('Budgets', `Back within budget for ${budgetWho(ms(cleared('over')))}`, 'good');
+  for (const id of newly('condOff')) add('Conditions', `${nm(id)} said they’re in if it stays under ${money(S.members.find(m => m.id === id).cond.under)}. That’s no longer true.`, 'bad');
+  for (const id of cleared('condOff')) add('Conditions', `${nm(id)}’s condition (under ${money(S.members.find(m => m.id === id).cond.under)}) is met again.`, 'good');
+  if (newly('hardBudget').length) add('Hard limits', `Breaks a hard budget limit for ${budgetWho(ms(newly('hardBudget')))}. They have to agree.`, 'bad');
+  if (newly('hardDays').length) add('Hard limits', `${listNames(ms(newly('hardDays')))} can’t do these dates, and said their days are firm.`, 'bad');
+  const tk = S.trip.tickets || {}, stay = S.trip.stay;
+  if (ch.kind === 'drop') {
+    const who = S.members.find(m => m.id === ch.who);
+    const tasks = taskList().filter(x => !x.done && x.owner === ch.who);
+    if (tasks.length) add('To-dos', `${tasks.length} to-do${tasks.length === 1 ? ' needs' : 's need'} a new owner`, 'warn');
+    if (tk[ch.who]) add('Bookings', `${nm(ch.who)} already booked a flight. Check for a refund or a name change.`, 'warn');
+    if (stay && stay.booked) add('Bookings', `The stay is booked for ${before.heads}. Check whether it can change or refund a share.`, 'warn');
+    if (S.trip.honoree === ch.who) add('Roles', `They were the ${mode().honoree}. Pick someone new in Settings.`, 'warn');
+    if (who && !going(who)) add('Headcount', 'They hadn’t said they were going, so the count doesn’t change.', 'info');
+  }
+  if (ch.kind === 'dates') {
+    const days = ch.start && ch.end ? span(ch.start, ch.end) : null, items = (S.trip.itinerary || []).filter(i => i.date && (!days || !days.includes(i.date)));
+    if (days) { const cant = active().filter(m => (m.days || []).length && !fitOf(m, days) && !after.hardDays.includes(m.id)); if (cant.length) add('Who can make it', `${listNames(cant)} didn’t mark these days as free`, 'warn'); }
+    if (items.length) add('Itinerary', `${items.length} stop${items.length === 1 ? ' is' : 's are'} on ${days ? 'days outside the new dates' : 'the old dates'}`, 'warn');
+    const booked = Object.keys(tk).filter(u => S.members.some(m => m.id === u && going(m)));
+    if (booked.length) add('Bookings', `${booked.length} flight${booked.length === 1 ? ' is' : 's are'} already booked for the old dates`, 'warn');
+    if (stay && stay.booked) add('Bookings', 'The stay is booked for the old dates', 'warn');
+  }
+  if (ch.kind === 'closed') { const it = (S.trip.itinerary || []).find(i => i.id === ch.item); if (it) add('Itinerary', `${it.title} comes out of the plan`, 'info'); }
+  return { fx, before, after, sim };
+}
+// next steps for a change; each one becomes a to-do, an update or a crew check-in
+function changeActions(ch, imp) {
+  const out = [], tk = S.trip.tickets || {}, stay = S.trip.stay, worse = imp.fx.some(f => f.level === 'bad');
+  if (ch.kind === 'drop') {
+    const n = nm(ch.who);
+    if (tk[ch.who] || (stay && stay.booked)) out.push({ id: 'refund', label: `Add a to-do: check refunds${tk[ch.who] ? ` or a name change for ${n}’s flight` : ''}${stay && stay.booked ? `${tk[ch.who] ? ' and' : ''} on the stay` : ''}`, on: true });
+    out.push({ id: 'replace', label: 'Add a to-do: find someone to take the spot', on: false });
+    if (taskList().some(x => !x.done && x.owner === ch.who)) out.push({ id: 'reassign', label: 'Hand their to-dos to someone', on: true });
+  }
+  if (ch.kind === 'dates' && ch.start && ch.end) {
+    const old = S.trip.lockedDates, items = (S.trip.itinerary || []).filter(i => i.date);
+    if (old && items.length) out.push({ id: 'shift', label: `Move the itinerary along with the dates (${items.length} stop${items.length === 1 ? '' : 's'})`, on: true });
+    if (Object.keys(tk).some(u => S.members.some(m => m.id === u && going(m)))) out.push({ id: 'flights', label: 'Add a to-do: change booked flights to the new dates', on: true });
+    if (stay && stay.booked) out.push({ id: 'staymove', label: 'Add a to-do: move the stay booking', on: true });
+  }
+  if (ch.kind !== 'budget') out.push({ id: 'ask', label: 'Ask the crew: keep going, change the plan, or call it off?', on: worse });
+  return out;
+}
+const changeText = ch => ch.kind === 'drop' ? `${nm(ch.who)} dropped out`
+  : ch.kind === 'price' ? `${lineLabel(ch.line)} is now ${money(ch.amount)}${ch.line === 'stay' && S.trip.stay ? ' total' : ' each'}`
+  : ch.kind === 'dates' ? (ch.start ? `Dates moved to ${dayRange(ch.start, ch.end)}` : 'Dates reopened')
+  : ch.kind === 'closed' ? `${(S.trip.itinerary || []).find(i => i.id === ch.item)?.title || 'A stop'} is off`
+  : 'Budget changed';
+// the change being worked out in the card, from its inputs; null until it's complete
+function draftChange() {
+  const k = S.recover, r = S.rc || {};
+  if (k === 'drop') return r.who ? { kind: k, who: r.who } : null;
+  if (k === 'price') return r.line && +r.amount > 0 ? { kind: k, line: r.line, amount: Math.round(+r.amount) } : null;
+  if (k === 'budget') return +r.amount > 0 ? { kind: k, amount: Math.round(+r.amount) } : null;
+  if (k === 'dates') return r.reopen ? { kind: k } : r.start && r.end && r.end >= r.start ? { kind: k, start: r.start, end: r.end } : null;
+  if (k === 'closed') return r.item ? { kind: k, item: r.item } : null;
+  return null;
+}
+function impactList(imp) {
+  if (!imp.fx.length) return '<p class="small muted">Nothing else moves. Everyone’s share, budgets and bookings stay the same.</p>';
+  return `<ul class="impact">${imp.fx.map(f => `<li class="fx-${f.level}"><span class="label">${esc(f.area)}</span><span>${f.from !== '' ? `<b class="mono">${esc(String(f.from))} → ${esc(String(f.to))}</b> ` : ''}${f.from !== '' ? `<span class="small muted">${esc(f.text)}</span>` : esc(f.text)}</span></li>`).join('')}</ul>`;
+}
 function recoveryCard() {
-  if (S.demo || S.readOnly || !S.trip.lockedDest && !S.trip.lockedDates) return '';
-  const k = S.recover;
-  if (!k) return `<section class="card recover-bar"><span><b>Something changed?</b> <span class="small muted">Fix it without starting over.</span></span>
-    <div class="row" style="gap:6px">${[['drop', 'Someone dropped out'], ['budget', 'Budget changed'], ['closed', 'Weather or a place closed'], ['dates', 'Dates moved']].map(([v, l]) => `<button class="chip" data-recover="${v}">${l}</button>`).join('')}</div></section>`;
-  const close = '<button class="btn sm ghost" data-recover="">Close</button>';
-  if (k === 'drop') {
-    const ms = S.members.filter(m => m.status !== 'out' && !m.removed), who = S.members.find(m => m.id === S.recoverWho) || null;
-    let impact = '';
-    if (who) {
-      const n = S.members.filter(going).length, n2 = going(who) ? n - 1 : n, sum = costSummary(), stay = sum.rows.find(r => r.k === 'stay' && r.v);
-      const tasks = taskList().filter(x => !x.done && x.owner === who.id), tk = (S.trip.tickets || {})[who.id];
-      impact = `<ul class="impact">
-        <li>${n2 === n ? `Headcount stays at <b>${n}</b>. They hadn’t said they were going.` : `Headcount goes from <b>${n}</b> to <b>${n2}</b>.`}</li>
-        ${stay && n2 < n && n2 > 0 ? `<li>The stay costs each person about <b>${money(stay.v.high * n / n2)}</b> instead of ${money(stay.v.high)}.</li>` : ''}
-        ${tasks.length ? `<li>${tasks.length === 1 ? 'This to-do needs' : 'These to-dos need'} a new owner: ${tasks.map(x => `<b>${esc(x.title)}</b>`).join(', ')}.</li>` : ''}
-        ${tk ? `<li>${esc(who.nick || 'They')} already booked. Sort out refunds or a name change directly.</li>` : ''}
-        ${S.trip.honoree === who.id ? `<li>They were the ${esc(mode().honoree)}. Pick a new one in Settings.</li>` : ''}
-      </ul>
-      <div class="row" style="gap:6px"><button class="btn sm danger-fill" data-act="recoverDrop">Mark ${esc(who.nick || 'them')} as out</button>${close}</div>`;
-    }
-    return `<section class="card stack recover"><h3>Someone dropped out</h3>
-      <label class="field" style="flex:none"><span class="label">Who?</span><select id="recover-who"><option value="">Pick someone</option>${ms.map(m => `<option value="${esc(m.id)}" ${S.recoverWho === m.id ? 'selected' : ''}>${esc(m.nick || 'Someone')}${m.id === S.uid ? ' (you)' : ''}</option>`).join('')}</select></label>
-      ${impact || `<div class="row">${close}</div>`}</section>`;
-  }
-  if (k === 'budget') {
-    const m = meDoc() || {}, sum = costSummary(), fit = budgetFit(sum);
-    return `<section class="card stack recover"><h3>Budget changed</h3>
-      <label class="field" style="flex:none"><span class="label">Your max now (${cur()})</span><input id="me-budget" type="number" min="0" inputmode="numeric" value="${m.budget || ''}"></label>
-      ${sum.any ? `<p class="small">The plan is <b>${money(sum.low)}–${money(sum.high)}</b> each. ${fit.over.length ? `Over budget for ${esc(budgetWho(fit.over))}.` : fit.stretch.length ? `A stretch for ${esc(budgetWho(fit.stretch))}.` : 'It fits everyone’s budget.'}</p>
-        ${fit.over.length || fit.stretch.length ? '<div class="row" style="gap:6px"><button class="btn sm" data-tab="whatif">Compare cheaper options</button><button class="btn sm" data-tab="cost">See the costs</button></div>' : ''}` : '<p class="small muted">Fill in the All-in cost to see how this changes things.</p>'}
-      <div class="row">${close}</div></section>`;
-  }
-  if (k === 'closed') {
-    const items = visItems().filter(i => !i.hidden), sel = items.find(i => i.id === S.recoverItem), alts = S.alts && S.alts.item === S.recoverItem ? S.alts.options : null;
-    return `<section class="card stack recover"><h3>Weather or a place closed</h3>
-      ${items.length ? `<label class="field" style="flex:none"><span class="label">What’s affected?</span><select id="recover-item"><option value="">Pick a stop</option>${items.map(i => `<option value="${esc(i.id)}" ${S.recoverItem === i.id ? 'selected' : ''}>${esc((i.date ? short(i.date) + ' · ' : '') + (i.time ? t12(i.time) + ' · ' : '') + i.title)}</option>`).join('')}</select></label>` : `<p class="small muted">Nothing is planned yet, so nothing to replace. If the whole ${size() === 'trip' || size() === 'weekend' ? 'destination' : 'plan'} is off, go back to Plan Match.</p>`}
-      ${sel ? `<div class="row" style="gap:6px">${S.sample ? `<button class="btn sm primary" data-act="recoverAlts" ${S.busy.alts ? 'disabled' : ''}>${S.busy.alts ? '<i class="spin"></i>Finding options…' : 'Find replacements'}</button>` : ''}<button class="btn sm" data-act="recoverRemove">Just drop it</button></div>
+  if (S.demo || S.readOnly || S.members.length < 2 && !S.trip.lockedDest && !S.trip.lockedDates) return '';
+  const k = S.recover, r = S.rc || {};
+  if (!k) return `<section class="card recover-bar"><span><b>Something changed?</b> <span class="small muted">See what it affects before anything changes.</span></span>
+    <div class="row" style="gap:6px">${CHANGES.map(([v, l]) => `<button class="chip" data-recover="${v}">${l}</button>`).join('')}</div></section>`;
+  const close = '<button class="btn sm ghost" data-recover="">Cancel</button>';
+  let form = '';
+  if (k === 'drop') form = `<label class="field" style="flex:none"><span class="label">Who?</span><select id="recover-who"><option value="">Pick someone</option>${S.members.filter(m => m.status !== 'out' && !m.removed).map(m => `<option value="${esc(m.id)}" ${r.who === m.id ? 'selected' : ''}>${esc(m.nick || 'Someone')}${m.id === S.uid ? ' (you)' : ''}</option>`).join('')}</select></label>`;
+  if (k === 'price') form = `<div class="row" style="gap:8px;align-items:flex-end"><label class="field" style="flex:1 1 160px"><span class="label">What changed?</span><select id="rc-line"><option value="">Pick one</option>${COST_LINES[size()].map(([lk, l]) => `<option value="${lk}" ${r.line === lk ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+      <label class="field" style="flex:1 1 160px"><span class="label">${r.line === 'stay' && S.trip.stay ? `New total for the stay (${cur()})` : `New price per person (${cur()})`}</span><input id="rc-amount" type="number" min="0" inputmode="numeric" value="${r.amount || ''}"></label></div>`;
+  if (k === 'budget') form = `<label class="field" style="flex:none;max-width:240px"><span class="label">Your max now (${cur()})</span><input id="rc-amount" type="number" min="0" inputmode="numeric" value="${r.amount || meDoc()?.budget || ''}"></label><span class="small muted">Private. The crew only sees whether the plan fits.</span>`;
+  if (k === 'dates') { const d = S.trip.lockedDates; form = `${d ? `<p class="small">Right now: <b>${dayRange(d.start, d.end)}</b>.</p>` : ''}<div class="row" style="gap:8px"><label class="field"><span class="label">New start</span><input id="rc-start" type="date" value="${r.start || ''}"></label><label class="field"><span class="label">New end</span><input id="rc-end" type="date" value="${r.end || ''}"></label></div>
+      <label class="check-line"><input type="checkbox" id="rc-reopen" ${r.reopen ? 'checked' : ''}> We don’t know yet. Reopen the dates and keep everyone’s free days.</label>`; }
+  if (k === 'closed') { const items = visItems().filter(i => !i.hidden); form = items.length ? `<label class="field" style="flex:none"><span class="label">What’s affected?</span><select id="recover-item"><option value="">Pick a stop</option>${items.map(i => `<option value="${esc(i.id)}" ${r.item === i.id ? 'selected' : ''}>${esc((i.date ? short(i.date) + ' · ' : '') + (i.time ? t12(i.time) + ' · ' : '') + i.title)}</option>`).join('')}</select></label>` : `<p class="small muted">Nothing is planned yet, so nothing to replace. If the whole ${planWord()} is off, go back to ${isSmall() ? 'Plan' : 'Trip'} Match.</p>`; }
+  const ch = draftChange(), imp = ch ? changeImpact(ch) : null, acts = ch ? changeActions(ch, imp) : [];
+  const orphan = ch && ch.kind === 'drop' ? taskList().filter(x => !x.done && x.owner === ch.who) : [], others = S.members.filter(m => going(m) && m.id !== ch?.who);
+  const alts = k === 'closed' && S.alts && S.alts.item === r.item ? S.alts.options : null;
+  return `<section class="card stack recover" id="recover-box">
+    <div class="row" style="justify-content:space-between"><h3>${esc(CHANGES.find(c => c[0] === k)[1])}</h3>${close}</div>
+    ${form}
+    ${imp ? `<div class="stack" style="gap:8px"><span class="label">What this changes</span>${impactList(imp)}</div>
+      ${acts.length ? `<div class="stack" style="gap:6px"><span class="label">Next steps</span>${acts.map(a => `<label class="check-line"><input type="checkbox" id="rc-act-${a.id}" ${(r.acts || {})[a.id] ?? a.on ? 'checked' : ''}> ${esc(a.label)}</label>
+        ${a.id === 'reassign' ? `<div class="stack" style="gap:6px;padding-left:24px">${orphan.map(x => `<label class="row small" style="gap:8px"><span style="flex:1;min-width:0">${esc(x.title)}</span><select id="rc-owner-${esc(x.id)}" style="width:auto"><option value="">Nobody yet</option>${others.map(m => `<option value="${esc(m.id)}">${esc(m.nick || 'Someone')}</option>`).join('')}</select></label>`).join('')}</div>` : ''}`).join('')}</div>` : ''}
+      ${k === 'closed' ? `<div class="row" style="gap:6px">${S.sample ? `<button class="btn sm" data-act="recoverAlts" ${S.busy.alts ? 'disabled' : ''}>${S.busy.alts ? '<i class="spin"></i>Finding options…' : 'Find replacements'}</button>` : ''}</div>
         ${alts ? `<div class="stack" style="gap:8px">${alts.map((o, j) => `<div class="linkrow"><div style="min-width:0"><b>${esc(o.title)}</b><div class="small muted">${esc(o.why || '')}</div></div><button class="btn sm" data-swapin="${j}">Swap in</button></div>`).join('')}</div>` : ''}
         <form id="swapForm" class="row" style="gap:6px;align-items:flex-end"><label class="field" style="flex:1 1 200px"><span class="label">Or replace it with</span><input id="swap-title" maxlength="80" placeholder="Indoor alternative"></label><button class="btn sm" type="submit">Replace</button></form>` : ''}
-      <div class="row">${close}</div></section>`;
-  }
-  if (k === 'dates') {
-    const d = S.trip.lockedDates;
-    return `<section class="card stack recover"><h3>Dates moved</h3>
-      <p class="small">${d ? `Right now it’s <b>${dayRange(d.start, d.end)}</b>. ` : ''}Reopening the dates keeps everyone’s free days and the destination. People just update their days and you lock new ones.</p>
-      <div class="row" style="gap:6px"><button class="btn sm primary" data-act="recoverDates">Reopen the dates</button>${close}</div></section>`;
-  }
-  return '';
+      <div class="row" style="gap:6px"><button class="btn primary" data-act="recoverApply">${k === 'drop' ? `Mark ${esc(nm(ch.who))} as out` : k === 'price' ? 'Update the price' : k === 'budget' ? 'Update my budget' : k === 'dates' ? (ch.start ? 'Move the dates' : 'Reopen the dates') : 'Just drop it'}</button></div>` : ''}
+  </section>`;
 }
-async function recoverDrop() {
-  const who = S.members.find(m => m.id === S.recoverWho); if (!who) return;
-  const tasks = taskList().filter(x => !x.done && x.owner === who.id);
+// pick up the checkboxes and owner picks before the card re-renders
+function readRcActs() { const acts = {}; $all('[id^="rc-act-"]').forEach(el => { acts[el.id.slice(7)] = el.checked; }); return acts; }
+async function applyChange(ch, picks = {}, opts = {}) {
+  const imp = changeImpact(ch), acts = changeActions(ch, imp), on = id => acts.some(a => a.id === id) && (picks[id] ?? acts.find(a => a.id === id).on);
+  const owners = {}; $all('[id^="rc-owner-"]').forEach(el => { if (el.value) owners[el.id.slice(9)] = el.value; });
+  const patch = {}, tasks = {}, newTask = (title, owner = '') => { tasks[rid(6)] = { title, owner, due: '', done: false, by: S.uid, at: Date.now() }; };
   try {
-    if (who.id === S.uid) saveMe({ status: 'out', droppedAt: Date.now() }, true);
-    else await S.db.doc(`trips/${S.tid}/members/${who.id}`).update({ status: 'out', droppedAt: Date.now() });
-    if (tasks.length) saveTrip({ tasks: Object.fromEntries(tasks.map(x => [x.id, { owner: '' }])) });
-    S.recover = null; S.recoverWho = null; render();
-    flash(`${who.nick || 'They'} ${who.id === S.uid ? 'are' : 'is'} out.${tasks.length ? ` ${tasks.length} to-do${tasks.length === 1 ? ' needs' : 's need'} a new owner.` : ''}`);
+    if (ch.kind === 'drop') {
+      const who = S.members.find(m => m.id === ch.who); if (!who) return;
+      if (who.id === S.uid) saveMe({ status: 'out', droppedAt: Date.now() }, true);
+      else if (!opts.already) await S.db.doc(`trips/${S.tid}/members/${who.id}`).update({ status: 'out', droppedAt: Date.now() });
+      for (const x of taskList().filter(x => !x.done && x.owner === ch.who)) tasks[x.id] = { owner: on('reassign') ? owners[x.id] || '' : '' };
+      if (on('refund')) newTask(`Check refunds for ${nm(ch.who)}’s ${[(S.trip.tickets || {})[ch.who] && 'flight', S.trip.stay?.booked && 'stay share'].filter(Boolean).join(' and ')}`, ch.who === S.uid ? S.uid : '');
+      if (on('replace')) newTask(`Find someone to take ${nm(ch.who)}’s spot`, S.uid);
+    }
+    if (ch.kind === 'price') {
+      if (ch.line === 'stay' && S.trip.stay) patch.stay = { total: ch.amount };
+      else patch.costs = { [ch.line]: { low: ch.amount, high: ch.amount, src: 'quote', by: S.uid } };
+    }
+    if (ch.kind === 'budget') saveMe({ budget: ch.amount }, true);
+    if (ch.kind === 'dates') {
+      const old = S.trip.lockedDates;
+      patch.lockedDates = ch.start ? { start: ch.start, end: ch.end } : null;
+      if (on('shift') && old) { const off = Math.round((D(ch.start) - D(old.start)) / 864e5); patch.itinerary = (S.trip.itinerary || []).map(i => i.date ? { ...i, date: add(i.date, off) } : i); }
+      if (on('flights')) newTask('Change booked flights to the new dates');
+      if (on('staymove')) newTask('Move the stay booking to the new dates');
+    }
+    if (ch.kind === 'closed') patch.itinerary = (S.trip.itinerary || []).filter(i => i.id !== ch.item);
+    if (Object.keys(tasks).length) patch.tasks = tasks;
+    if (on('ask')) patch.check = { id: rid(6), q: `${changeText(ch)}. What do we do?`, by: S.uid, at: Date.now(), votes: {} };
+    // budgets are private, so a budget change isn't logged for the crew
+    const fxs = imp.fx.filter(f => !(ch.kind === 'dates' && on('shift') && f.area === 'Itinerary'));
+    if (ch.kind !== 'budget') { const id = rid(6); patch.changes = { [id]: { text: changeText(ch), fx: fxs.filter(f => f.level !== 'info' || f.from !== '').slice(0, 6).map(f => f.from !== '' ? `${f.area}: ${f.from} → ${f.to}` : f.text), by: S.uid, at: Date.now() } }; }
+    if (Object.keys(patch).length) await saveTrip(patch);
+    S.recover = null; S.rc = null; S.alts = null; render();
+    const top = fxs.find(f => f.from !== '') || fxs[0];
+    if (!opts.quiet) flash(`${changeText(ch)}. ${top ? (top.from !== '' ? `${top.area}: ${top.from} → ${top.to}.` : top.text + '.') : 'Nothing else moves.'}`);
   } catch (e) { flash(writeErr(e)); }
 }
+// when someone drops out some other way, still work out what it changed and log it
+function logDrop(uid) {
+  if (S.demo || !S.trip) return;
+  const ch = { kind: 'drop', who: uid }, imp = changeImpact(ch), id = rid(6);
+  const tasks = taskList().filter(x => !x.done && x.owner === uid);
+  return saveTrip({ changes: { [id]: { text: changeText(ch), fx: [...imp.fx.filter(f => f.from !== '').map(f => `${f.area}: ${f.from} → ${f.to}`), ...imp.fx.filter(f => f.level === 'bad').map(f => f.text), ...(tasks.length ? [`${tasks.length} to-do${tasks.length === 1 ? ' needs' : 's need'} a new owner`] : [])].slice(0, 6), by: S.uid, at: Date.now() } } });
+}
+// the last few changes and the crew check-in, on the overview
+function changesCard() {
+  if (S.demo) return '';
+  const list = Object.entries(S.trip.changes || {}).filter(([, x]) => x).sort((a, b) => b[1].at - a[1].at).slice(0, 3), c = S.trip.check;
+  if (!list.length && !c) return '';
+  const opts = [['go', 'Keep going as planned'], ['change', 'Change the plan'], ['stop', 'Call it off']], votes = c?.votes || {}, mine = votes[S.uid];
+  const count = k => Object.values(votes).filter(v => v === k).length, n = active().length, answered = Object.keys(votes).length;
+  return `<section class="card stack changes">
+    ${c ? `<div class="stack check" style="gap:8px"><span class="label" style="color:var(--accent)">Crew check-in</span><b>${esc(c.q)}</b>
+      <div class="ro-opts">${opts.map(([k, l]) => `<button class="ro-opt ${mine === k ? 'on' : ''}" data-check="${k}" aria-pressed="${mine === k}" ${S.readOnly ? 'disabled' : ''}><b>${l}</b><span class="ro-count">${count(k)} vote${count(k) === 1 ? '' : 's'}${mine === k ? ' · yours' : ''}</span></button>`).join('')}</div>
+      <div class="row" style="justify-content:space-between;gap:8px"><span class="small muted">${answered} of ${n} answered · ${esc(STYLES[decideOf().style][0])}</span>${isOrganizer() || c.by === S.uid ? '<button class="linkbtn small" data-act="checkClose">Close it</button>' : ''}</div></div>` : ''}
+    ${list.length ? `<div class="stack" style="gap:8px"><span class="label">What changed</span>${list.map(([id, x]) => `<div class="change-row"><div class="row" style="justify-content:space-between;gap:8px"><b>${esc(x.text)}</b><span class="small muted">${ago(x.at)}</span></div>${(x.fx || []).length ? `<ul class="small muted">${x.fx.map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : ''}</div>`).join('')}</div>` : ''}
+  </section>`;
+}
 function recoverAlts() {
-  const it = visItems().find(i => i.id === S.recoverItem); if (!it) return;
+  const it = visItems().find(i => i.id === (S.rc || {}).item); if (!it) return;
   const ds = dest();
   askAI('alts', `${context()}
 One stop in this plan can't happen anymore (bad weather, closed, or sold out): "${it.title}"${it.date ? ` on ${it.date}` : ''}${it.time ? ` at ${it.time}` : ''}${it.note ? ` (${it.note})` : ''}.
@@ -2179,12 +2321,11 @@ Reply with only JSON: {"options":[{"title":"place or activity","why":"one senten
 }
 function swapItem(title) {
   title = String(title || '').trim().slice(0, 80); if (!title) return;
-  const id = S.recoverItem, old = (S.trip.itinerary || []).find(i => i.id === id); if (!old) return;
-  saveTrip({ itinerary: (S.trip.itinerary || []).map(i => i.id === id ? { ...i, title, note: `Instead of ${old.title}`, ai: false } : i) });
-  S.alts = null; S.recover = null; S.recoverItem = null;
+  const id = (S.rc || {}).item, old = (S.trip.itinerary || []).find(i => i.id === id); if (!old) return;
+  saveTrip({ itinerary: (S.trip.itinerary || []).map(i => i.id === id ? { ...i, title, note: `Instead of ${old.title}`, ai: false } : i), changes: { [rid(6)]: { text: `${old.title} is off`, fx: [`Replaced with ${title}`], by: S.uid, at: Date.now() } } });
+  S.alts = null; S.recover = null; S.rc = null;
   flash(`Swapped in ${title}.`);
 }
-
 /* ---------- privacy + guest controls ---------- */
 // Organizers (the creator plus anyone they add) control the invite link and who can
 // invite or lock decisions, and can remove people. Each person controls whether their
@@ -2244,7 +2385,7 @@ async function removeMember(uid) {
   const m = S.members.find(x => x.id === uid); if (!m || !isOrganizer() || uid === S.uid) return;
   const tasks = taskList().filter(x => !x.done && x.owner === uid);
   try {
-    if (!S.demo) await S.db.doc(`trips/${S.tid}/members/${uid}`).update({ status: 'out', removed: true });
+    if (!S.demo) { if (going(m)) logDrop(uid); await S.db.doc(`trips/${S.tid}/members/${uid}`).update({ status: 'out', removed: true }); }
     else { m.status = 'out'; m.removed = true; }
     saveTrip({ people: { [uid]: null }, left: { [uid]: true }, orgs: { [uid]: null }, ...(tasks.length ? { tasks: Object.fromEntries(tasks.map(x => [x.id, { owner: '' }])) } : {}) });
     S.confirmRm = null; flash(`${m.nick || 'Someone'} was removed from the ${planWord()}.`);
@@ -2480,6 +2621,93 @@ function toggleConsent(key) {
   saveTrip({ consent: { [key]: { [S.uid]: on || null } } });
   flash(on ? 'Noted. The crew can lock it now, as far as your limit goes.' : 'Taken back. It’s off the table unless your limit changes.');
 }
+/* ---------- crew DNA ---------- */
+// A living profile of a crew, built only from what the crew has done together in the
+// app: when its plans happen, what goes in the itinerary, which pitches got yeses and
+// which prices got passed on. It describes the group, never one person, and it only
+// uses a fixed list of plain habits. It never looks at private budgets and never guesses
+// at anything personal. Anyone in the crew can hide a trait, correct it, forget a memory
+// or add a note, and the AI reads the corrected version.
+const DNA_MIN = 2;
+const crewPlans = cid => S.trips.filter(t => t.crewId === cid);
+const isLate = x => x && (x >= '22:00' || x < '04:00');
+const isFoody = i => i.kind === 'food' || /dinner|brunch|lunch|breakfast|tapas|taco|market|food|restaurant|bakery|pizza|ramen|sushi/i.test(i.title || '');
+const pitchPrice = (p, t, base) => { const r = moneyRange(p.perPerson); return r ? Math.round(convert(r[0], CUR_CODES.includes(t.currency) ? t.currency : 'USD', base)) : 0; };
+function crewDNA(c) {
+  const ps = crewPlans(c.id), dna = c.dna || {}, traits = [], memory = [];
+  const items = ps.flatMap(t => (t.itinerary || []).filter(i => !i.secret));
+  const timed = items.filter(i => i.time);
+  const add = (k, label, evidence) => traits.push({ k, label: (dna.fix || {})[k] || label, auto: label, evidence, hidden: !!(dna.hidden || {})[k], fixed: !!(dna.fix || {})[k] });
+  // when they go out
+  if (timed.length >= 5) {
+    const late = timed.filter(i => isLate(i.time)).length, early = timed.filter(i => i.time < '10:00' && i.time >= '04:00').length;
+    if (late / timed.length >= 0.3) add('owls', 'Night owls', `${late} of ${timed.length} planned stops start after 10pm`);
+    else if (early / timed.length >= 0.3) add('early', 'Early starters', `${early} of ${timed.length} planned stops start before 10am`);
+  }
+  // what fills the itinerary
+  if (items.length >= 5) {
+    const food = items.filter(isFoody).length, night = items.filter(i => i.kind === 'nightlife').length, act = items.filter(i => i.kind === 'activity').length;
+    if (food / items.length >= 0.35) add('food', 'Food-first', `${food} of ${items.length} stops are about eating`);
+    if (night / items.length >= 0.3) add('night', 'Here for the nights out', `${night} of ${items.length} stops are nightlife`);
+    if (act / items.length >= 0.35) add('doers', 'Always doing something', `${act} of ${items.length} stops are activities`);
+  }
+  // how far ahead they lock
+  const leads = ps.filter(t => t.lockedDates && t.createdAt).map(t => Math.round((D(t.lockedDates.start) - t.createdAt) / 864e5)).filter(n => n >= 0);
+  if (leads.length >= DNA_MIN) {
+    const soon = leads.filter(n => n < 21).length, far = leads.filter(n => n > 60).length;
+    if (soon / leads.length >= 0.6) add('lastmin', 'Last-minute planners', `${soon} of ${leads.length} plans happened within 3 weeks of starting them`);
+    else if (far / leads.length >= 0.6) add('ahead', 'Plan way ahead', `${far} of ${leads.length} plans were set up 2+ months out`);
+  }
+  // which days
+  const starts = ps.filter(t => t.lockedDates).map(t => D(t.lockedDates.start).getUTCDay());
+  if (starts.length >= DNA_MIN && starts.filter(d => [5, 6].includes(d)).length / starts.length >= 0.7) add('weekend', 'Friday-to-Sunday people', `${starts.filter(d => [5, 6].includes(d)).length} of ${starts.length} plans started on a Friday or Saturday`);
+  // prices: what got passed on versus what got yeses, by the crew as a whole
+  const base = S.trip && S.trip.crewId === c.id ? cur() : (ps.find(t => CUR_CODES.includes(t.currency))?.currency || 'USD'), m$ = n => fmtMoney(n, base);
+  const judged = ps.flatMap(t => (t.pitches?.items || []).map(p => { const v = Object.values((t.swipes || {})[p.id] || {}); return { p, t, yes: v.filter(x => x === 1).length, no: v.filter(x => x === -1).length, n: v.length, price: pitchPrice(p, t, base) }; })).filter(x => x.n >= 2);
+  const liked = judged.filter(x => x.yes > x.n / 2), passed = judged.filter(x => x.no > x.n / 2);
+  const avg = a => a.length ? Math.round(a.reduce((n, x) => n + x.price, 0) / a.length) : 0;
+  const lp = liked.filter(x => x.price), pp = passed.filter(x => x.price);
+  if (lp.length && pp.length >= DNA_MIN && avg(pp) > avg(lp) * 1.2) add('budget', 'Budget-conscious', `Passed on options around ${m$(avg(pp))}, said yes around ${m$(avg(lp))}`);
+  // memories: prices they turned down and things they loved
+  for (const x of pp.filter(x => x.price > (avg(lp) || 0)).slice(-4)) memory.push({ k: 'no-' + x.p.id, kind: 'passed', text: `${pName(x.p)} at ${x.p.perPerson}` });
+  for (const x of liked.filter(x => x.yes === x.n).slice(-4)) memory.push({ k: 'yes-' + x.p.id, kind: 'loved', text: `${pName(x.p)}${x.p.tagline ? ': ' + x.p.tagline : ''}` });
+  for (const t of ps) for (const i of (t.itinerary || []).filter(i => !i.secret)) {
+    const r = Object.values((t.reactions || {})[rkey('it' + i.id)] || {}), up = r.filter(v => v > 0).length;
+    if (up >= 2 && up > r.length / 2) memory.push({ k: 'it-' + t.id + i.id, kind: 'loved', text: i.title });
+  }
+  const forget = dna.forget || {};
+  return { plans: ps.length, traits, memory: memory.filter(m => !forget[m.k]).slice(-8), notes: Object.entries(dna.notes || {}).filter(([, n]) => n).map(([id, n]) => ({ id, ...n })) };
+}
+// what the AI gets told; only the crew-level, corrected version
+function dnaText(cid) {
+  const c = S.crews.find(x => x.id === cid); if (!c) return '';
+  const d = crewDNA(c), tr = d.traits.filter(x => !x.hidden), lines = [];
+  if (tr.length) lines.push(`What this crew tends to do, from their past plans: ${tr.map(x => x.label + (x.fixed ? '' : ` (${x.evidence})`)).join('; ')}.`);
+  const no = d.memory.filter(m => m.kind === 'passed'), yes = d.memory.filter(m => m.kind === 'loved');
+  if (no.length) lines.push(`They passed on: ${no.map(m => m.text).join('; ')}. Don't pitch things like these at those prices.`);
+  if (yes.length) lines.push(`They loved: ${yes.map(m => m.text).join('; ')}.`);
+  if (d.notes.length) lines.push(`In their own words: ${d.notes.map(n => `"${n.text}"`).join(' ')}`);
+  return lines.join('\n');
+}
+function dnaCard(c, compact) {
+  const d = crewDNA(c), shown = d.traits.filter(x => !x.hidden), hid = d.traits.filter(x => x.hidden), ed = S.dnaEdit;
+  if (compact) return shown.length || d.notes.length ? `<div class="rule-line small dna-line"><span><b>${esc(c.name)}’s DNA:</b> ${esc([...shown.map(x => x.label), ...d.notes.map(n => n.text)].slice(0, 4).join(' · '))}. The pitches use this.</span><button class="linkbtn small" data-crew="${esc(c.id)}">Edit</button></div>` : '';
+  return `<section class="card stack dna" id="dna">
+    <div class="stack" style="gap:2px"><h2>Crew DNA</h2><span class="small muted">What ${esc(c.name)} tends to do, learned from ${d.plans} plan${d.plans === 1 ? '' : 's'} together. It’s about the group, never one person, and it never uses private budgets. Fix anything that’s off; the AI uses your version.</span></div>
+    ${shown.length ? `<div class="stack" style="gap:8px">${shown.map(x => `<div class="dna-trait" data-key="dna-${x.k}">
+      ${ed === x.k ? `<form class="row dna-fix" data-k="${x.k}" style="gap:6px;flex:1"><input id="dna-fix-${x.k}" maxlength="50" value="${esc(x.label)}" aria-label="Correct this trait"><button class="btn sm primary" type="submit">Save</button>${x.fixed ? `<button class="btn sm ghost" type="button" data-dnareset="${x.k}">Use the learned one</button>` : ''}</form>`
+      : `<div class="stack" style="gap:2px;min-width:0;flex:1"><b>${esc(x.label)}</b><span class="small muted">${x.fixed ? `You corrected this. Learned: ${esc(x.auto)}` : esc(x.evidence)}</span></div>
+        <div class="row" style="gap:4px"><button class="linkbtn small" data-dnaedit="${x.k}">Not quite</button><button class="linkbtn small muted" data-dnahide="${x.k}">Not us</button></div>`}</div>`).join('')}</div>`
+      : `<p class="small muted">${d.plans < DNA_MIN ? `Still learning. After a couple of plans together, habits like “night owls” or “food-first” show up here.` : 'No clear habits yet. They show up as you plan more together.'}</p>`}
+    ${d.memory.length ? `<div class="stack" style="gap:6px"><span class="label">Remembers</span>${d.memory.map(m => `<div class="row dna-mem" style="gap:8px;justify-content:space-between"><span class="small"><span class="fit-c ${m.kind === 'loved' ? 'y' : 'n'}" style="margin-right:6px">${m.kind === 'loved' ? 'Loved' : 'Passed'}</span>${esc(m.text)}</span><button class="x" data-dnaforget="${esc(m.k)}" aria-label="Forget this">×</button></div>`).join('')}</div>` : ''}
+    <div class="stack" style="gap:6px"><span class="label">In your own words</span>
+      ${d.notes.map(n => `<div class="row dna-mem" style="gap:8px;justify-content:space-between"><span class="small">“${esc(n.text)}” <span class="muted">· ${esc(crewNick(c, n.by))}</span></span>${n.by === S.uid || c.by === S.uid ? `<button class="x" data-dnanote="${esc(n.id)}" aria-label="Remove note">×</button>` : ''}</div>`).join('')}
+      <form id="dnaNote" class="row" style="gap:6px"><input id="dna-note" maxlength="80" placeholder="We always want a pool. No hostels." aria-label="Add a note about the crew"><button class="btn sm" type="submit">Add</button></form>
+      <span class="small muted">Notes are seen by the whole crew. Keep personal stuff in your own details, where it stays private.</span></div>
+    ${hid.length ? `<span class="small muted">Hidden: ${hid.map(x => `${esc(x.auto)} <button class="linkbtn small" data-dnashow="${x.k}">Show</button>`).join(', ')}</span>` : ''}
+  </section>`;
+}
+const dnaSave = (cid, patch) => S.db && S.db.doc('crews/' + cid).update({ dna: patch }).catch(e => flash(writeErr(e)));
 /* ---------- home screen + trip creation ---------- */
 /* ---------- book: flights ---------- */
 function skyscanner(from, d, ds) { const y = s => s.slice(2).replace(/-/g, ''); return `https://www.skyscanner.com/transport/flights/${from.toLowerCase()}/${ds.code.toLowerCase()}/${y(d.start)}/${y(d.end)}/`; }
@@ -3516,6 +3744,7 @@ function crewPage(cid) {
     <p class="small muted">${IN_CLAUDE ? 'First share this page with them (Share menu, as an Editor). Then send this link.' : 'Send this link. They type their name and join the crew.'}</p>
     <span class="invite-link mono">${esc(crewLink(cid))}</span>
     <div><button class="btn primary" data-act="copyCrewInvite" data-cid="${esc(cid)}">Send invite</button></div></section>
+  ${dnaCard(c)}
   ${crewTemplates(c)}
   ${past.length ? `<details class="card past"><summary><b>Landed</b> <span class="small muted">Past plans ·</span> <span class="small muted">${past.length}</span></summary><div class="stack" style="margin-top:10px">${past.map(t => planRow(t, { noCrew: true })).join('')}</div></details>` : ''}
   ${c.by === S.uid || S.isOwner ? `<div><button class="btn sm ghost danger" data-delcrew="${esc(cid)}">Delete crew</button></div>` : ''}`;
@@ -3811,6 +4040,13 @@ app.addEventListener('click', e => {
   if (ds.tpluse) { S.repeat = { tpl: ds.tpluse, cid: S.crewView || S.trip?.crewId }; render(); setTimeout(() => $('#repeat-box')?.scrollIntoView({ block: 'nearest', behavior: calm() ? 'auto' : 'smooth' }), 60); return; }
   if (ds.tpldel) { const cid = S.crewView || S.trip?.crewId; if (S.db && cid) S.db.doc('crews/' + cid).update({ templates: { [ds.tpldel]: null } }).then(() => flash('Template deleted.'), e => flash(writeErr(e))); return; }
   if (ds.act === 'repeatClose') { S.repeat = null; return render(); }
+  { const cid = S.crewView || S.trip?.crewId;
+    if (ds.dnaedit) { S.dnaEdit = ds.dnaedit; render(); setTimeout(() => $('#dna-fix-' + ds.dnaedit)?.focus(), 50); return; }
+    if (ds.dnahide) return dnaSave(cid, { hidden: { [ds.dnahide]: true } });
+    if (ds.dnashow) return dnaSave(cid, { hidden: { [ds.dnashow]: null } });
+    if (ds.dnareset) { S.dnaEdit = null; return dnaSave(cid, { fix: { [ds.dnareset]: null } }); }
+    if (ds.dnaforget) { flash('Forgotten. It won’t shape new pitches.'); return dnaSave(cid, { forget: { [ds.dnaforget]: true } }); }
+    if (ds.dnanote) return dnaSave(cid, { notes: { [ds.dnanote]: null } }); }
   if (ds.act === 'repeatGo') return repeatGo();
   if (!S.trip) return;
   if (ds.act === 'repeatOpen') { S.repeat = {}; render(); setTimeout(() => $('#repeat-box')?.scrollIntoView({ block: 'nearest', behavior: calm() ? 'auto' : 'smooth' }), 60); return; }
@@ -3840,12 +4076,12 @@ app.addEventListener('click', e => {
   if (ds.taketask) return patchTask(ds.taketask, { owner: S.uid });
   if (ds.deltask) return saveTrip({ tasks: { [ds.deltask]: null } });
   if (ds.taskidea) return addTask(ds.taskidea);
-  if (ds.recover !== undefined) { S.recover = ds.recover || null; S.recoverWho = null; S.recoverItem = null; S.alts = null; return render(); }
-  if (ds.act === 'recoverDrop') return recoverDrop();
+  if (ds.recover !== undefined) { S.recover = ds.recover || null; S.rc = null; S.alts = null; render(); if (S.recover) setTimeout(() => $('#recover-box')?.scrollIntoView({ block: 'nearest', behavior: calm() ? 'auto' : 'smooth' }), 60); return; }
+  if (ds.act === 'recoverApply' || ds.act === 'recoverDrop') { const ch = draftChange(); if (ch) applyChange(ch, readRcActs()); return; }
+  if (ds.check) return saveTrip({ check: { votes: { [S.uid]: ds.check } } });
+  if (ds.act === 'checkClose') return saveTrip({ check: null });
   if (ds.act === 'recoverAlts') return recoverAlts();
-  if (ds.act === 'recoverRemove') { const id = S.recoverItem; S.recover = null; S.recoverItem = null; flash('Dropped from the plan.'); return saveTrip({ itinerary: (S.trip.itinerary || []).filter(i => i.id !== id) }); }
   if (ds.swapin !== undefined) { const o = S.alts?.options?.[+ds.swapin]; if (o) swapItem(o.title); return; }
-  if (ds.act === 'recoverDates') { S.recover = null; saveTrip({ lockedDates: null }); S.tab = 'dates'; render(); window.scrollTo({ top: 0 }); flash('Dates reopened. Everyone’s free days are still here.'); return; }
   if (ds.act === 'linkReset') { saveTrip({ inviteKey: rid(6), invitesOff: false }); flash('New link made. Old invite links stop working for people who haven’t joined.'); return; }
   if (ds.act === 'linkToggle') { const off = !S.trip.invitesOff; saveTrip({ invitesOff: off }); flash(off ? 'Invites are off. Nobody new can join.' : 'Invites are back on.'); return; }
   if (ds.rmmember) { S.confirmRm = ds.rmmember; return render(); }
@@ -3968,8 +4204,9 @@ app.addEventListener('change', e => {
   if (id === 'me-nick') saveMe({ nick: e.target.value.trim().slice(0, 30) }, true, true);
   if (/^cost-(low|high|src)-/.test(id)) saveCostLine(id.replace(/^cost-(low|high|src)-/, ''));
   { const w = id.match(/^wi-(start|nights|dest|stay)-(\d)$/); if (w) whatifSet(+w[2], { [w[1]]: w[1] === 'nights' ? +e.target.value : e.target.value || undefined }); }
-  if (id === 'recover-who') { S.recoverWho = e.target.value || null; render(); }
-  if (id === 'recover-item') { S.recoverItem = e.target.value || null; S.alts = null; render(); }
+  { const rk = { 'recover-who': 'who', 'recover-item': 'item', 'rc-line': 'line', 'rc-amount': 'amount', 'rc-start': 'start', 'rc-end': 'end', 'rc-reopen': 'reopen' }[id];
+    if (rk) { S.rc = { ...(S.rc || {}), acts: readRcActs(), [rk]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }; if (rk === 'item') S.alts = null; if (rk === 'start' && !S.rc.end && S.trip.lockedDates) { const L = S.trip.lockedDates; S.rc.end = add(e.target.value, span(L.start, L.end).length - 1); } delete DRAFT[id]; render(); } }
+  if (id.startsWith('rc-act-')) S.rc = { ...(S.rc || {}), acts: readRcActs() };
   if (id === 'mute-plan') { lsSet('outta_mute_' + S.tid, e.target.checked); flash(e.target.checked ? 'Muted. It won’t show up in Needs you.' : 'Reminders are back on for this plan.'); }
   if (id === 'perm-invite' || id === 'perm-lock') saveTrip({ perm: { [id.slice(5)]: e.target.value } });
   if (id === 'me-budgetPublic') saveMe({ budgetPublic: e.target.checked }, true, true);
@@ -4041,6 +4278,8 @@ app.addEventListener('submit', async e => {
   clearDrafts(f);
   if (f.id === 'newTrip') return createTrip();
   if (f.id === 'newCrewForm') { const n = $('#nc-name').value.trim(); if (n) return createCrew(n); return; }
+  if (f.id === 'dnaNote') { const text = $('#dna-note').value.trim().slice(0, 80); if (!text) return; $('#dna-note').value = ''; return dnaSave(S.crewView || S.trip?.crewId, { notes: { [rid(6)]: { text, by: S.uid, at: Date.now() } } }); }
+  if (f.classList.contains('dna-fix')) { const k = f.dataset.k, v = ($('#dna-fix-' + k)?.value || '').trim().slice(0, 50); S.dnaEdit = null; render(); return dnaSave(S.crewView || S.trip?.crewId, { fix: { [k]: v || null } }); }
   if (f.id === 'tkForm') return sendTicket();
   if (f.id === 'swapForm') return swapItem($('#swap-title').value);
   if (f.id === 'ownStayForm') return addOwnStay(e.submitter?.dataset.how === 'lock');
@@ -4092,7 +4331,7 @@ app.addEventListener('submit', async e => {
 function stop() { S.unsub.forEach(u => { try { u(); } catch {} }); S.unsub = []; }
 function setHash(h) { try { history.replaceState(null, '', h ? '#' + h : location.pathname + location.search); } catch {} }
 function resetTrip() {
-  S.trip = null; S.members = []; S.membersIn = false; S.setup = null; S.addStay = false; S.whatif = null; S.repeat = null; S.recover = null; S.recoverWho = null; S.recoverItem = null; S.alts = null; S.expenses = []; S.packing = []; S.readOnly = false;
+  S.trip = null; S.members = []; S.membersIn = false; S.setup = null; S.addStay = false; S.whatif = null; S.repeat = null; S.recover = null; S.rc = null; S.alts = null; S.expenses = []; S.packing = []; S.readOnly = false;
   S.cardUrl = null; S.cardBlob = null; S.copyText = ''; S.split = null; S.confirm = null; S.tkFile = null; S.feed = []; S.bucket = []; S.photos = []; S.pot = []; S.mySpend = []; S.lostOpen = false; S.pinSel = null; S.hangPlan = null; S.wrapI = 0; S.img = null; S.show = null; clearInterval(showTimer);
   for (const k of Object.keys(DRAFT)) delete DRAFT[k];
 }
