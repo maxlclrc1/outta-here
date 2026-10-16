@@ -132,15 +132,15 @@ function costTab() {
 const costT = {}, costPending = {};
 function saveCostLine(k) {
   const el = id => $('#cost-' + id + '-' + k);
-  costPending[k] = { low: el('low') ? el('low').value : costPending[k]?.low, high: el('high') ? el('high').value : costPending[k]?.high, src: el('src') ? el('src').value : costPending[k]?.src };
+  costPending[k] = { low: el('low') ? el('low').value : costPending[k]?.low, high: el('high') ? el('high').value : costPending[k]?.high, src: el('src') ? el('src').value : costPending[k]?.src, tid: S.tid };
   clearTimeout(costT[k]); costT[k] = setTimeout(() => saveCostLineNow(k), 350);
 }
 function saveCostLineNow(k) {
-  const { low, high, src = 'estimate' } = costPending[k] || {}; delete costPending[k];
+  const { low, high, src = 'estimate', tid } = costPending[k] || {}; delete costPending[k];
   const l = Math.max(0, Math.round(+low || 0)), h = Math.max(0, Math.round(+high || 0));
   delete DRAFT['cost-low-' + k]; delete DRAFT['cost-high-' + k];
-  if (!l && !h) return saveTrip({ costs: { [k]: null } });
-  saveTrip({ costs: { [k]: { low: l || h, high: Math.max(l, h), src, by: S.uid, at: Date.now() } } });
+  if (!l && !h) return saveTrip({ costs: { [k]: null } }, tid);
+  saveTrip({ costs: { [k]: { low: l || h, high: Math.max(l, h), src, by: S.uid, at: Date.now() } } }, tid);
 }
 // AI fills only the lines that don't have a real quote or booking yet.
 function estimateCosts() {

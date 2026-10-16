@@ -10,7 +10,7 @@ function lostSheet() {
   return `<div class="sheet-bg" data-act="lostClose"></div><div class="sheet" role="dialog" aria-label="I'm lost">
     <h2>Where are you?</h2><p class="small muted">The crew gets an alert with your spot and directions to you. Tap the closest place or type a landmark or cross street.</p>
     <div class="row" style="gap:6px">${[...new Set(places)].slice(0, 10).map(p => `<button class="chip" data-lostat="${esc(p)}">${esc(p)}</button>`).join('')}</div>
-    <form id="lostForm" class="row" style="gap:6px"><input id="lost-where" maxlength="80" placeholder="Collins Ave & 8th St" style="flex:1 1 200px"><button class="btn lost-btn" type="submit">Send SOS</button></form>
+    <form id="lostForm" class="row" style="gap:6px"><input aria-label="Where you are" id="lost-where" maxlength="80" placeholder="Collins Ave & 8th St" style="flex:1 1 200px"><button class="btn lost-btn" type="submit">Send SOS</button></form>
     <p class="small muted">Tip: also share your live location from Google Maps or Find My with the group chat.</p>
     <button class="btn sm ghost" data-act="lostClose">Cancel</button></div>`;
 }

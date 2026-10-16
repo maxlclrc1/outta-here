@@ -44,7 +44,7 @@ function jSteps() {
     why: `Their share can be covered, and surprise plans stay hidden from them.`,
     todo: `Pick them below. Only planners see this step.`,
     after: 'Anything you mark as a surprise in the itinerary is hidden from them until you reveal it.',
-    act: () => `<select id="set-honoree" style="width:auto"><option value="">Pick someone</option>${S.members.map(m => `<option value="${esc(m.id)}">${esc(m.nick || 'Someone')}</option>`).join('')}</select>`,
+    act: () => `<select aria-label="Who it’s for" id="set-honoree" style="width:auto"><option value="">Pick someone</option>${S.members.map(m => `<option value="${esc(m.id)}">${esc(m.nick || 'Someone')}</option>`).join('')}</select>`,
     help: { tab: 'settings', sel: '#set-honoree' },
   });
   {
@@ -262,7 +262,8 @@ function jSteps() {
   });
 }
 // which stage the plan is in: decided by time first, then by what's open
-function journey() {
+function journey() { return memo('journey', journeyNow); }
+function journeyNow() {
   const t = S.trip, d = t.lockedDates, steps = jSteps();
   let stage;
   if (d && TODAY > d.end) stage = 'after';

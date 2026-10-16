@@ -68,7 +68,7 @@ Reply with only JSON: {"pitches":[{"city":"","code":"IATA airport code","start":
       const o = valid.get(p.start) || opts[0];
       return { id: rid(6), city: String(p.city).slice(0, 40), code: isCode(p.code) ? p.code.toUpperCase() : '', start: o.start, end: o.end,
         tagline: String(p.tagline || '').slice(0, 80), why: String(p.why || '').slice(0, 300), perPerson: String(p.perPerson || '').slice(0, 30),
-        vibeMatch: Math.max(0, Math.min(100, Math.round(+p.vibeMatch || 0))), highlights: (p.highlights || []).slice(0, 3).map(h => String(h).slice(0, 80)), weather: String(p.weather || '').slice(0, 60) };
+        vibeMatch: Math.max(0, Math.min(100, Math.round(+p.vibeMatch || 0))), highlights: arr(p.highlights).slice(0, 3).map(h => String(h).slice(0, 80)), weather: String(p.weather || '').slice(0, 60) };
     });
     if (!items.length) { flash('No pitches came back. Try again.'); return; }
     return saveTrip({ pitches: { items, at: Date.now() }, pitchHistory: nextHistory(), runoff: null });
@@ -113,7 +113,7 @@ function matchBody() {
         <div class="facts"><div><span class="label">${p.small ? 'When' : 'Dates'}</span><b>${p.small ? fmt(p.start) + (p.time ? ' · ' + t12(p.time) : '') : short(p.start) + ' → ' + short(p.end)}</b></div><div><span class="label">Per person</span><b>${esc(p.perPerson || '?')}</b></div></div>
         ${fitChips(p)}
         <p>${esc(p.why)}</p>
-        ${p.highlights.length || p.weather ? `<details class="p-more"><summary class="small">See details</summary>${p.weather ? `<p class="small" style="margin:6px 0 0"><b>Weather:</b> ${esc(p.weather)}</p>` : ''}${p.highlights.length ? `<ul style="margin:6px 0 0;padding-left:18px">${p.highlights.map(h => `<li>${esc(h)}</li>`).join('')}</ul>` : ''}</details>` : ''}
+        ${arr(p.highlights).length || p.weather ? `<details class="p-more"><summary class="small">See details</summary>${p.weather ? `<p class="small" style="margin:6px 0 0"><b>Weather:</b> ${esc(p.weather)}</p>` : ''}${arr(p.highlights).length ? `<ul style="margin:6px 0 0;padding-left:18px">${arr(p.highlights).map(h => `<li>${esc(h)}</li>`).join('')}</ul>` : ''}</details>` : ''}
       </div>
     </article>`; };
   return `${S.sample === null ? whereTab() : ''}<section class="card stack">

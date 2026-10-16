@@ -1,12 +1,12 @@
 /* ---------- navigation ---------- */
-function stop() { S.unsub.forEach(u => { try { u(); } catch {} }); S.unsub = []; }
+function stop() { if (S.meDirty && S.tid && !S.demo) flushMe(); S.unsub.forEach(u => { try { u(); } catch {} }); S.unsub = []; }
 function setHash(h) { try { history.replaceState(null, '', h ? '#' + h : location.pathname + location.search); } catch {} }
 function resetTrip() {
-  S.trip = null; S.members = []; S.membersIn = false; S.setup = null; S.addStay = false; S.whatif = null; S.repeat = null; S.recover = null; S.rc = null; S.editItem = null; S.alts = null; S.expenses = []; S.packing = []; S.readOnly = false;
+  S.trip = null; S.members = []; S.membersIn = false; S.busy = {}; S.setup = null; S.addStay = false; S.whatif = null; S.repeat = null; S.recover = null; S.rc = null; S.editItem = null; S.alts = null; S.expenses = []; S.packing = []; S.readOnly = false;
   S.cardUrl = null; S.cardBlob = null; S.copyText = ''; S.split = null; S.confirm = null; S.tkFile = null; S.feed = []; S.bucket = []; S.photos = []; S.pot = []; S.mySpend = []; S.lostOpen = false; S.pinSel = null; S.hangPlan = null; S.wrapI = 0; S.img = null; S.show = null; clearInterval(showTimer);
   for (const k of Object.keys(DRAFT)) delete DRAFT[k];
 }
-function goHome() { stop(); if (S.meDirty) flushMe(); S.tid = null; S.creating = null; S.crewView = null; S.demo = false; resetTrip(); setHash(''); render(); }
+function goHome() { stop(); S.tid = null; S.creating = null; S.crewView = null; S.demo = false; resetTrip(); setHash(''); render(); }
 
 function openTrip(id, tab) {
   if (!S.db) { flash(IN_CLAUDE ? 'Open this page in Claude to load trips.' : 'Can’t reach the local server. Is npm run dev still running?'); return; }
@@ -26,6 +26,7 @@ function openTrip(id, tab) {
   S.unsub.push(S.db.collection(`trips/${id}/feed`).orderBy('at', 'desc').limit(150).onSnapshot(snap => {
     S.feed = snap.docs.map(d => ({ id: d.id, ...d.data() })); if (S.trip) render();
   }, () => {}));
+  if (!S.realId) { try { S.mySpend = JSON.parse(localStorage.getItem('oh_spend_' + id) || '[]'); } catch { S.mySpend = []; } }
   if (S.realId) S.unsub.push(S.db.doc(`data/users/${S.realId}/spend-${id}`).onSnapshot(snap => { S.mySpend = snap.exists ? (snap.data().items || []) : (() => { try { return JSON.parse(localStorage.getItem('oh_spend_' + id) || '[]'); } catch { return []; } })(); if (S.trip) render(); }, () => {}));
   for (const coll of ['expenses', 'packing', 'bucket', 'photos', 'pot']) {
     S.unsub.push(S.db.collection(`trips/${id}/${coll}`).orderBy('at').limit(500).onSnapshot(snap => {

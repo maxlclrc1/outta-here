@@ -79,9 +79,9 @@ function myNeeds() {
     <h2>Your needs</h2>
     <p class="small muted">So the plan works for you. No need to say why. You choose who sees each part, and the AI plans around all of it without using your name.</p>
     <div class="stack need-sec"><div class="row" style="justify-content:space-between;gap:8px"><span class="label">Food</span>${sh('diet')}</div>${tags('diet', DIETS)}
-      <input id="nd-dietNote" maxlength="80" value="${esc(n.dietNote || '')}" placeholder="Anything else? e.g. severe, carry an EpiPen"></div>
+      <input aria-label="Other food needs" id="nd-dietNote" maxlength="80" value="${esc(n.dietNote || '')}" placeholder="Anything else? e.g. severe, carry an EpiPen"></div>
     <div class="stack need-sec"><div class="row" style="justify-content:space-between;gap:8px"><span class="label">Getting around and rooms</span>${sh('access')}</div>${tags('access', ACCESS)}
-      <input id="nd-accessNote" maxlength="80" value="${esc(n.accessNote || '')}" placeholder="Anything else the planner should know"></div>
+      <input aria-label="Other access needs" id="nd-accessNote" maxlength="80" value="${esc(n.accessNote || '')}" placeholder="Anything else the planner should know"></div>
     ${isSmall() ? '' : `<div class="stack need-sec"><div class="row" style="justify-content:space-between;gap:8px"><span class="label">Travel</span>${sh('travel')}</div>
       <div class="row" style="gap:8px">
         <label class="field" style="flex:1 1 130px"><span class="small muted">Leave no earlier than</span><input id="nd-depart" type="time" value="${esc(n.depart || '')}"></label>

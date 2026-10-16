@@ -44,7 +44,7 @@ lat/lng: your best estimate of the location.`;
     const items = (Array.isArray(data?.items) ? data.items : []).filter(x => x && x.name).slice(0, 8).map(x => ({
       id: rid(6), name: String(x.name).slice(0, 80), kind: ['hotel', 'rental', 'hostel'].includes(x.kind) ? x.kind : 'hotel', area: String(x.area || '').slice(0, 60),
       sleeps: String(x.sleeps || '').slice(0, 60), perNight: String(x.perNight || '').slice(0, 40), perPerson: String(x.perPerson || '').slice(0, 40),
-      why: String(x.why || '').slice(0, 240), pros: (x.pros || []).slice(0, 3).map(p => String(p).slice(0, 50)), lat: +x.lat || null, lng: +x.lng || null }));
+      why: String(x.why || '').slice(0, 240), pros: arr(x.pros).slice(0, 3).map(p => String(p).slice(0, 50)), lat: +x.lat || null, lng: +x.lng || null }));
     if (!items.length) { flash('No stays came back. Try again.'); return; }
     return saveTrip({ stays: { city: dest()?.city || '', items, at: Date.now() } });
   });
@@ -77,7 +77,7 @@ function staysTab() {
         <div class="row" style="justify-content:space-between;align-items:baseline"><b class="mono">${esc(s.perNight)}</b><span class="small muted">${esc(s.perPerson)}</span></div>
         ${s.sleeps ? `<span class="small muted">Sleeps: ${esc(s.sleeps)}</span>` : ''}
         <p class="small">${esc(s.why)}</p>
-        ${s.pros.length ? `<div class="row" style="gap:4px">${s.pros.map(p => `<span class="chip" style="cursor:default">${esc(p)}</span>`).join('')}</div>` : ''}
+        ${arr(s.pros).length ? `<div class="row" style="gap:4px">${arr(s.pros).map(p => `<span class="chip" style="cursor:default">${esc(p)}</span>`).join('')}</div>` : ''}
         <div class="row" style="gap:6px">${voteBtns(rkey('st' + s.name))}</div>
         <div class="row" style="gap:6px">${stayLinks(s, ds, d, n)}${st?.name !== s.name ? `<button class="btn sm ghost" data-lockstay="${i}">Lock as our stay</button>` : ''}</div>
       </div></article>`).join('')}</section>

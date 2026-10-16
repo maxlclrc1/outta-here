@@ -34,9 +34,9 @@ function planRow(t, opts = {}) {
     </div>
     <div class="pr-status"><span class="board-st">${BOARD[st]}</span>${mine ? '<span class="your-flag">Your move</span>' : ''}</div>
     <div class="pr-acts">${S.confirmHome === t.id
-      ? `<span class="small pr-ask">Delete for everyone?</span><button class="btn sm ghost" data-act="homeCancel">Cancel</button><button class="btn sm danger-fill" data-homedo="${esc(t.id)}">Delete</button>`
+      ? `<span class="small pr-ask">Delete for everyone?</span><button class="btn sm ghost" data-act="homeCancel">Cancel</button><button class="btn sm danger-fill" data-homedo="${esc(t.id)}" ${S.busy.delete ? 'disabled' : ''}>${S.busy.delete ? 'Deleting…' : 'Delete'}</button>`
       : `${canDelete(t) ? `<button class="btn sm ghost icon pr-del" data-homedel="${esc(t.id)}" aria-label="Delete ${esc(t.name)}" title="Delete"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg></button>` : ''}<button class="btn sm" data-share="${esc(t.id)}" aria-label="Share ${esc(t.name)}">Share</button><button class="btn sm primary" data-open="${esc(t.id)}">Open</button>`}</div>
-    ${S.shareHome === t.id && S.copyText ? `<textarea class="pr-copy" id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
+    ${S.shareHome === t.id && S.copyText ? `<textarea aria-label="Text to copy" class="pr-copy" id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
   </div>`;
 }
 function homeView() {
@@ -61,7 +61,7 @@ function homeView() {
     ${!canSave && !S.loading ? `<span class="small muted">${IN_CLAUDE ? 'Couldn’t connect. Reload the page to try again.' : 'Can’t reach the local server. Start it with npm run dev, then reload.'}</span>` : ''}
   </section>
   ${S.creating === 'newCrew' ? `<section class="card stack"><h2>New crew</h2><p class="small muted">A crew is a group you make plans with. You’ll get an invite link for it next.</p>
-    <form id="newCrewForm" class="row" style="gap:6px"><input id="nc-name" maxlength="40" required placeholder="The Vegas Six" style="flex:1 1 200px"><button class="btn primary" type="submit">Create crew</button><button class="btn ghost" type="button" data-act="cancelNew">Cancel</button></form></section>` : ''}
+    <form id="newCrewForm" class="row" style="gap:6px"><input aria-label="Crew name" id="nc-name" maxlength="40" required placeholder="The Vegas Six" style="flex:1 1 200px"><button class="btn primary" type="submit">Create crew</button><button class="btn ghost" type="button" data-act="cancelNew">Cancel</button></form></section>` : ''}
   ${!canSave ? '' : !S.tripsLoaded ? '<p class="muted">Loading your plans…</p>' : `
   ${inboxCard()}
   <div class="home-bar"><span class="small muted">${[live.length && live.length + ' happening now', upcoming.length && upcoming.length + ' coming up', deciding.length && deciding.length + ' deciding'].filter(Boolean).join(' · ') || 'No plans yet'}</span>${viewSwitch()}</div>
@@ -157,7 +157,7 @@ function crewPage(cid) {
   ${dnaCard(c)}
   ${crewTemplates(c)}
   ${past.length ? `<details class="card past"><summary><b>Landed</b> <span class="small muted">Past plans ·</span> <span class="small muted">${past.length}</span></summary><div class="stack" style="margin-top:10px">${past.map(t => planRow(t, { noCrew: true })).join('')}</div></details>` : ''}
-  ${c.by === S.uid || S.isOwner ? `<div><button class="btn sm ghost danger" data-delcrew="${esc(cid)}">Delete crew</button></div>` : ''}`;
+  ${c.by === S.uid || S.isOwner ? (S.confirmCrew === cid ? `<section class="card row confirm-row" style="justify-content:space-between;gap:10px"><span class="small"><b>Delete ${esc(c.name)}?</b> Its plans are kept. Templates and Crew DNA go with it.</span><span class="row" style="gap:6px"><button class="btn sm danger-fill" data-delcrewdo="${esc(cid)}" ${S.busy.delcrew ? 'disabled' : ''}>${S.busy.delcrew ? '<i class="spin"></i>Deleting…' : 'Delete crew'}</button><button class="btn sm ghost" data-act="delCrewCancel">Cancel</button></span></section>` : `<div><button class="btn sm ghost danger" data-delcrew="${esc(cid)}">Delete crew</button></div>`) : ''}`;
 }
 async function createCrew(name) {
   const cid = rid(10), body = { name: name.slice(0, 40), ids: [S.uid], people: { [S.uid]: true }, profiles: { [S.uid]: { nick: S.myName || 'Me' } }, by: S.uid, at: Date.now() };
@@ -174,6 +174,7 @@ async function joinCrew(cid) {
   } catch (e) { flash(writeErr(e)); }
 }
 function openCrew(cid) {
+  S.confirmCrew = null;
   stop(); S.tid = null; resetTrip(); S.crewView = cid; S.creating = null; setHash('c-' + cid);
   render(); window.scrollTo({ top: 0 });
 }
@@ -229,7 +230,7 @@ function newTripForm() {
         <span class="small muted">All of this can change later in Settings.</span>
       </details>
       <p class="small muted">${small ? 'Everyone taps which of these days they’re free. The crew picks the exact plan and day together.' : 'Not sure on dates yet? Give a wide window. The crew picks the exact nights later.'}</p>
-      <div><button class="btn primary big" type="submit">Create ${esc(sz.label.toLowerCase())}</button></div>
+      <div><button class="btn primary big" type="submit" ${S.busy.create ? 'disabled' : ''}>${S.busy.create ? '<i class="spin"></i>Creating…' : `Create ${esc(sz.label.toLowerCase())}`}</button></div>
     </form>
   </section>`;
 }

@@ -20,7 +20,7 @@ function setupView() {
         ${dayPicker()}<span class="small muted">${nDays ? `${nDays} day${nDays === 1 ? '' : 's'} picked` : 'Nothing picked yet'}</span>` },
     home: { h: size() === 'trip' ? 'Where are you flying from?' : 'Where are you coming from?',
       p: size() === 'trip' ? 'Your home airport or city. It’s used for flight prices and to pitch places that are easy for everyone to reach.' : 'Your city or neighborhood, so pitches stay within reach for everyone.',
-      c: `<input id="me-home" class="big-input" maxlength="40" value="${esc(m.home || '')}" placeholder="${size() === 'trip' ? 'JFK or New York' : 'Brooklyn'}" autocomplete="address-level2" enterkeyhint="next">` },
+      c: `<input id="me-home" aria-label="${size() === 'trip' ? 'Home airport or city' : 'Your city or neighborhood'}" class="big-input" maxlength="40" value="${esc(m.home || '')}" placeholder="${size() === 'trip' ? 'JFK or New York' : 'Brooklyn'}" autocomplete="address-level2" enterkeyhint="next">` },
     budget: { h: 'What’s your max?',
       p: isSmall() ? 'The most you’d spend on this, all in. Pitches stay under the lowest budget in the crew.' : 'The most you’d spend in total, travel included. Pitches stay under the lowest budget in the crew.',
       c: `<div class="row" style="gap:6px">${BUDGETS[size()].map(u => niceIn(u)).map(v => `<button class="chip big-chip ${+m.budget === v ? 'on' : ''}" data-budget="${v}">${money(v)}</button>`).join('')}</div>

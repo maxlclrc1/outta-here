@@ -17,12 +17,15 @@ function planSnapshot(t = S.trip) {
     from: S.tid, fromName: t.name, at: Date.now(),
   };
 }
-const snapCounts = s => [s.tasks.length && `${s.tasks.length} to-do${s.tasks.length === 1 ? '' : 's'}`, s.itin.length && `${s.itin.length} stop${s.itin.length === 1 ? '' : 's'}`, s.packing.length && `${s.packing.length} packing item${s.packing.length === 1 ? '' : 's'}`, Object.keys(s.costs).length && 'last time’s costs'].filter(Boolean);
+// templates saved by older versions (or edited elsewhere) may be missing parts
+const tplOf = s => ({ ...s, tasks: arr(s.tasks), itin: arr(s.itin), packing: arr(s.packing), costs: isObj(s.costs) ? s.costs : {} });
+const snapCounts = raw => { const s = tplOf(raw); return [s.tasks.length && `${s.tasks.length} to-do${s.tasks.length === 1 ? '' : 's'}`, s.itin.length && `${s.itin.length} stop${s.itin.length === 1 ? '' : 's'}`, s.packing.length && `${s.packing.length} packing item${s.packing.length === 1 ? '' : 's'}`, Object.keys(s.costs).length && 'last time’s costs'].filter(Boolean); };
 function repeatDialog() {
   const r = S.repeat; if (!r) return '';
   const crew = S.crews.find(c => c.id === (r.cid || S.trip?.crewId));
-  const snap = r.tpl ? (crew?.templates || {})[r.tpl] : planSnapshot();
-  if (!snap) return '';
+  const raw = r.tpl ? (crew?.templates || {})[r.tpl] : planSnapshot();
+  if (!raw) return '';
+  const snap = tplOf(raw);
   const sz = SIZES[snap.size] || SIZES.trip, small = ['hangout', 'day'].includes(snap.size);
   const a = small ? TODAY : add(TODAY, 30), b = add(a, sz.win + (small ? 0 : 15));
   const what = [['tasks', `To-dos (${snap.tasks.length})`, snap.tasks.length], ['itin', `Itinerary outline (${snap.itin.length} stops)`, snap.itin.length], ['pack', `Group packing list (${snap.packing.length})`, snap.packing.length], ['costs', 'Last time’s costs, as a guide', Object.keys(snap.costs).length], ['dest', snap.dest ? `Suggest ${snap.dest.city} again` : '', !!snap.dest]].filter(x => x[2]);
@@ -32,7 +35,7 @@ function repeatDialog() {
     <label class="field" style="flex:none"><span class="label">Name it</span><input id="rp-name" maxlength="60" value="${esc(r.tpl ? snap.name : snap.fromName + ' again')}"></label>
     <div class="row" style="gap:8px"><label class="field"><span class="label">${small ? 'Days that could work, from' : 'Earliest'}</span><input id="rp-start" type="date" value="${a}"></label><label class="field"><span class="label">${small ? 'to' : 'Latest'}</span><input id="rp-end" type="date" value="${b}"></label></div>
     ${what.length ? `<div class="stack" style="gap:6px"><span class="label">Bring over</span>${what.map(([k, l]) => `<label class="check-line"><input type="checkbox" id="rp-${k}" checked> ${esc(l)}</label>`).join('')}</div>` : '<span class="small muted">There’s nothing to bring over yet, so this starts a fresh plan with the same settings.</span>'}
-    <div><button class="btn primary" data-act="repeatGo">Create it</button></div>
+    <div><button class="btn primary" data-act="repeatGo" ${S.busy.repeat ? 'disabled' : ''}>${S.busy.repeat ? '<i class="spin"></i>Creating…' : 'Create it'}</button></div>
   </section>`;
 }
 async function seedMembers(id, crew) {
@@ -46,7 +49,8 @@ async function seedMembers(id, crew) {
 async function repeatGo() {
   const r = S.repeat; if (!r || !S.db || S.demo) { if (S.demo) flash('Repeating works on real plans.'); return; }
   const crew = S.crews.find(c => c.id === (r.cid || S.trip?.crewId));
-  const snap = r.tpl ? (crew?.templates || {})[r.tpl] : planSnapshot(); if (!snap) return;
+  const raw = r.tpl ? (crew?.templates || {})[r.tpl] : planSnapshot(); if (!raw) return;
+  const snap = tplOf(raw);
   const on = k => !!$('#rp-' + k)?.checked;
   const name = ($('#rp-name')?.value || '').trim().slice(0, 60) || snap.fromName || 'New plan';
   let a = $('#rp-start')?.value || TODAY, b = $('#rp-end')?.value || add(a, 30); if (b < a) [a, b] = [b, a];

@@ -3,6 +3,7 @@ app.addEventListener('click', e => {
   const t = e.target.closest('button,[data-open],[data-pin],[data-act]'); if (!t) return;
   const ds = t.dataset;
   if (ds.act === 'home') return goHome();
+  if (ds.act === 'reloadView') { lastView = null; S.tab = 'overview'; return render(); }
   if (ds.act === 'remindOpen') { S.remindOpen = !S.remindOpen; return render(); }
   if (ds.remind) { const p = remindPrefs(); p[ds.remind] = !p[ds.remind]; lsSet('outta_remind', p); return render(); }
   if (ds.act === 'notifyAsk') { try { Notification.requestPermission().then(render); } catch {} return; }
@@ -22,9 +23,11 @@ app.addEventListener('click', e => {
   }
   if (ds.startcrew) return startNewPlan(ds.startcrew);
   if (ds.act === 'clearCrew') { S.newCrew = null; return render(); }
-  if (ds.delcrew) { if (S.db) S.db.doc('crews/' + ds.delcrew).delete().then(() => { flash('Crew deleted. Its plans are kept.'); goHome(); }, e => flash(writeErr(e))); return; }
+  if (ds.delcrew) { S.confirmCrew = ds.delcrew; return render(); }
+  if (ds.act === 'delCrewCancel') { S.confirmCrew = null; return render(); }
+  if (ds.delcrewdo) return once('delcrew', () => S.db ? S.db.doc('crews/' + ds.delcrewdo).delete().then(() => { S.confirmCrew = null; flash('Crew deleted. Its plans are kept.'); goHome(); }, e => flash(writeErr(e))) : null);
   if (ds.act === 'homeCancel') { S.confirmHome = null; return render(); }
-  if (ds.homedo) return deleteTrip(ds.homedo);
+  if (ds.homedo) return once('delete', () => deleteTrip(ds.homedo));
   if (ds.act === 'newTrip') return startNewPlan();
   if (ds.pickcrew !== undefined) { S.newCrew = ds.pickcrew || null; S.creating = 'size'; render(); window.scrollTo({ top: 0 }); return; }
   if (ds.size) { S.newSize = ds.size; S.creating = ['hangout', 'day'].includes(ds.size) ? 'form' : 'mode'; render(); window.scrollTo({ top: 0 }); return; }
@@ -48,7 +51,7 @@ app.addEventListener('click', e => {
     if (ds.dnareset) { S.dnaEdit = null; return dnaSave(cid, { fix: { [ds.dnareset]: null } }); }
     if (ds.dnaforget) { flash('Forgotten. It won’t shape new pitches.'); return dnaSave(cid, { forget: { [ds.dnaforget]: true } }); }
     if (ds.dnanote) return dnaSave(cid, { notes: { [ds.dnanote]: null } }); }
-  if (ds.act === 'repeatGo') return repeatGo();
+  if (ds.act === 'repeatGo') return once('repeat', repeatGo);
   if (ds.ack) return ackChange(ds.ack);
   if (ds.undo) return undoChange(ds.undo);
   if (ds.act === 'ackAll') return saveTrip({ changes: Object.fromEntries(logList().filter(x => needsMe(x)).map(x => [x.id, { seen: { [S.uid]: true } }])) });
@@ -56,7 +59,7 @@ app.addEventListener('click', e => {
   if (ds.jgo) return jGo(ds.jgo);
   if (ds.jnudge) return jNudge(ds.jnudge);
   if (ds.act === 'repeatOpen') { S.repeat = {}; render(); setTimeout(() => $('#repeat-box')?.scrollIntoView({ block: 'nearest', behavior: calm() ? 'auto' : 'smooth' }), 60); return; }
-  if (ds.act === 'tplSave') return saveTemplate();
+  if (ds.act === 'tplSave') return once('tpl', saveTemplate);
   if (ds.act === 'applyOutline') return applyOutline();
   if (ds.act === 'dropOutline') return saveTrip({ itinTpl: null });
   if (ds.status) return setStatus(ds.status);
@@ -87,12 +90,12 @@ app.addEventListener('click', e => {
   if (ds.act === 'checkClose') return saveTrip({ check: null });
   if (ds.act === 'recoverAlts') return recoverAlts();
   if (ds.swapin !== undefined) { const o = S.alts?.options?.[+ds.swapin]; if (o) swapItem(o.title); return; }
-  if (ds.act === 'linkReset') { saveTrip({ inviteKey: rid(6), invitesOff: false }); flash('New link made. Old invite links stop working for people who haven’t joined.'); return; }
-  if (ds.act === 'linkToggle') { const off = !S.trip.invitesOff; saveTrip({ invitesOff: off }); flash(off ? 'Invites are off. Nobody new can join.' : 'Invites are back on.'); return; }
+  if (ds.act === 'linkReset') return saveTrip({ inviteKey: rid(6), invitesOff: false }).then(ok => ok && flash('New link made. Old invite links stop working for people who haven’t joined.'));
+  if (ds.act === 'linkToggle') { const off = !S.trip.invitesOff; return saveTrip({ invitesOff: off }).then(ok => ok && flash(off ? 'Invites are off. Nobody new can join.' : 'Invites are back on.')); }
   if (ds.rmmember) { S.confirmRm = ds.rmmember; return render(); }
   if (ds.act === 'rmCancel') { S.confirmRm = null; return render(); }
   if (ds.rmdo) return removeMember(ds.rmdo);
-  if (ds.mkorg) { const on = !(S.trip.orgs || {})[ds.mkorg]; saveTrip({ orgs: { [ds.mkorg]: on || null } }); flash(on ? 'Now an organizer.' : 'No longer an organizer.'); return; }
+  if (ds.mkorg) { const on = !(S.trip.orgs || {})[ds.mkorg]; return saveTrip({ orgs: { [ds.mkorg]: on || null } }).then(ok => ok && flash(on ? 'Now an organizer.' : 'No longer an organizer.')); }
   if (ds.act === 'passportImg') return makePassportImg();
   if (ds.nightvote) { const cur = (S.trip.nightVotes || {})[S.uid]; return saveTrip({ nightVotes: { [S.uid]: cur === ds.nightvote ? null : ds.nightvote } }); }
   if (ds.act === 'nextPlan') return S.trip.crewId ? startNewPlan(S.trip.crewId) : (goHome(), startNewPlan());
@@ -137,11 +140,11 @@ app.addEventListener('click', e => {
   if (ds.act === 'hangCancel') { S.hangPlan = null; return render(); }
   if (ds.act === 'writeRecap') return writeRecap(ds.day);
   if (ds.act === 'findStays') return findStays();
-  if (ds.lockstay !== undefined) { if (!canLock()) { flash('Only organizers can lock this one. Your vote still counts.'); return; } const it = S.trip.stays?.items?.[+ds.lockstay]; if (it) { flash(`Locked ${it.name} as your stay.`); return setStay({ ...it }); } return; }
+  if (ds.lockstay !== undefined) { if (!canLock()) { flash('Only organizers can lock this one. Your vote still counts.'); return; } const it = S.trip.stays?.items?.[+ds.lockstay]; if (it) return setStay({ ...it }).then(ok => ok && flash(`Locked ${it.name} as your stay.`)); return; }
   if (ds.act === 'unlockStay') return saveTrip(withLog({ stay: null }, { area: 'stay', text: `Stay unlocked: ${S.trip.stay?.name || ''}`, act: 'all', undo: { k: 'set', patch: { stay: S.trip.stay }, clear: ['stay'] } }));
   if (ds.act === 'addStayOpen') { S.addStay = true; render(); setTimeout(() => $('#os-url')?.focus(), 60); return; }
   if (ds.act === 'addStayClose') { S.addStay = false; return render(); }
-  if (ds.lockown) { if (!canLock()) { flash('Only organizers can lock this one. Your vote still counts.'); return; } const s = (S.trip.myStays || {})[ds.lockown]; if (s) { flash(`Locked ${s.name} as your stay.`); return setStay(stayFromOwn(ds.lockown, s)); } return; }
+  if (ds.lockown) { if (!canLock()) { flash('Only organizers can lock this one. Your vote still counts.'); return; } const s = (S.trip.myStays || {})[ds.lockown]; if (s) return setStay(stayFromOwn(ds.lockown, s)).then(ok => ok && flash(`Locked ${s.name} as your stay.`)); return; }
   if (ds.delown) return saveTrip({ myStays: { [ds.delown]: null } });
   if (ds.delspend) return saveMySpend((S.mySpend || []).filter(x => x.id !== ds.delspend));
   if (ds.delpot) return delSub('pot', ds.delpot);
@@ -170,12 +173,12 @@ app.addEventListener('click', e => {
   if (ds.act === 'showPrev') { S.show = (S.show - 1 + S.photos.length) % S.photos.length; return openShow(S.show); }
   if (ds.delphoto) return delPhoto(ds.delphoto);
   if (ds.act === 'syncCrew') { const c = S.crews.find(x => x.id === S.trip.crewId); return saveCrew(c ? c.name : S.trip.name); }
-  if (ds.runoff) { const [k, v] = ds.runoff.split('|'); const cur = (meDoc()?.runoff || {})[k]; return saveMe({ runoff: { ...(meDoc()?.runoff || {}), [k]: cur === v ? '' : v } }, true); }
+  if (ds.qrunoff) { const [k, v] = ds.qrunoff.split('|'); const cur = (meDoc()?.runoff || {})[k]; return saveMe({ runoff: { ...(meDoc()?.runoff || {}), [k]: cur === v ? '' : v } }, true); }
   if (ds.act === 'delTicket') return delTicket();
   if (ds.act === 'askDelete') { S.confirm = 'delete'; return render(); }
   if (ds.act === 'askLeave') { S.confirm = 'leave'; return render(); }
   if (ds.act === 'cancelConfirm') { S.confirm = null; return render(); }
-  if (ds.act === 'doDelete') return deleteTrip(S.tid);
+  if (ds.act === 'doDelete') return once('delete', () => deleteTrip(S.tid));
   if (ds.act === 'doLeave') return leaveTrip();
   if (ds.act === 'closeCard') { S.cardUrl = null; S.cardBlob = null; return render(); }
   if (ds.act === 'saveCard') return saveCard();
@@ -227,7 +230,7 @@ app.addEventListener('change', e => {
   if (id === 'me-hardDays') saveMe({ hard: { ...(meDoc()?.hard || {}), days: e.target.checked } }, true);
   if (id === 'me-condUnder' || id === 'me-condNote') { const u = Math.max(0, Math.round(+$('#me-condUnder').value || 0)), note = $('#me-condNote').value.trim().slice(0, 80); saveMe({ cond: u || note ? { under: u, note } : null }, true); }
   if (id === 'me-hideLoc') saveMe({ hideLoc: e.target.checked }, true, true);
-  if (id === 'my-flight-price') { const v = Math.round(+e.target.value || 0); if (v > 0) { saveTrip({ tickets: { [S.uid]: { price: v } } }); flash('Got it. Your flight is in the cost now.'); } }
+  if (id === 'my-flight-price') { const v = Math.round(+e.target.value || 0); if (v > 0) saveTrip({ tickets: { [S.uid]: { price: v } } }).then(ok => ok && flash('Got it. Your flight is in the cost now.')); }
   if (id === 'set-cur' && CUR_CODES.includes(e.target.value)) { saveTrip(withLog({ currency: e.target.value }, { area: 'money', text: `Currency changed to ${e.target.value}`, undo: { k: 'set', patch: { currency: cur() } } })); flash(`Now in ${e.target.value}. Amounts already typed in weren’t converted.`); }
   if (id === 'my-cur' && CUR_CODES.includes(e.target.value)) { try { localStorage.setItem('outta_mycur', e.target.value); } catch {} render(); }
   if (id === 'cost-buffer') saveTrip({ costBuffer: +e.target.value });
@@ -236,7 +239,7 @@ app.addEventListener('change', e => {
   if (id === 'rsvp-by') saveTrip({ rsvpBy: e.target.value || null });
   if (id === 'me-home') saveMe({ home: e.target.value.trim().slice(0, 40) }, true, true);
   if (id === 'me-budget') saveMe({ budget: Math.max(0, Math.round(+e.target.value || 0)) }, true, true);
-  if (id === 'ph-files') { uploadPhotos(e.target.files); return; }
+  if (id === 'ph-files') { const files = [...e.target.files]; e.target.value = ''; once('photos-up', () => uploadPhotos(files)); return; }
   if (id === 'set-honoree') { saveTrip({ honoree: e.target.value || null }); return; }
   if (id === 'set-free') { saveTrip({ honoreeFree: e.target.checked }); return; }
   if (id === 'pot-keeper') { saveTrip({ potKeeper: e.target.value }); return; }
@@ -256,6 +259,22 @@ app.addEventListener('change', e => {
     return;
   }
   if (id.startsWith('me-') || id === 'nights') delete DRAFT[id];
+});
+// Escape closes whatever is open on top (a sheet, a confirmation, an inline editor) and
+// puts focus back on the button that opened it.
+let opener = null;
+app.addEventListener('click', e => { const b = e.target.closest('button'); if (b) opener = b; }, true);
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || e.defaultPrevented) return;
+  const layers = [
+    [S.lostOpen, () => { S.lostOpen = false; }], [S.show !== null && S.show !== undefined, () => { S.show = null; clearInterval(showTimer); }],
+    [S.confirmCrew, () => { S.confirmCrew = null; }], [S.confirmHome, () => { S.confirmHome = null; }], [S.confirm, () => { S.confirm = null; }], [S.confirmRm, () => { S.confirmRm = null; }],
+    [S.editItem, () => { S.editItem = null; }], [S.repeat, () => { S.repeat = null; }], [S.recover, () => { S.recover = null; S.rc = null; }],
+    [S.addStay, () => { S.addStay = false; }], [S.remindOpen, () => { S.remindOpen = false; }], [S.dnaEdit, () => { S.dnaEdit = null; }],
+  ];
+  const top = layers.find(([on]) => on); if (!top) return;
+  e.preventDefault(); top[1](); render();
+  if (opener && opener.isConnected) opener.focus({ preventScroll: true });
 });
 app.addEventListener('keydown', e => { const p = e.target.closest && e.target.closest('[data-pin]'); if (p && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); p.dispatchEvent(new MouseEvent('click', { bubbles: true })); } });
 // swipe left/right on a phone to move between the tabs of a menu
@@ -287,14 +306,14 @@ app.addEventListener('submit', async e => {
   e.preventDefault();
   const f = e.target;
   clearDrafts(f);
-  if (f.id === 'newTrip') return createTrip();
-  if (f.id === 'newCrewForm') { const n = $('#nc-name').value.trim(); if (n) return createCrew(n); return; }
+  if (f.id === 'newTrip') return once('create', createTrip);
+  if (f.id === 'newCrewForm') { const n = $('#nc-name').value.trim(); if (n) return once('crew', () => createCrew(n)); return; }
   if (f.id === 'dnaNote') { const text = $('#dna-note').value.trim().slice(0, 80); if (!text) return; $('#dna-note').value = ''; return dnaSave(S.crewView || S.trip?.crewId, { notes: { [rid(6)]: { text, by: S.uid, at: Date.now() } } }); }
   if (f.classList.contains('dna-fix')) { const k = f.dataset.k, v = ($('#dna-fix-' + k)?.value || '').trim().slice(0, 50); S.dnaEdit = null; render(); return dnaSave(S.crewView || S.trip?.crewId, { fix: { [k]: v || null } }); }
-  if (f.id === 'tkForm') return sendTicket();
+  if (f.id === 'tkForm') return once('ticket-send', sendTicket);
   if (f.id === 'swapForm') return swapItem($('#swap-title').value);
   if (f.id === 'ownStayForm') return addOwnStay(e.submitter?.dataset.how === 'lock');
-  if (f.id === 'stayBookForm') { const v = Math.max(0, Math.round(+($('#sb-total')?.value || 0))); saveTrip({ stay: { booked: true, bookedBy: S.uid, bookedAt: Date.now(), ...(v ? { total: v } : {}) } }); flash('Stay marked as booked.'); return; }
+  if (f.id === 'stayBookForm') { const v = Math.max(0, Math.round(+($('#sb-total')?.value || 0))); return saveTrip({ stay: { booked: true, bookedBy: S.uid, bookedAt: Date.now(), ...(v ? { total: v } : {}) } }).then(ok => ok && flash('Stay marked as booked.')); }
   if (f.id === 'addTask') { addTask($('#task-title').value); $('#task-title').value = ''; return; }
   if (f.id === 'lostForm') return sendLost($('#lost-where').value);
   if (f.id === 'spendForm') { const note = $('#sp-note').value.trim(), amount = Math.round(+$('#sp-amt').value * 100) / 100; if (!note || !(amount > 0)) return; return saveMySpend([...(S.mySpend || []), { id: rid(6), note: note.slice(0, 50), amount, at: Date.now() }]); }

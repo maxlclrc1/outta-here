@@ -12,10 +12,25 @@ const D = s => new Date(s + 'T00:00:00Z');
 const iso = d => d.toISOString().slice(0, 10);
 const add = (s, n) => { const d = D(s); d.setUTCDate(d.getUTCDate() + n); return iso(d); };
 const span = (a, b) => { const o = []; if (!a || !b) return o; for (let s = a; s <= b && o.length < 92; s = add(s, 1)) o.push(s); return o; };
-const fmt = (s, o = { weekday: 'short', month: 'short', day: 'numeric' }) => D(s).toLocaleDateString('en-US', { ...o, timeZone: 'UTC' });
+// Date labels are formatted constantly while drawing; formatters are reused and results kept.
+const DTF = {}, FMT = new Map(), FMT_DEF = { weekday: 'short', month: 'short', day: 'numeric' };
+const fmt = (s, o = FMT_DEF) => {
+  const ok = o === FMT_DEF ? 'd' : JSON.stringify(o), key = ok + s;
+  let v = FMT.get(key);
+  if (v === undefined) {
+    v = (DTF[ok] ||= new Intl.DateTimeFormat('en-US', { ...o, timeZone: 'UTC' })).format(D(s));
+    if (FMT.size > 3000) FMT.clear();
+    FMT.set(key, v);
+  }
+  return v;
+};
 const short = s => fmt(s, { month: 'short', day: 'numeric' });
 const dow = s => fmt(s, { weekday: 'short' });
-const TODAY = iso(new Date());
+// Today in the viewer's own time zone (plan dates are plain calendar days). Rolls over at
+// midnight if the app stays open.
+const calDay = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+let TODAY = calDay(new Date());
+setInterval(() => { const t = calDay(new Date()); if (t !== TODAY) { TODAY = t; if (typeof render === 'function') render(); } }, 60000);
 const money = n => fmtMoney(Math.round(n), cur());
 
 /* ---------- state ---------- */
@@ -47,7 +62,9 @@ const rid = (n = 10) => Array.from(crypto.getRandomValues(new Uint8Array(n)), b 
 let toastT;
 function flash(msg) { const t = $('#toast'); t.textContent = msg; t.classList.remove('out'); t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.classList.add('out'); toastT = setTimeout(() => { t.hidden = true; t.classList.remove('out'); }, 260); }, 4200); }
 function writeErr(e) {
+  if (e && e.code === 'invalid_argument' && !IN_CLAUDE) return /256 KiB/.test(e.message || '') ? 'This plan has gotten too big to save more. Remove some old items and try again.' : 'That didn’t save. Try again.';
   if (e && e.code === 'invalid_argument') { S.readOnly = true; return "You can view this plan but not edit it. Ask the owner to share it with you as a Contributor."; }
+  if (e && e.code === 'permission_denied') return e.message || 'You don’t have access to change this.';
   if (e && e.code === 'quota_exceeded') return 'Storage is full. Delete an old trip and try again.';
   return 'Couldn’t save that. Check your connection and try again.';
 }
@@ -67,8 +84,15 @@ const active = () => S.members.filter(m => m.status !== 'out');
 const meDoc = () => S.members.find(m => m.id === S.uid);
 // Can this person make these days? All of them, or all but the first (arrives a day late)
 // or the last (leaves a day early) if they said they're flexible that way.
+// Some derived values (best dates, the journey) are read many times while drawing one
+// screen. During a paint they're worked out once and reused; outside a paint, always fresh.
+let MEMO = null;
+const memo = (k, f) => { if (!MEMO) return f(); if (!MEMO.has(k)) MEMO.set(k, f()); return MEMO.get(k); };
+// a member's free days as a Set, built once per days array (saving replaces the array)
+const DAYSETS = new WeakMap(), NO_DAYS = new Set();
+const daySet = arr => { if (!arr || !arr.length) return NO_DAYS; let s = DAYSETS.get(arr); if (!s) DAYSETS.set(arr, s = new Set(arr)); return s; };
 function fitOf(m, d) {
-  const has = new Set(m.days || []);
+  const has = daySet(m.days);
   if (d.every(x => has.has(x))) return 'full';
   if (d.length > 1) {
     const f = m.flex || {};
@@ -78,14 +102,18 @@ function fitOf(m, d) {
   return null;
 }
 function bestWindows(nights) {
-  const t = S.trip; const len = (nights ?? nightsSet(t)) + 1; const days = span(t.winStart, t.winEnd); const ms = active();
+  const t = S.trip, len = (nights ?? nightsSet(t)) + 1;
+  return memo('bw' + len, () => bestWindowsNow(len));
+}
+function bestWindowsNow(len) {
+  const t = S.trip; const days = span(t.winStart, t.winEnd); const ms = active();
   const out = [];
   for (let i = 0; i + len <= days.length; i++) {
     const d = days.slice(i, i + len), fit = new Map(ms.map(m => [m, fitOf(m, d)]));
     const ok = ms.filter(m => fit.get(m));
     if (!ok.length) continue;
-    const pref = ms.filter(m => d.some(x => (m.pref || []).includes(x)));
-    const prefN = ms.reduce((n, m) => n + d.filter(x => (m.pref || []).includes(x)).length, 0);
+    const pref = ms.filter(m => d.some(x => daySet(m.pref).has(x)));
+    const prefN = ms.reduce((n, m) => n + d.filter(x => daySet(m.pref).has(x)).length, 0);
     out.push({ start: d[0], end: d[len - 1], ok, full: ok.filter(m => fit.get(m) === 'full'), late: ok.filter(m => fit.get(m) === 'late'), early: ok.filter(m => fit.get(m) === 'early'), pref, prefN, miss: ms.filter(m => !fit.get(m)) });
   }
   // most people first, then most people for the whole thing, then most preferred
@@ -205,25 +233,51 @@ function voteBtns(key) {
 
 /* ---------- writes ---------- */
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
+// a list from AI or older saved data that might not be a list
+const arr = v => Array.isArray(v) ? v : [];
 function merge(t, p) { const o = { ...t }; for (const [k, v] of Object.entries(p)) o[k] = isObj(v) && isObj(o[k]) ? merge(o[k], v) : v; return o; }
-async function saveTrip(patch) {
-  S.trip = merge(S.trip, patch); render();
+// Changes show right away and are written in the background. Every write goes to the plan it
+// was made in, even if you've moved on by the time it runs. If a write fails, the screen is
+// put back to what's actually saved, so it never shows something the crew can't see.
+async function saveTrip(patch, tid = S.tid) {
+  if (!tid) return false;
+  const here = tid === S.tid && S.trip;
+  if (here) { S.trip = merge(S.trip, patch); render(); }
   if (S.demo) return true;
   if (!S.db) return false;
-  try { await S.db.doc('trips/' + S.tid).update(patch); return true; } catch (e) { flash(writeErr(e)); return false; }
+  try { await S.db.doc('trips/' + tid).update(patch); return true; }
+  catch (e) { flash(writeErr(e)); if (here) resync(tid); return false; }
+}
+async function resync(tid) {
+  try { const snap = await S.db.doc('trips/' + tid).get(); if (S.tid === tid && snap.exists) { S.trip = { ...snap.data() }; render(); } } catch {}
 }
 async function putSub(coll, id, data, partial) {
-  const list = S[coll], i = list.findIndex(x => x.id === id);
+  const tid = S.tid, list = S[coll], i = list.findIndex(x => x.id === id), before = i >= 0 ? list[i] : null;
   if (i >= 0) list[i] = partial ? { ...list[i], ...data } : { id, ...data }; else list.push({ id, ...data });
   render();
-  if (S.demo || !S.db) return;
-  const ref = S.db.doc(`trips/${S.tid}/${coll}/${id}`);
-  try { partial ? await ref.update(data) : await ref.set(data); } catch (e) { flash(writeErr(e)); }
+  if (S.demo || !S.db || !tid) return true;
+  const ref = S.db.doc(`trips/${tid}/${coll}/${id}`);
+  try { partial ? await ref.update(data) : await ref.set(data); return true; }
+  catch (e) {
+    flash(writeErr(e));
+    if (S.tid === tid) { S[coll] = before ? S[coll].map(x => x.id === id ? before : x) : S[coll].filter(x => x.id !== id); render(); }
+    return false;
+  }
 }
 async function delSub(coll, id) {
+  const tid = S.tid, before = S[coll].find(x => x.id === id);
   S[coll] = S[coll].filter(x => x.id !== id); render();
-  if (S.demo || !S.db) return;
-  try { await S.db.doc(`trips/${S.tid}/${coll}/${id}`).delete(); } catch (e) { flash(writeErr(e)); }
+  if (S.demo || !S.db || !tid) return;
+  try { await S.db.doc(`trips/${tid}/${coll}/${id}`).delete(); }
+  catch (e) { flash(writeErr(e)); if (S.tid === tid && before) { S[coll].push(before); render(); } }
+}
+// One at a time: a second tap while the first is still saving does nothing.
+const INFLIGHT = new Set();
+async function once(key, fn) {
+  if (INFLIGHT.has(key)) return;
+  INFLIGHT.add(key); S.busy[key] = true;
+  const job = fn(); render(); // fn reads its form fields before the busy state is drawn
+  try { return await job; } finally { INFLIGHT.delete(key); S.busy[key] = false; render(); }
 }
 async function copy(text) {
   try { await navigator.clipboard.writeText(text); flash('Copied. Paste it in the group chat.'); S.copyText = ''; }
@@ -240,16 +294,17 @@ function saveMe(patch, now, quiet) {
   S.meDirty = true; meSeq++; clearTimeout(meT); meT = setTimeout(flushMe, now ? 0 : 600);
 }
 async function flushMe() {
-  if (meWriting) { meT = setTimeout(flushMe, 300); return; }
-  const m = meDoc(); if (!m || !S.db) return;
-  meWriting = true; const seq = meSeq;
-  const { id, ...body } = m;
+  clearTimeout(meT);
+  const m = meDoc(); if (!m || !S.db || S.demo || !S.tid) return;
+  const { id, ...body } = m, job = { tid: S.tid, body, seq: meSeq, joined: !!(S.trip?.people || {})[S.uid] && !(S.trip?.left || {})[S.uid] };
+  while (meWriting) await new Promise(r => setTimeout(r, 120));
+  meWriting = true;
   try {
-    await S.db.doc(`trips/${S.tid}/members/${S.uid}`).set({ ...body, updatedAt: Date.now() });
-    if (!(S.trip?.people || {})[S.uid] || (S.trip?.left || {})[S.uid]) S.db.doc('trips/' + S.tid).update({ people: { [S.uid]: true }, left: { [S.uid]: null } }).catch(() => {});
+    await S.db.doc(`trips/${job.tid}/members/${S.uid}`).set({ ...job.body, updatedAt: Date.now() });
+    if (!job.joined) S.db.doc('trips/' + job.tid).update({ people: { [S.uid]: true }, left: { [S.uid]: null } }).catch(() => {});
   }
-  catch (e) { flash(writeErr(e)); }
-  meWriting = false; if (seq === meSeq) S.meDirty = false;
+  catch (e) { flash(S.tid === job.tid ? writeErr(e) : 'Your last change to the other plan didn’t save. Open it and try again.'); }
+  meWriting = false; if (job.seq === meSeq && S.tid === job.tid) S.meDirty = false;
 }
 
 /* ---------- AI ---------- */
@@ -258,9 +313,14 @@ async function askAI(kind, prompt, done) {
   S.busy[kind] = true; render();
   if (S.trip) { const nt = needsText(); if (nt) prompt += '\n\n' + nt; }
   if (S.trip) prompt += `\n\nGive every price in ${cur()} (${curSymbol(cur())}), not in any other currency, and use that symbol in price text.`;
-  try { const data = await S.sample.json(prompt, { modelTier: 'default' }); await done(data); }
-  catch (e) { flash(aiErr(e)); }
-  finally { S.busy[kind] = false; render(); }
+  const tid = S.tid;
+  try {
+    const data = await S.sample.json(prompt, { modelTier: 'default' });
+    if (S.tid !== tid) { flash('An AI answer came back after you left that plan. Open it and ask again.'); return; }
+    await done(data);
+  }
+  catch (e) { if (S.tid === tid) flash(aiErr(e)); }
+  finally { if (S.tid === tid) { S.busy[kind] = false; render(); } }
 }
 function context() {
   const d = dates(), ds = dest(), b = budgetCap();
