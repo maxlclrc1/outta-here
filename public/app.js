@@ -741,8 +741,8 @@ function datesBody() {
       <div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:12px">
         <span class="label">${isSmall() ? 'Days that could work' : 'Trip window'}</span>
         <div class="win-edit">
-          <label class="field"><span class="small muted">Earliest</span><input id="win-start" type="date" value="${t.winStart}"></label>
-          <label class="field"><span class="small muted">Latest</span><input id="win-end" type="date" value="${t.winEnd}"></label>
+          <label class="field"><span class="small muted">Earliest</span><input id="win-start" type="date" value="${esc(t.winStart)}"></label>
+          <label class="field"><span class="small muted">Latest</span><input id="win-end" type="date" value="${esc(t.winEnd)}"></label>
           <label class="field" ${isSmall() ? 'hidden' : ''}><span class="small muted">Trip length</span><select id="nights">${(isSmall() ? [0] : [1,2,3,4,5,6,7,10,14]).map(n => `<option value="${n}" ${n === nightsSet(t) ? 'selected' : ''}>${n === 0 ? 'Same day' : n + ' night' + (n === 1 ? '' : 's')}</option>`).join('')}</select></label>
         </div>
         <span class="small muted">Change these any time. Days people already tapped are kept.</span>
@@ -1803,7 +1803,7 @@ function rsvpCard() {
     <p class="small muted">${h.firm ? `Plan for <b>${h.firm}</b> ${h.firm === 1 ? 'person' : 'people'}${h.going ? `, up to <b>${h.max}</b> if everyone going confirms` : ''}.` : h.going ? `Nobody has confirmed yet. <b>${h.going}</b> ${h.going === 1 ? 'is' : 'are'} planning to come.` : 'Nobody has said they’re coming yet.'} Stays and costs use this number.</p>
     ${condLines()}
     ${org ? `<div class="stack" style="gap:10px;border-top:1px solid var(--line);padding-top:12px">
-      <div class="row" style="gap:8px;align-items:flex-end"><label class="field" style="flex:0 1 190px"><span class="label">Everyone answers by</span><input id="rsvp-by" type="date" value="${by || ''}" min="${TODAY}"></label>${by ? '<button class="btn sm ghost" data-act="rsvpClear">No deadline</button>' : ''}</div>
+      <div class="row" style="gap:8px;align-items:flex-end"><label class="field" style="flex:0 1 190px"><span class="label">Everyone answers by</span><input id="rsvp-by" type="date" value="${esc(by || '')}" min="${TODAY}"></label>${by ? '<button class="btn sm ghost" data-act="rsvpClear">No deadline</button>' : ''}</div>
       ${und.length ? `<span class="label">Still undecided · ${und.length}</span>
         <div class="row" style="gap:6px">${und.map(m => `<span class="chip" style="cursor:default"><span class="av" style="width:18px;height:18px;font-size:9px;background:${colorFor(m.id)}">${esc((m.nick || '?')[0].toUpperCase())}</span>${esc(m.nick || 'Someone')}</span>`).join('')}</div>
         <div class="row" style="gap:6px;align-items:center">${canNudge ? `<button class="btn sm primary" data-act="rsvpNudge">Nudge them</button>` : `<span class="small muted">Nudged ${ago(t.rsvpNudge)}. The button rests for ${Math.ceil((NUDGE_REST - since) / 36e5)}h so nobody gets spammed.</span>`}
@@ -2688,7 +2688,7 @@ function decideCard() {
     <p class="small muted">Everyone sees these rules next to the votes. ${org ? '' : 'Only organizers can change them.'}</p>
     <div class="dec-styles">${Object.entries(STYLES).map(([k, [l, h]]) => `<button class="dec-style ${d.style === k ? 'on' : ''}" data-decide="${k}" aria-pressed="${d.style === k}" ${org ? '' : 'disabled'}><b>${esc(l)}</b><span class="small">${esc(h)}</span></button>`).join('')}</div>
     ${d.style === 'majority' ? `<label class="field" style="flex:none;max-width:240px"><span class="label">Yes votes needed</span><select id="dec-pct" ${org ? '' : 'disabled'}>${[50, 60, 67, 75].map(p => `<option value="${p}" ${d.pct === p ? 'selected' : ''}>${p === 50 ? 'More than half' : p === 67 ? 'Two thirds' : p === 75 ? 'Three quarters' : p + '%'}</option>`).join('')}</select></label>` : ''}
-    ${d.style === 'pick' ? `<label class="field" style="flex:none;max-width:240px"><span class="label">Voting closes</span><input id="dec-by" type="date" value="${d.by || ''}" min="${TODAY}" ${org ? '' : 'disabled'}></label>` : ''}
+    ${d.style === 'pick' ? `<label class="field" style="flex:none;max-width:240px"><span class="label">Voting closes</span><input id="dec-by" type="date" value="${esc(d.by || '')}" min="${TODAY}" ${org ? '' : 'disabled'}></label>` : ''}
     <p class="small"><b>Always:</b> a vote never locks something over someone’s hard budget limit or firm dates. They have to agree to that option first. Set yours in Home › Crew.</p>
   </section>`;
 }
@@ -3363,8 +3363,8 @@ function flightsTab() {
         ${e ? `<span class="price">${esc(e.roundTrip)}<small>typical round trip</small></span>` : ''}</div>
       ${e?.tip ? `<p class="small">${esc(e.tip)}</p>` : ''}
       <div class="row" style="gap:6px">${who.map(m => `<span class="chip" style="cursor:default">${esc(m.nick || 'Someone')} ${tk.tk[m.id] ? '<b style="color:var(--good)">✓ booked</b>' : '<span class="muted">not booked</span>'}</span>`).join('')}</div>
-      <div class="row" style="gap:6px"><a class="btn primary sm" href="${gFlights(home, d, ds)}" target="_blank" rel="noopener">Google Flights</a>
-        ${isCode(home) && ds.code ? `<a class="btn sm" href="${kayak(home.trim(), d, ds)}" target="_blank" rel="noopener">Kayak</a><a class="btn sm" href="${skyscanner(home.trim(), d, ds)}" target="_blank" rel="noopener">Skyscanner</a>` : ''}
+      <div class="row" style="gap:6px"><a class="btn primary sm" href="${esc(gFlights(home, d, ds))}" target="_blank" rel="noopener">Google Flights</a>
+        ${isCode(home) && isCode(ds.code) ? `<a class="btn sm" href="${esc(kayak(home.trim(), d, ds))}" target="_blank" rel="noopener">Kayak</a><a class="btn sm" href="${esc(skyscanner(home.trim(), d, ds))}" target="_blank" rel="noopener">Skyscanner</a>` : ''}
         ${who.some(m => m.id === S.uid) && !tk.tk[S.uid] ? `<button class="btn sm ghost" data-tab="tickets">I booked it</button>` : ''}</div>
     </section>`; }).join('')}
   ${noHome.length ? `<section class="card row" style="justify-content:space-between"><span class="small"><b>${noHome.map(m => esc(m.nick || 'Someone')).join(', ')}</b> ${noHome.length === 1 ? 'hasn’t' : 'haven’t'} said where they fly from.</span><button class="btn sm" data-tab="crew">Add home airport</button></section>` : ''}
@@ -3411,7 +3411,7 @@ function staysTab() {
   ${st ? `<section class="card stack locked-stay"><div class="row" style="justify-content:space-between"><span class="on-pill">Our stay</span><button class="btn sm ghost" data-act="unlockStay">Change</button></div>
       <h2>${esc(st.name)}</h2><span class="small muted">${esc([st.area, st.sleeps, st.perNight].filter(Boolean).join(' · '))}</span>
       ${+st.total ? `<b class="mono">${esc(stayPriceText(st))}</b>` : ''}
-      <div class="row" style="gap:6px">${st.url ? `<a class="btn sm primary" href="${esc(st.url)}" target="_blank" rel="noopener noreferrer">Open listing</a>` : stayLinks(st, ds, d, n)}<a class="btn sm" href="${maps(st.name, ds.city)}" target="_blank" rel="noopener">Map</a><button class="btn sm ghost" data-tab="map">Crew map</button></div>
+      <div class="row" style="gap:6px">${safeUrl(st.url) ? `<a class="btn sm primary" href="${esc(safeUrl(st.url))}" target="_blank" rel="noopener noreferrer">Open listing</a>` : stayLinks(st, ds, d, n)}<a class="btn sm" href="${maps(st.name, ds.city)}" target="_blank" rel="noopener">Map</a><button class="btn sm ghost" data-tab="map">Crew map</button></div>
       ${stayBookedBox(st)}</section>` : ''}
   ${ownStays().length ? `<section class="stack"><h3>Found by the crew</h3><div class="grid2">${ownStays().map(s => ownStayCard(s, ds, d, n)).join('')}</div></section>` : ''}
   ${ownStayForm()}
@@ -3428,9 +3428,9 @@ function staysTab() {
     <p class="small muted">AI suggestions with typical prices. Live prices are on the booking sites.</p>`
   : !st && !ownStays().length ? `<div class="empty"><b>No options yet.</b><span>Let the AI find hotels and Airbnb-style rentals that fit ${n} people and the group budget, add a place you found, or search yourself below.</span></div>` : ''}
   <section class="card"><h3 style="margin-bottom:6px">Search everything yourself</h3>
-    <div class="linkrow"><div><b>Airbnb for ${n}</b><div class="small muted">${b ? 'Under ' + money(perNightGroup) + '/night for the whole place' : 'Whole place for the group'}</div></div><a class="btn sm" href="${airbnb(ds, d, n, perNightGroup)}" target="_blank" rel="noopener">Search</a></div>
-    <div class="linkrow"><div><b>Booking.com</b><div class="small muted">${Math.ceil(n / 2)} rooms, cheapest first</div></div><a class="btn sm" href="${booking(ds, d, n)}" target="_blank" rel="noopener">Search</a></div>
-    <div class="linkrow"><div><b>Google Hotels</b><div class="small muted">Compare prices across sites</div></div><a class="btn sm" href="${gHotels(ds, d)}" target="_blank" rel="noopener">Search</a></div>
+    <div class="linkrow"><div><b>Airbnb for ${n}</b><div class="small muted">${b ? 'Under ' + money(perNightGroup) + '/night for the whole place' : 'Whole place for the group'}</div></div><a class="btn sm" href="${esc(airbnb(ds, d, n, perNightGroup))}" target="_blank" rel="noopener">Search</a></div>
+    <div class="linkrow"><div><b>Booking.com</b><div class="small muted">${Math.ceil(n / 2)} rooms, cheapest first</div></div><a class="btn sm" href="${esc(booking(ds, d, n))}" target="_blank" rel="noopener">Search</a></div>
+    <div class="linkrow"><div><b>Google Hotels</b><div class="small muted">Compare prices across sites</div></div><a class="btn sm" href="${esc(gHotels(ds, d))}" target="_blank" rel="noopener">Search</a></div>
   </section>`;
 }
 function ticketsTab() { return booking_time() || tickets().have.length ? ticketsSection() + arrivalsSection() : ticketsSection(); }
@@ -3569,7 +3569,7 @@ function ownStayCard(s, ds, d, n) {
       ${s.sleeps ? `<span class="small muted">Sleeps: ${esc(s.sleeps)}</span>` : ''}
       ${s.note ? `<p class="small">${esc(s.note)}</p>` : ''}
       <div class="row" style="gap:6px">${voteBtns(rkey('st' + s.name))}</div>
-      <div class="row" style="gap:6px">${s.url ? `<a class="btn sm primary" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">Open listing</a>` : ''}
+      <div class="row" style="gap:6px">${safeUrl(s.url) ? `<a class="btn sm primary" href="${esc(safeUrl(s.url))}" target="_blank" rel="noopener noreferrer">Open listing</a>` : ''}
         ${locked ? '<span class="pill lvl-confirmed">Our stay</span>' : S.readOnly ? '' : `<button class="btn sm ${s.url ? 'ghost' : 'primary'}" data-lockown="${esc(s.id)}">Lock as our stay</button>`}
         ${s.by === S.uid && !locked && !S.readOnly ? `<button class="x" data-delown="${esc(s.id)}" aria-label="Remove ${esc(s.name)}">×</button>` : ''}</div>
     </div></article>`;

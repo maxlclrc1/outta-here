@@ -19,8 +19,8 @@ function flightsTab() {
         ${e ? `<span class="price">${esc(e.roundTrip)}<small>typical round trip</small></span>` : ''}</div>
       ${e?.tip ? `<p class="small">${esc(e.tip)}</p>` : ''}
       <div class="row" style="gap:6px">${who.map(m => `<span class="chip" style="cursor:default">${esc(m.nick || 'Someone')} ${tk.tk[m.id] ? '<b style="color:var(--good)">✓ booked</b>' : '<span class="muted">not booked</span>'}</span>`).join('')}</div>
-      <div class="row" style="gap:6px"><a class="btn primary sm" href="${gFlights(home, d, ds)}" target="_blank" rel="noopener">Google Flights</a>
-        ${isCode(home) && ds.code ? `<a class="btn sm" href="${kayak(home.trim(), d, ds)}" target="_blank" rel="noopener">Kayak</a><a class="btn sm" href="${skyscanner(home.trim(), d, ds)}" target="_blank" rel="noopener">Skyscanner</a>` : ''}
+      <div class="row" style="gap:6px"><a class="btn primary sm" href="${esc(gFlights(home, d, ds))}" target="_blank" rel="noopener">Google Flights</a>
+        ${isCode(home) && isCode(ds.code) ? `<a class="btn sm" href="${esc(kayak(home.trim(), d, ds))}" target="_blank" rel="noopener">Kayak</a><a class="btn sm" href="${esc(skyscanner(home.trim(), d, ds))}" target="_blank" rel="noopener">Skyscanner</a>` : ''}
         ${who.some(m => m.id === S.uid) && !tk.tk[S.uid] ? `<button class="btn sm ghost" data-tab="tickets">I booked it</button>` : ''}</div>
     </section>`; }).join('')}
   ${noHome.length ? `<section class="card row" style="justify-content:space-between"><span class="small"><b>${noHome.map(m => esc(m.nick || 'Someone')).join(', ')}</b> ${noHome.length === 1 ? 'hasn’t' : 'haven’t'} said where they fly from.</span><button class="btn sm" data-tab="crew">Add home airport</button></section>` : ''}
@@ -67,7 +67,7 @@ function staysTab() {
   ${st ? `<section class="card stack locked-stay"><div class="row" style="justify-content:space-between"><span class="on-pill">Our stay</span><button class="btn sm ghost" data-act="unlockStay">Change</button></div>
       <h2>${esc(st.name)}</h2><span class="small muted">${esc([st.area, st.sleeps, st.perNight].filter(Boolean).join(' · '))}</span>
       ${+st.total ? `<b class="mono">${esc(stayPriceText(st))}</b>` : ''}
-      <div class="row" style="gap:6px">${st.url ? `<a class="btn sm primary" href="${esc(st.url)}" target="_blank" rel="noopener noreferrer">Open listing</a>` : stayLinks(st, ds, d, n)}<a class="btn sm" href="${maps(st.name, ds.city)}" target="_blank" rel="noopener">Map</a><button class="btn sm ghost" data-tab="map">Crew map</button></div>
+      <div class="row" style="gap:6px">${safeUrl(st.url) ? `<a class="btn sm primary" href="${esc(safeUrl(st.url))}" target="_blank" rel="noopener noreferrer">Open listing</a>` : stayLinks(st, ds, d, n)}<a class="btn sm" href="${maps(st.name, ds.city)}" target="_blank" rel="noopener">Map</a><button class="btn sm ghost" data-tab="map">Crew map</button></div>
       ${stayBookedBox(st)}</section>` : ''}
   ${ownStays().length ? `<section class="stack"><h3>Found by the crew</h3><div class="grid2">${ownStays().map(s => ownStayCard(s, ds, d, n)).join('')}</div></section>` : ''}
   ${ownStayForm()}
@@ -84,9 +84,9 @@ function staysTab() {
     <p class="small muted">AI suggestions with typical prices. Live prices are on the booking sites.</p>`
   : !st && !ownStays().length ? `<div class="empty"><b>No options yet.</b><span>Let the AI find hotels and Airbnb-style rentals that fit ${n} people and the group budget, add a place you found, or search yourself below.</span></div>` : ''}
   <section class="card"><h3 style="margin-bottom:6px">Search everything yourself</h3>
-    <div class="linkrow"><div><b>Airbnb for ${n}</b><div class="small muted">${b ? 'Under ' + money(perNightGroup) + '/night for the whole place' : 'Whole place for the group'}</div></div><a class="btn sm" href="${airbnb(ds, d, n, perNightGroup)}" target="_blank" rel="noopener">Search</a></div>
-    <div class="linkrow"><div><b>Booking.com</b><div class="small muted">${Math.ceil(n / 2)} rooms, cheapest first</div></div><a class="btn sm" href="${booking(ds, d, n)}" target="_blank" rel="noopener">Search</a></div>
-    <div class="linkrow"><div><b>Google Hotels</b><div class="small muted">Compare prices across sites</div></div><a class="btn sm" href="${gHotels(ds, d)}" target="_blank" rel="noopener">Search</a></div>
+    <div class="linkrow"><div><b>Airbnb for ${n}</b><div class="small muted">${b ? 'Under ' + money(perNightGroup) + '/night for the whole place' : 'Whole place for the group'}</div></div><a class="btn sm" href="${esc(airbnb(ds, d, n, perNightGroup))}" target="_blank" rel="noopener">Search</a></div>
+    <div class="linkrow"><div><b>Booking.com</b><div class="small muted">${Math.ceil(n / 2)} rooms, cheapest first</div></div><a class="btn sm" href="${esc(booking(ds, d, n))}" target="_blank" rel="noopener">Search</a></div>
+    <div class="linkrow"><div><b>Google Hotels</b><div class="small muted">Compare prices across sites</div></div><a class="btn sm" href="${esc(gHotels(ds, d))}" target="_blank" rel="noopener">Search</a></div>
   </section>`;
 }
 function ticketsTab() { return booking_time() || tickets().have.length ? ticketsSection() + arrivalsSection() : ticketsSection(); }

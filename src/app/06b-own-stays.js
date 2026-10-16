@@ -30,7 +30,7 @@ function ownStayCard(s, ds, d, n) {
       ${s.sleeps ? `<span class="small muted">Sleeps: ${esc(s.sleeps)}</span>` : ''}
       ${s.note ? `<p class="small">${esc(s.note)}</p>` : ''}
       <div class="row" style="gap:6px">${voteBtns(rkey('st' + s.name))}</div>
-      <div class="row" style="gap:6px">${s.url ? `<a class="btn sm primary" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">Open listing</a>` : ''}
+      <div class="row" style="gap:6px">${safeUrl(s.url) ? `<a class="btn sm primary" href="${esc(safeUrl(s.url))}" target="_blank" rel="noopener noreferrer">Open listing</a>` : ''}
         ${locked ? '<span class="pill lvl-confirmed">Our stay</span>' : S.readOnly ? '' : `<button class="btn sm ${s.url ? 'ghost' : 'primary'}" data-lockown="${esc(s.id)}">Lock as our stay</button>`}
         ${s.by === S.uid && !locked && !S.readOnly ? `<button class="x" data-delown="${esc(s.id)}" aria-label="Remove ${esc(s.name)}">×</button>` : ''}</div>
     </div></article>`;
