@@ -145,7 +145,7 @@ function pass() {
       <div class="facts">
         <div><span class="label">Dates${d && !d.locked ? ' · best so far' : ''}</span><b>${d ? short(d.start) + ' → ' + short(d.end) : 'TBD'}</b></div>
         <div><span class="label">Nights</span><b>${d ? nightsOf(d) : S.trip.nights}</b></div>
-        <div><span class="label">Budget cap / person</span><b>${b ? money(b.cap) : 'TBD'}</b></div>
+        <div><span class="label">Budget cap / person</span><b>${b ? b.label : 'TBD'}</b></div>
         ${(() => { const c = countdown(); return c ? `<div><span class="label">Countdown</span><b style="color:var(--accent)">${c.text}</b></div>` : ''; })()}
       </div>
       ${(() => { const t = tickets(); if (size() !== 'trip' || (!booking_time() && !t.have.length)) return ''; return `<button class="stack" data-tab="tickets" style="gap:6px;background:none;border:0;padding:0;text-align:left;color:inherit;font:inherit;cursor:pointer">

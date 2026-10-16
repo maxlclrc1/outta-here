@@ -331,7 +331,7 @@ City: ${S.trip.city || 'not set'}
 The plan: ${ds ? ds.city : 'not decided'}${S.trip.venue ? ' at ' + S.trip.venue : ''}
 Day: ${d ? `${d.start} (${dow(d.start)})` : 'not set'}${S.trip.time ? ', starting ' + S.trip.time : ''}
 Group size: ${active().length} adults
-Max spend per person: ${b ? money(b.cap) : 'not given'}${blend() ? `
+Max spend per person: ${b ? `${b.label} (the tightest budget in the group is in this range; stay at or under ${money(b.cap)})` : 'not given'}${blend() ? `
 Crew vibe quiz results (${blend().n} answered):
 ${blendText()}` : ''}`;
   return `Trip type: ${mode().label}. ${mode().ai}${size() === 'weekend' ? ' It is a weekend getaway (1–2 nights), likely by car.' : ''}
@@ -339,7 +339,7 @@ Destination: ${ds ? ds.city + (ds.code ? ' (' + ds.code + ')' : '') : 'not set'}
 Trip days: ${days} — ${nightsOf(d)} nights
 Group size: ${active().length} adults
 ${size() === 'trip' ? 'Flying from' : 'Coming from'}: ${homes().join(', ') || 'unknown'}
-Per-person total budget (everything${size() === 'trip' ? ' incl. flights' : ''}): ${b ? money(b.cap) : 'not given'}
+Per-person total budget (everything${size() === 'trip' ? ' incl. flights' : ''}): ${b ? `${b.label} (the tightest budget in the group is in this range; stay at or under ${money(b.cap)})` : 'not given'}
 Group vibe: ${(S.trip.vibes || []).join(', ') || 'mixed, fun'}${blend() ? `
 Crew vibe quiz results (${blend().n} answered):
 ${blendText()}` : ''}`;
@@ -624,7 +624,7 @@ function pass() {
       <div class="facts">
         <div><span class="label">Dates${d && !d.locked ? ' · best so far' : ''}</span><b>${d ? short(d.start) + ' → ' + short(d.end) : 'TBD'}</b></div>
         <div><span class="label">Nights</span><b>${d ? nightsOf(d) : S.trip.nights}</b></div>
-        <div><span class="label">Budget cap / person</span><b>${b ? money(b.cap) : 'TBD'}</b></div>
+        <div><span class="label">Budget cap / person</span><b>${b ? b.label : 'TBD'}</b></div>
         ${(() => { const c = countdown(); return c ? `<div><span class="label">Countdown</span><b style="color:var(--accent)">${c.text}</b></div>` : ''; })()}
       </div>
       ${(() => { const t = tickets(); if (size() !== 'trip' || (!booking_time() && !t.have.length)) return ''; return `<button class="stack" data-tab="tickets" style="gap:6px;background:none;border:0;padding:0;text-align:left;color:inherit;font:inherit;cursor:pointer">
@@ -1187,7 +1187,7 @@ const okForAll = p => { const vs = active(); return vs.length >= 2 && vs.every(m
 const fitScore = p => yesOf(p) * 2 + workableOf(p);
 function groupFit(p) {
   const vs = active(), out = [], r = moneyRange(p.perPerson);
-  const nB = vs.filter(m => +m.budget > 0 || m.budgetSet).length, f = r && nB ? budgetFit({ low: r[0], high: r[1] }) : null;
+  const nB = vs.filter(m => +m.budget > 0 || m.budgetSet).length, f = r && nB ? (p.id && (S.trip.pitches?.items || []).some(x => x.id === p.id) ? bq({ pitch: p.id }) || NO_FIT : budgetFit({ low: r[0], high: r[1] })) : null;
   if (f && f.pending) out.push({ ok: 'meh', text: 'Checking budgets…' });
   else if (f && f.n) {
     const { over, stretch } = f;
@@ -1232,7 +1232,7 @@ function genPitches() {
   const prompt = `You're pitching ${size() === 'weekend' ? 'weekend getaways (1–2 nights, ideally a few hours’ drive or a short flight away)' : 'group trips'} to a friend group. They will each swipe yes or no on every pitch, like a dating app, so make each pitch exciting, specific and honest.
 Trip type: ${mode().label}. ${mode().ai}
 Crew: ${active().length} people ${size() === 'trip' ? 'flying' : 'coming'} from ${homes().join(', ') || 'unknown cities'}.
-Per-person budget cap (all-in, flights included): ${b ? money(b.cap) : 'not set, assume moderate'}.
+Per-person budget cap (all-in, flights included): ${b ? `${b.label}. That's the range the tightest budget in the crew falls in; keep every pitch at or under ${money(b.cap)}` : 'not set, assume moderate'}.
 Trip length: ${nightsSet(S.trip)} nights.
 ${blend() ? 'Crew vibe quiz:\n' + blendText() : 'Vibe: fun, social, nightlife'}
 Destinations already suggested by the crew: ${(S.trip.destinations || []).map(d => d.city).join(', ') || 'none'}
@@ -1977,7 +1977,7 @@ async function budgetFetch() {
   if (S.tid !== tid) return;
   // a failed check counts as "no budgets to compare" rather than retrying in a loop
   items.forEach(([k], i) => BQ.cache.set(k, data ? budgetShape(data.results[i]) : { ...NO_FIT, pending: false }));
-  if (data) BQ.cap = data.cap; else if (BQ.cap === undefined) BQ.cap = null;
+  if (data) BQ.cap = data.band; else if (BQ.cap === undefined) BQ.cap = null;
   render();
 }
 // counts from the server → lists the UI can use: named people, then anonymous stand-ins
@@ -1985,16 +1985,23 @@ function budgetShape(r) {
   const list = g => [...g.ids.map(id => S.members.find(m => m.id === id) || { id, nick: 'Someone' }), ...Array.from({ length: Math.max(0, g.count - g.ids.length) }, (_, i) => ({ id: 'anon-' + i, nick: 'Someone' }))];
   return { n: r.n, unknown: r.total - r.n, fits: list(r.fits), stretch: list(r.stretch), over: list(r.over), hard: list(r.hard), hardOpen: list(r.hardOpen) };
 }
-function budgetLocal({ lo = 0, hi = 0, key = '' }) {
+function budgetLocal({ lo = 0, hi = 0, key = '', pitch }) {
+  if (pitch) { const r = moneyRange((S.trip.pitches?.items || []).find(x => x.id === pitch)?.perPerson); lo = r ? r[0] : 0; hi = r ? r[1] : 0; }
   const ms = active().filter(m => +m.budget > 0), h = Math.max(lo, hi || lo), consent = ((S.trip.consent || {})[key]) || {};
   const hard = lo ? ms.filter(m => m.hard?.budget && lo > +m.budget) : [];
   return { n: ms.length, unknown: active().length - ms.length, fits: ms.filter(m => +m.budget >= h), stretch: ms.filter(m => +m.budget < h && +m.budget >= lo), over: ms.filter(m => +m.budget < lo), hard, hardOpen: hard.filter(m => !consent[m.id]) };
 }
 // extra: { exclude: [ids], myBudget } for "what if" questions (someone drops out, my budget changes)
 function budgetFit(sum, extra) { return bq({ lo: Math.round(sum.low || 0), hi: Math.round(sum.high || 0), ...(extra || {}) }) || NO_FIT; }
+// The tightest budget in the crew, as a band ("€250–300"), never the exact number. `cap` is
+// the low end, which is what the AI and the suggested splits plan around.
+const BAND_STEPS = [1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 8];
+function bandOf(v) { const e = Math.pow(10, Math.floor(Math.log10(v))), g = [0.1, 1, 10].flatMap(m => BAND_STEPS.map(x => x * e * m)); return { lo: Math.round(Math.max(...g.filter(x => x <= v))), hi: Math.round(Math.min(...g.filter(x => x > v))) }; }
 function budgetCapShared() {
-  if (budgetsHere()) { const b = active().map(m => +m.budget || 0).filter(x => x > 0); return b.length ? { cap: Math.min(...b), n: b.length } : null; }
-  bq({}); return BQ.cap || null;
+  let b;
+  if (budgetsHere()) { const v = active().map(m => +m.budget || 0).filter(x => x > 0); b = v.length ? { ...bandOf(Math.min(...v)), n: v.length } : null; }
+  else { bq({}); b = BQ.cap || null; }
+  return b ? { cap: b.lo, lo: b.lo, hi: b.hi, n: b.n, label: `${money(b.lo)}–${money(b.hi)}` } : null;
 }
 const rangeText = (lo, hi) => `${money(lo)}${hi !== lo ? '–' + money(hi) : ''}`;
 function costTab() {
@@ -2587,7 +2594,8 @@ const agreed = (o, uid) => !!((S.trip.consent || {})[o.key] || {})[uid];
 // date limits are checked here (free days aren't private); budget limits come from the
 // server, which says who is over without saying anyone's budget
 const daysHit = (o, m) => !!(m.hard?.days && (m.days || []).length && o.days && !fitOf(m, o.days));
-const budgetHits = o => (o.lo ? bq({ lo: Math.round(o.lo), hi: Math.round(o.lo), key: o.key }) : null) || (o.lo ? NO_FIT : { ...NO_FIT, pending: false });
+// only pitches carry a price; the server reads it from the plan rather than taking ours
+const budgetHits = o => o.kind === 'pitch' && o.lo ? bq({ pitch: o.key.slice(2), key: o.key }) || NO_FIT : { ...NO_FIT, pending: false };
 function hitWhy(o, m) {
   if (daysHit(o, m)) return 'days';
   return budgetHits(o).hard.some(x => x.id === m.id) ? 'budget' : '';
@@ -3331,7 +3339,7 @@ function flightsTab() {
     </section>`; }).join('')}
   ${noHome.length ? `<section class="card row" style="justify-content:space-between"><span class="small"><b>${noHome.map(m => esc(m.nick || 'Someone')).join(', ')}</b> ${noHome.length === 1 ? 'hasn’t' : 'haven’t'} said where they fly from.</span><button class="btn sm" data-tab="crew">Add home airport</button></section>` : ''}
   ${!ds.code ? `<p class="small muted">Add ${esc(ds.city)}’s airport code in Plan › Where to get Kayak and Skyscanner links.</p>` : ''}
-  ${b ? `<section class="card stack"><h3>The budget play</h3><p class="small muted">Everyone can spend up to <b>${money(b.cap)}</b>. A good split:</p>
+  ${b ? `<section class="card stack"><h3>The budget play</h3><p class="small muted">The tightest budget in the crew is around <b>${b.label}</b>. A good split that works for everyone:</p>
     <div class="split"><div><span class="label">Flights</span><b>${money(b.cap * .4)}</b></div><div><span class="label">Stay</span><b>${money(b.cap * .35)}</b><span class="small muted">${money(b.cap * .35 / nights)}/night each</span></div><div><span class="label">Food & fun</span><b>${money(b.cap * .25)}</b><span class="small muted">${money(b.cap * .25 / nights)}/day</span></div></div></section>` : ''}
   ${deals ? `<section class="card stack"><h3>What the whole trip will cost</h3>${dealsBody(deals, b ? b.cap : 0)}</section>` : ''}`;
 }
@@ -4115,7 +4123,7 @@ function genPlanPitches() {
   const prompt = `You're pitching plans to a friend group. Each person swipes yes or no, like a dating app, so make every pitch specific, fun and honest.
 Plan type: ${evening ? 'one evening out or in' : 'a full day out'}${mode().label !== 'Friends trip' ? ` (${mode().label}. ${mode().ai})` : ''}.
 City: ${t.city || 'unknown, assume a big US city'}.
-Crew: ${active().length} people. Max spend per person: ${b ? money(b.cap) : 'not set, keep it moderate'}.
+Crew: ${active().length} people. Max spend per person: ${b ? `${b.label}; keep it at or under ${money(b.cap)}` : 'not set, keep it moderate'}.
 ${blend() ? 'Crew vibe quiz:\n' + blendText() : 'Vibe: fun, social'}
 Ideas the crew already suggested: ${(t.destinations || []).map(d => d.city).join(', ') || 'none'}
 ${pitchMemory()}

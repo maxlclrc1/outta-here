@@ -36,7 +36,8 @@ const agreed = (o, uid) => !!((S.trip.consent || {})[o.key] || {})[uid];
 // date limits are checked here (free days aren't private); budget limits come from the
 // server, which says who is over without saying anyone's budget
 const daysHit = (o, m) => !!(m.hard?.days && (m.days || []).length && o.days && !fitOf(m, o.days));
-const budgetHits = o => (o.lo ? bq({ lo: Math.round(o.lo), hi: Math.round(o.lo), key: o.key }) : null) || (o.lo ? NO_FIT : { ...NO_FIT, pending: false });
+// only pitches carry a price; the server reads it from the plan rather than taking ours
+const budgetHits = o => o.kind === 'pitch' && o.lo ? bq({ pitch: o.key.slice(2), key: o.key }) || NO_FIT : { ...NO_FIT, pending: false };
 function hitWhy(o, m) {
   if (daysHit(o, m)) return 'days';
   return budgetHits(o).hard.some(x => x.id === m.id) ? 'budget' : '';
