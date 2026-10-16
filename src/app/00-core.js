@@ -74,6 +74,7 @@ function aiErr(e) {
   if (c === 'sampling_disabled') return 'AI is off. Add your Anthropic API key to .env.local and restart the app.';
   if (c === 'refused') return 'Claude declined that one. Try rewording it.';
   if (c === 'rate_limited') return 'Too many requests at once. Give it a minute.';
+  if (c === 'permission_denied' || c === 'prompt_too_large') return e.message || 'AI picks only work inside a plan you’re in.';
   if (c === 'invalid_json' || c === 'empty_completion') return 'The answer came back garbled. Try again.';
   if (c === 'cancelled') return 'Stopped.';
   return 'Couldn’t reach Claude right now. Try again in a bit.';

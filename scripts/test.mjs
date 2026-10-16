@@ -26,6 +26,7 @@ const SERVER = [
   ['decisions', 'tests/decisions.mjs'],
   ['concurrency', 'tests/concurrency.mjs'],
   ['changelog', 'tests/changelog.mjs', ['--experimental-strip-types', '--no-warnings']],
+  ['ai-uploads', 'tests/ai-uploads.mjs'],
 ];
 const UI = readdirSync(join(root, 'tests/ui')).filter(f => f.endsWith('.mjs') && !f.startsWith('_')).sort().map(f => [f.replace(/\.mjs$/, ''), 'tests/ui/' + f]);
 const suites = (mode === 'ui' ? UI : mode === 'concurrency' ? [['ui-concurrency', 'tests/ui-concurrency.mjs']] : SERVER).filter(([n]) => !only || n === only);
@@ -50,7 +51,7 @@ const tsconfig = join(root, 'tsconfig.json'), tsconfigText = readFileSync(tsconf
 const restoreTsconfig = () => { try { if (readFileSync(tsconfig, 'utf8') !== tsconfigText) writeFileSync(tsconfig, tsconfigText); } catch {} };
 const freePort = () => new Promise(res => { const s = net.createServer().listen(0, () => { const p = s.address().port; s.close(() => res(p)); }); });
 const port = await freePort(), data = mkdtempSync(join(tmpdir(), 'outta-test-')), dist = `.next-test-${port}`;
-const server = spawn(process.execPath, [join(root, 'node_modules/next/dist/bin/next'), 'dev', '-p', String(port)], { cwd: root, env: { ...process.env, OUTTA_DATA_DIR: data, OUTTA_DIST_DIR: dist, NEXT_TELEMETRY_DISABLED: '1' }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+const server = spawn(process.execPath, [join(root, 'node_modules/next/dist/bin/next'), 'dev', '-p', String(port)], { cwd: root, env: { ...process.env, OUTTA_DATA_DIR: data, OUTTA_DIST_DIR: dist, NEXT_TELEMETRY_DISABLED: '1', OUTTA_AI_OFF: '1', OUTTA_UPLOAD_FILES_PER_PERSON: '8' }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
 let serverLog = ''; server.stdout.on('data', d => { serverLog += d; }); server.stderr.on('data', d => { serverLog += d; });
 let cleaned = false, exited = false;
 server.on('exit', () => { exited = true; });
@@ -81,7 +82,7 @@ for (const [name, file, nodeArgs = []] of suites) {
   const t = Date.now();
   const res = await new Promise(resolve => {
     // browser suites run in the throwaway folder so their screenshots land there too
-    const p = spawn(process.execPath, [...nodeArgs, join(root, file)], { cwd: mode === 'ui' || mode === 'concurrency' ? data : root, env: { ...process.env, BASE: base } });
+    const p = spawn(process.execPath, [...nodeArgs, join(root, file)], { cwd: mode === 'ui' || mode === 'concurrency' ? data : root, env: { ...process.env, BASE: base, OUTTA_TEST_DATA: data } });
     let out = ''; p.stdout.on('data', d => { out += d; process.stdout.write(d); }); p.stderr.on('data', d => { out += d; process.stderr.write(d); });
     const timer = setTimeout(() => { p.kill('SIGKILL'); out += '\n[timed out]'; }, LIMIT);
     p.on('close', code => { clearTimeout(timer); resolve({ code, out }); });

@@ -228,7 +228,7 @@
   const assets = Object.freeze({
     async upload(blob, options = {}) {
       const type = options.type || blob.type;
-      const res = await fetch('/api/assets', { method: 'POST', headers: { 'Content-Type': type, 'x-outta-user': uid }, body: blob });
+      const res = await fetch('/api/assets', { method: 'POST', headers: { 'Content-Type': type, 'x-outta-user': uid, ...(options.tid ? { 'x-outta-plan': options.tid } : {}) }, body: blob });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw err(body.code || 'store_unavailable', body.message);
       return body;

@@ -4,7 +4,8 @@ export const AI_MODEL = process.env.ANTHROPIC_MODEL || 'claude-opus-5-5';
 
 let client: Anthropic | null = null;
 export function aiClient() {
-  if (!process.env.ANTHROPIC_API_KEY) return null;
+  // OUTTA_AI_OFF: the test runner's server never calls the real API, even if a key is set
+  if (!process.env.ANTHROPIC_API_KEY || process.env.OUTTA_AI_OFF) return null;
   client ||= new Anthropic();
   return client;
 }

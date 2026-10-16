@@ -490,8 +490,8 @@ async function sendTicket() {
   let asset = null, type = '';
   if (file && S.assets && !S.demo) {
     S.busy.ticket = true; render();
-    try { const r = await S.assets.upload(file); asset = r.id; type = r.contentType; }
-    catch (e) { S.busy.ticket = false; render(); flash(e && e.code === 'unsupported_type' ? 'Use a photo, screenshot or PDF.' : 'Upload failed. Try again, or just add your flight number.'); return; }
+    try { const r = await S.assets.upload(file, IN_CLAUDE ? undefined : { tid: S.tid }); asset = r.id; type = r.contentType; }
+    catch (e) { S.busy.ticket = false; render(); flash(e && e.code === 'unsupported_type' ? 'Use a photo, screenshot or PDF.' : e && ['quota_exceeded', 'rate_limited', 'too_large', 'permission_denied'].includes(e.code) ? e.message : 'Upload failed. Try again, or just add your flight number.'); return; }
     S.busy.ticket = false;
   }
   if (S.tid !== tid) { flash('Your boarding pass upload finished after you left that plan. Open it and send it again.'); return; }

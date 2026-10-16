@@ -66,6 +66,8 @@ The server checks every request (`lib/access.ts`), not just the app:
 - The plan's decision rules are checked by the server on every lock (`lib/decide.ts`): "organizers only" locking, the decision style, and hard limits that a vote can't override without that person agreeing. Votes and agreeing are your own: nobody can swipe, vote or agree for someone else, or change someone else's days or limits.
 - Private parts of a plan are removed by the server before anything is sent (`lib/privacy.ts`): needs shared "Only organizers" (the AI still plans around them, unnamed), where someone checked in if they chose to hide it (an SOS is always shared), and surprise stops and planners-only chat for the guest of honor.
 - Budgets stay with their owner. Other members only learn whether you've set one. Budget fit ("fits 4/5 budgets", hard limits) is worked out on the server (`lib/budget.ts`) and comes back as counts, naming only people who chose to be named. The crew-wide figure is a band ("€300–400"), never the lowest budget itself. Pitch checks use the pitch's price from the plan; any other price is snapped to a ~10% grid, and each person gets a limited number of distinct prices per plan per hour.
+- AI requests (`app/api/ai/route.ts`) only work for someone in the plan they're for, are size-checked (up to 20 turns, 64 KB of text, 128 KB per request) and rate-limited per person (6 a minute, 40 an hour, 2 at once) and per plan (120 an hour), all before the API key is used. Prompts and keys are never logged. AI picks in the offline demo (no real plan) are refused.
+- Uploads (`lib/assets.ts`) must belong to a plan you're in, be a photo (PNG, JPEG, GIF, WebP, HEIC/AVIF) or PDF under 20 MB whose actual contents match its type (SVG and HTML are refused), and stay within quotas: 120 files / 250 MB per person per plan, 1,000 files / 1 GB per plan, 60 uploads per 10 minutes. A refused upload leaves nothing on disk. **Uploaded files are not private:** anyone with a file's link can open it (the link is 128 random bits and isn't listed anywhere, but it can be forwarded). Files stop opening once their plan is deleted. Limits are kept in memory, so they reset when the server restarts.
 
 `npm test` checks these rules (see Tests below). Until real accounts exist these rules rely on each browser's id, so they keep a plan private from everyone except someone who copies another person's browser data.
 
@@ -76,7 +78,7 @@ Every test command starts its own copy of the app on a free port with a throwawa
 | Command | What it runs | Needs |
 |---|---|---|
 | `npm test` | The core suite: TypeScript check, app build, then every server suite below | Nothing extra |
-| `npm run test:server` | The server suites only: `access`, `budget-privacy`, `privacy`, `decisions`, `concurrency`, `changelog` (in `tests/`) | Nothing extra |
+| `npm run test:server` | The server suites only: `access`, `budget-privacy`, `privacy`, `decisions`, `concurrency`, `changelog`, `ai-uploads` (in `tests/`) | Nothing extra |
 | `npm run test:ui` | Browser tests in `tests/ui/`: setup, joining, crews, decisions, personal needs and the change log, budget, itinerary, pitches, recovery and undo, reliability, keyboard, journey, own picks, stays, and a broad feature walk | Playwright |
 | `npm run test:ui:concurrency` | `tests/ui-concurrency.mjs`: two real browsers saving at once | Playwright |
 
