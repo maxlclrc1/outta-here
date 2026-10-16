@@ -806,3 +806,6 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
   .flap{font-size:15px}
 }
 @media (prefers-reduced-motion:reduce){.flap i,.your-flag::before,.st-happening .board-st{animation:none}}
+.wi-now{display:flex;flex-direction:column;gap:4px;font-size:13px}
+.wi-now em{font-style:normal;color:var(--muted)}
+.wi-now em.lk{color:var(--good);font-weight:700}

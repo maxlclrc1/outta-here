@@ -37,7 +37,18 @@ function whatifTab() {
   const cols = [{ label: 'Now', r: base, cur: true }, ...scs.map((sc, i) => ({ label: `What if ${String.fromCharCode(65 + i)}`, r: scenarioEval(sc), sc, i }))];
   const vs = active(), starts = span(t.winStart, t.winEnd), dests = t.destinations || [], kinds = [...new Set((t.stays?.items || []).map(s => s.kind))];
   const diff = (a, b, fmtd, better) => a === b ? '' : `<span class="wi-d ${better(a, b) ? 'up' : 'down'}">${fmtd(a, b)}</span>`;
-  const controls = c => c.cur ? `<span class="small muted">${t.lockedDates || t.lockedDest ? 'What’s locked now' : 'Best option so far'}</span>` : `<div class="wi-ctl">
+  // spell out the current plan: what's locked, and what's only the best guess so far
+  const nowText = () => {
+    const ld = t.lockedDest ? dest() : null, lean = !ld && dest(), dd = t.lockedDates, r = base;
+    const when = r.start ? (small ? fmt(r.start) : dayRange(r.start, r.end)) : '';
+    return `<div class="wi-now">
+      <span><b>${small ? 'Plan' : 'Where'}:</b> ${ld ? `${esc(ld.city)} <em class="lk">locked</em>` : lean ? `${esc(lean.city)} <em>leading, not locked</em>` : '<em>not picked yet</em>'}</span>
+      <span><b>${small ? 'Day' : 'Dates'}:</b> ${dd ? `${esc(when)} <em class="lk">locked</em>` : when ? `${esc(when)} <em>best so far, not locked</em>` : '<em>not picked yet</em>'}</span>
+      ${small ? '' : `<span><b>Length:</b> ${nightsSet(t)} night${nightsSet(t) === 1 ? '' : 's'}</span>`}
+      ${t.stay ? `<span><b>Stay:</b> ${esc(t.stay.name)}</span>` : ''}
+    </div>`;
+  };
+  const controls = c => c.cur ? nowText() : `<div class="wi-ctl">
       <label><span class="label">${small ? 'Day' : 'Start'}</span><select id="wi-start-${c.i}">${starts.map(d => `<option value="${d}" ${d === c.r.start ? 'selected' : ''}>${fmt(d)}</option>`).join('')}</select></label>
       ${small ? '' : `<label><span class="label">Length</span><select id="wi-nights-${c.i}">${[1, 2, 3, 4, 5, 6, 7, 10, 14].map(n => `<option value="${n}" ${n === c.r.n ? 'selected' : ''}>${n} night${n === 1 ? '' : 's'}</option>`).join('')}</select></label>`}
       ${dests.length > 1 ? `<label><span class="label">${small ? 'Plan' : 'Where'}</span><select id="wi-dest-${c.i}">${dests.map(d => `<option value="${esc(d.id)}" ${d.id === c.r.dest?.id ? 'selected' : ''}>${esc(d.city)}</option>`).join('')}</select></label>` : ''}
