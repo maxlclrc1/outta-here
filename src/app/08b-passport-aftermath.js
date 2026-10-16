@@ -40,10 +40,12 @@ function passport() {
         </div>
         <div class="avs">${goers.slice(0, 10).map(m => `<span class="av-sm" title="${esc(m.nick || 'Someone')}" style="background:${colorFor(m.id)}">${esc((m.nick || '?')[0].toUpperCase())}</span>`).join('')}</div>
       </div>
-      <div class="pp-count"><b>${big}</b><span>${st === 'memories' ? 'that’s a wrap' : st === 'happening' ? 'happening' : cd && cd.n === 0 ? 'today' : cd && cd.n === 1 ? 'day to go' : 'days to go'}</span><span class="stage-pill s-${st}">${STAGE_LABEL[st]}</span></div>
+      <div class="pp-count"><b>${big}</b>${st === 'happening' ? '' : `<span>${st === 'memories' ? 'that’s a wrap' : cd && cd.n === 0 ? 'today' : cd && cd.n === 1 ? 'day to go' : 'days to go'}</span>`}<span class="stage-pill s-${st}">${STAGE_LABEL[st]}</span></div>
     </div>
     <div class="pp-stamps">${MILESTONES.map(([k, l], i) => `<div class="pp-stamp ${now[k] ? 'on' : ''}" style="--r:${[-8, 5, -4, 7, -6, 4][i]}deg"><b>${l}</b>${now[k] && miles[k] ? `<span>${short(iso(new Date(miles[k])))}</span>` : ''}</div>`).join('')}</div>
-    <div class="pp-act"><button class="btn sm" data-act="passportImg">Share passport</button>${S.img?.kind === 'passport' ? '' : ''}</div>
+    <div class="pp-act"><button class="btn sm" data-act="passportImg">Share passport</button><button class="btn sm" data-act="card">Make story card</button>${size() !== 'trip' ? `<button class="btn sm ghost" data-act="growPlan">Make it a ${size() === 'weekend' ? 'trip' : 'weekend or trip'}</button>` : ''}</div>
+    ${S.cardUrl ? `<div class="pp-media"><div class="row" style="align-items:flex-end;gap:14px"><img class="cardimg" src="${S.cardUrl}" alt="Story card for ${esc(t.name)}">
+      <div class="stack" style="gap:8px">${S.downloads ? `<button class="btn primary sm" data-act="saveCard">Save image</button>` : `<span class="small muted">Press and hold the image to save it.</span>`}<button class="btn sm ghost" data-act="closeCard">Close</button></div></div></div>` : ''}
     ${S.img?.kind === 'passport' ? imgPanel() : ''}
   </section>`;
 }
