@@ -69,6 +69,7 @@ The server checks every request (`lib/access.ts`), not just the app:
 - AI requests (`app/api/ai/route.ts`) only work for someone in the plan they're for, are size-checked (up to 20 turns, 64 KB of text, 128 KB per request) and rate-limited per person (6 a minute, 40 an hour, 2 at once) and per plan (120 an hour), all before the API key is used. Prompts and keys are never logged. AI picks in the offline demo (no real plan) are refused.
 - Uploads (`lib/assets.ts`) must belong to a plan you're in, be a photo (PNG, JPEG, GIF, WebP, HEIC/AVIF) or PDF under 20 MB whose actual contents match its type (SVG and HTML are refused), and stay within quotas: 120 files / 250 MB per person per plan, 1,000 files / 1 GB per plan, 60 uploads per 10 minutes. A refused upload leaves nothing on disk. **Uploaded files are not private:** anyone with a file's link can open it (the link is 128 random bits and isn't listed anywhere, but it can be forwarded). Files stop opening once their plan is deleted. Limits are kept in memory, so they reset when the server restarts.
 - Everything people or the AI type is shown as text, never as markup: the app escapes it before it reaches the page. Links in chat become links only for http(s) addresses, and a stay's listing link opens only if it is http(s); anything else (like `javascript:`) isn't shown as a link.
+- A plan's dates must be real dates (`lib/planDates.ts`): the window people pick days in, the RSVP deadline and the voting deadline are refused with a 400 unless they're a real day written YYYY-MM-DD (the deadlines can be cleared). A plan saved earlier with a bad date still opens: the app treats that date as not set until someone picks a new one.
 
 `npm test` checks these rules (see Tests below). Until real accounts exist these rules rely on each browser's id, so they keep a plan private from everyone except someone who copies another person's browser data.
 
@@ -79,8 +80,8 @@ Every test command starts its own copy of the app on a free port with a throwawa
 | Command | What it runs | Needs |
 |---|---|---|
 | `npm test` | The core suite: TypeScript check, app build, then every server suite below | Nothing extra |
-| `npm run test:server` | The server suites only: `access`, `budget-privacy`, `privacy`, `decisions`, `concurrency`, `changelog`, `ai-uploads`, `storage` (in `tests/`) | Nothing extra |
-| `npm run test:ui` | Browser tests in `tests/ui/`: setup, joining, crews, decisions, personal needs and the change log, budget, itinerary, pitches, recovery and undo, reliability, keyboard, journey, own picks, stays, script injection (`xss`: every text field filled with a harmless payload, every tab opened), and a broad feature walk | Playwright |
+| `npm run test:server` | The server suites only: `access`, `budget-privacy`, `privacy`, `decisions`, `concurrency`, `changelog`, `ai-uploads`, `plan-dates`, `storage` (in `tests/`) | Nothing extra |
+| `npm run test:ui` | Browser tests in `tests/ui/`: setup, joining, crews, decisions, personal needs and the change log, budget, itinerary, pitches, recovery and undo, reliability, keyboard, journey, own picks, stays, bad stored dates (`dates`), script injection (`xss`: every text field filled with a harmless payload, every tab opened), and a broad feature walk | Playwright |
 | `npm run test:ui:concurrency` | `tests/ui-concurrency.mjs`: two real browsers saving at once | Playwright |
 
 Add `--only=<name>` to run one suite, e.g. `npm test -- --only=privacy` or `npm run test:ui -- --only=decide`.

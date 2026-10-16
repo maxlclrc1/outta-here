@@ -46,8 +46,8 @@ const fill = ([P, P2, BAD, TEXT, size]) => {
   t.size = size; t.name = 'Miami' + P2 + P;
   if (t.stay) t.stay.url = BAD;
   // dates are strings too: whoever writes the plan can store anything in them
-  // (the RSVP deadline and earliest date are escaped the same way, but a malformed one stops the
-  // plan view before it renders, so they can't be checked here)
+  // (the RSVP deadline and earliest date are escaped the same way; a malformed stored one is
+  // dropped when a plan loads, which this demo hook skips, so tests/ui/dates.mjs covers them)
   t.decide = { ...(t.decide || {}), style: 'pick', by: '2099-01-01' + P }; t.winEnd = (t.winEnd || '') + P;
   t.tasks = { tk1: { title: 'Book the van' + P, owner: '', due: '', done: false, by: 'd1', at: now } };
   t.changes = { ch1: { by: 'd1', at: now, act: '', area: 'plan', text: 'Moved dinner' + P, seen: {} } };

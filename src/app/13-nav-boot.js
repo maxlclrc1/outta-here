@@ -14,7 +14,7 @@ function openTrip(id, tab) {
   app.innerHTML = `${topBar()}${skel()}`;
   S.unsub.push(S.db.doc('trips/' + id).onSnapshot(snap => {
     if (!snap.exists) { flash('That trip doesn’t exist anymore.'); goHome(); return; }
-    const first = !S.trip; S.trip = { ...snap.data() }; budgetReset(); if (first && !S.tabPicked && isLive()) S.tab = 'live'; render();
+    const first = !S.trip; S.trip = cleanDates({ ...snap.data() }); budgetReset(); if (first && !S.tabPicked && isLive()) S.tab = 'live'; render();
   }, () => flash('Lost the connection to this trip. Reload to reconnect.')));
   S.unsub.push(S.db.collection(`trips/${id}/members`).onSnapshot(snap => {
     const local = meDoc();
