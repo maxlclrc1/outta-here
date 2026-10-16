@@ -80,6 +80,7 @@ app.addEventListener('click', e => {
   if (ds.act === 'wiAdd') { S.whatif = [...(S.whatif || [{}]), {}]; return render(); }
   if (ds.wirm !== undefined) { const l = (S.whatif || [{}]).filter((_, j) => j !== +ds.wirm); S.whatif = l.length ? l : [{}]; return render(); }
   if (ds.wiapply !== undefined) return whatifApply(+ds.wiapply);
+  if (ds.act === 'costAI') return estimateCosts();
   if (ds.costkeep) { const h = costHints()[ds.costkeep]; if (h) saveTrip({ costs: { [ds.costkeep]: { low: h.low, high: h.high, src: h.src, note: h.note, by: S.uid, at: Date.now() } } }); return; }
   if (ds.flex) { const f = { ...(meDoc()?.flex || {}) }; f[ds.flex] = !f[ds.flex]; return saveMe({ flex: f }, true); }
   if (ds.act === 'allDays') return saveMe({ days: span(S.trip.winStart, S.trip.winEnd) }, true);
@@ -192,6 +193,7 @@ app.addEventListener('change', e => {
   if (id === 'perm-invite' || id === 'perm-lock') saveTrip({ perm: { [id.slice(5)]: e.target.value } });
   if (id === 'me-budgetPublic') saveMe({ budgetPublic: e.target.checked }, true, true);
   if (id === 'me-hideLoc') saveMe({ hideLoc: e.target.checked }, true, true);
+  if (id === 'my-flight-price') { const v = Math.round(+e.target.value || 0); if (v > 0) { saveTrip({ tickets: { [S.uid]: { price: v } } }); flash('Got it. Your flight is in the cost now.'); } }
   if (id === 'cost-buffer') saveTrip({ costBuffer: +e.target.value });
   if (id.startsWith('task-owner-')) patchTask(id.slice(11), { owner: e.target.value });
   if (id.startsWith('task-due-')) patchTask(id.slice(9), { due: e.target.value });

@@ -276,6 +276,7 @@ function ticketsSection() {
         <div class="row" style="align-items:flex-end">
           ${S.assets || S.demo ? `<label class="field" style="flex:2 1 220px"><span class="label">Boarding pass or confirmation</span><input id="tk-file" type="file" accept="image/*,application/pdf"></label>` : ''}
           <label class="field"><span class="label">Flight number</span><input id="tk-flight" maxlength="20" placeholder="B6 1123"></label>
+          <label class="field" style="flex:0 1 140px"><span class="label">What you paid</span><input id="tk-price" type="number" min="0" inputmode="numeric" placeholder="Optional"></label>
         </div>
         ${S.tkFile ? `<span class="small">Selected: <b>${esc(S.tkFile.name)}</b></span>` : ''}
         <div><button class="btn primary" type="submit" ${S.busy.ticket ? 'disabled' : ''}>${S.busy.ticket ? '<i class="spin"></i>Uploading…' : 'Send it in'}</button></div>
@@ -451,7 +452,7 @@ async function leaveTrip() {
   } catch (e) { flash(writeErr(e)); openTrip(tid, 'crew'); }
 }
 async function sendTicket() {
-  const flight = ($('#tk-flight')?.value || '').trim().slice(0, 20), file = S.tkFile;
+  const flight = ($('#tk-flight')?.value || '').trim().slice(0, 20), file = S.tkFile, price = Math.max(0, Math.round(+($('#tk-price')?.value || 0)));
   if (!file && !flight) { flash('Add your boarding pass or your flight number.'); return; }
   if (file && file.size > 20 * 1024 * 1024) { flash('That file is over 20 MB. Try a screenshot instead.'); return; }
   let asset = null, type = '';
@@ -462,7 +463,7 @@ async function sendTicket() {
     S.busy.ticket = false;
   }
   S.tkFile = null;
-  await saveTrip({ tickets: { [S.uid]: { asset, type, flight, at: Date.now() } } });
+  await saveTrip({ tickets: { [S.uid]: { asset, type, flight, ...(price ? { price } : {}), at: Date.now() } } });
   if (meDoc()?.status !== 'booked') saveMe({ status: 'booked', seen: true }, true);
   if (tickets().on) flash('That’s everyone. The trip is ON.');
 }

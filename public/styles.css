@@ -809,3 +809,19 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 .wi-now{display:flex;flex-direction:column;gap:4px;font-size:13px}
 .wi-now em{font-style:normal;color:var(--muted)}
 .wi-now em.lk{color:var(--good);font-weight:700}
+
+.cost-totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.cost-total.soft{background:color-mix(in oklab,var(--muted) 8%,var(--surface));border-color:var(--line)}
+.cost-total.soft b{font-size:clamp(24px,6vw,30px)}
+.cost-val{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px}
+.cost-val b{font:800 16px var(--f-mono)}
+.cost-row .src-tag{grid-column:auto;font:700 10px var(--f-mono);text-transform:uppercase;letter-spacing:.05em;padding:2px 6px;border-radius:5px;background:color-mix(in oklab,var(--muted) 14%,transparent);color:var(--muted)}
+.src-tag.s-ai,.src-tag.s-estimate{background:color-mix(in oklab,var(--gold) 20%,transparent);color:var(--warn)}
+.src-tag.s-booked,.src-tag.s-paid{background:color-mix(in oklab,var(--good) 18%,transparent);color:var(--good)}
+.src-tag.s-quote{background:color-mix(in oklab,var(--accent) 14%,transparent);color:var(--accent)}
+.cost-edit summary{cursor:pointer;color:var(--accent);font-weight:600;list-style:none}
+.cost-edit summary::-webkit-details-marker{display:none}
+.cost-edit[open] summary{margin-bottom:6px}
+.cost-edit .linkbtn{margin-top:6px}
+.cost-row{grid-template-columns:minmax(0,1fr) auto}
+@media (max-width:560px){.cost-row{grid-template-columns:1fr}}

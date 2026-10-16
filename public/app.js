@@ -641,6 +641,7 @@ function ticketsSection() {
         <div class="row" style="align-items:flex-end">
           ${S.assets || S.demo ? `<label class="field" style="flex:2 1 220px"><span class="label">Boarding pass or confirmation</span><input id="tk-file" type="file" accept="image/*,application/pdf"></label>` : ''}
           <label class="field"><span class="label">Flight number</span><input id="tk-flight" maxlength="20" placeholder="B6 1123"></label>
+          <label class="field" style="flex:0 1 140px"><span class="label">What you paid</span><input id="tk-price" type="number" min="0" inputmode="numeric" placeholder="Optional"></label>
         </div>
         ${S.tkFile ? `<span class="small">Selected: <b>${esc(S.tkFile.name)}</b></span>` : ''}
         <div><button class="btn primary" type="submit" ${S.busy.ticket ? 'disabled' : ''}>${S.busy.ticket ? '<i class="spin"></i>Uploading…' : 'Send it in'}</button></div>
@@ -816,7 +817,7 @@ async function leaveTrip() {
   } catch (e) { flash(writeErr(e)); openTrip(tid, 'crew'); }
 }
 async function sendTicket() {
-  const flight = ($('#tk-flight')?.value || '').trim().slice(0, 20), file = S.tkFile;
+  const flight = ($('#tk-flight')?.value || '').trim().slice(0, 20), file = S.tkFile, price = Math.max(0, Math.round(+($('#tk-price')?.value || 0)));
   if (!file && !flight) { flash('Add your boarding pass or your flight number.'); return; }
   if (file && file.size > 20 * 1024 * 1024) { flash('That file is over 20 MB. Try a screenshot instead.'); return; }
   let asset = null, type = '';
@@ -827,7 +828,7 @@ async function sendTicket() {
     S.busy.ticket = false;
   }
   S.tkFile = null;
-  await saveTrip({ tickets: { [S.uid]: { asset, type, flight, at: Date.now() } } });
+  await saveTrip({ tickets: { [S.uid]: { asset, type, flight, ...(price ? { price } : {}), at: Date.now() } } });
   if (meDoc()?.status !== 'booked') saveMe({ status: 'booked', seen: true }, true);
   if (tickets().on) flash('That’s everyone. The trip is ON.');
 }
@@ -1787,16 +1788,17 @@ function addTask(title) {
 const patchTask = (id, patch) => { if ((S.trip.tasks || {})[id]) saveTrip({ tasks: { [id]: patch } }); };
 
 /* ---------- all-in cost: the real price of saying yes ---------- */
-// Per person, low–high, line by line. Every number says where it came from: an AI
-// estimate, a real quote someone found, or something already booked. Lines nobody
-// has filled in are called out instead of quietly counting as $0.
+// Per person, low–high, line by line, built from the most real number available:
+// what's already paid or booked, then quotes someone found, then estimates (yours or
+// the AI's). Every number says where it came from, and lines nobody has filled in are
+// called out instead of quietly counting as $0.
 const COST_LINES = {
   hangout: [['getting', 'Getting there', 'Rides or transit, both ways', true], ['food', 'Food & drinks', 'Dinner, rounds, tip', true], ['fun', 'Activities', 'Tickets, cover, bowling…', false], ['fees', 'Fees', 'Booking fees, deposits', false]],
   day: [['getting', 'Getting there', 'Train, gas, parking, both ways', true], ['fun', 'Tickets & activities', 'Entry, rentals, tours', true], ['food', 'Food & drinks', 'Lunch, snacks, dinner', true], ['fees', 'Fees', 'Booking fees', false]],
   weekend: [['travel', 'Getting there', 'Gas, tolls, train or a short flight', true], ['stay', 'Stay', 'Your share, all nights', true], ['local', 'Getting around', 'Ubers, parking', false], ['food', 'Food & drinks', 'Every meal and night out', true], ['fun', 'Activities', 'Tickets, cover, rentals', false], ['fees', 'Fees', 'Cleaning, resort and booking fees', false]],
   trip: [['travel', 'Flights', 'Round trip from your city', true], ['stay', 'Stay', 'Your share, all nights', true], ['local', 'Getting around', 'Airport transfer, Ubers', true], ['food', 'Food & drinks', 'Every meal and night out', true], ['fun', 'Activities', 'Tickets, tours, cover charges', false], ['fees', 'Fees', 'Cleaning, resort, baggage, booking fees', false]],
 };
-const SRC_LABEL = { estimate: 'AI estimate', quote: 'Real quote', booked: 'Booked' };
+const SRC_LABEL = { estimate: 'Estimate', ai: 'AI estimate', quote: 'Real quote', booked: 'Booked', paid: 'Paid' };
 // "$650–800 all-in" → [650, 800]; "$180/night" → [180, 180]
 function moneyRange(s) {
   const n = String(s || '').replace(/,/g, '').match(/\d+(\.\d+)?/g); if (!n) return null;
@@ -1804,28 +1806,70 @@ function moneyRange(s) {
   return [Math.min(...v), Math.max(...v)];
 }
 const planHeads = () => { const h = headcount(); return Math.max(1, h.firm || h.max || active().length); };
-// Estimates the app already has from the AI (flights, stays). Never presented as quotes.
+// Sort a logged expense into a cost line by what it was for.
+const CAT_RX = [['travel', /flight|airline|plane|train|bus|amtrak|gas|toll|rental car|car rental/i], ['stay', /airbnb|hotel|hostel|motel|stay|cabin|lodg|vrbo|rent\b/i], ['local', /uber|lyft|taxi|cab\b|transfer|parking|metro|subway/i],
+  ['fun', /ticket|tour|cover|club|show|museum|boat|bowling|karaoke|class|entry/i], ['fees', /fee|deposit|cleaning/i], ['food', /dinner|lunch|breakfast|brunch|food|drink|bar|groceries|restaurant|coffee|tab|round|pizza|taco|snack/i]];
+function lineFor(title) {
+  const keys = COST_LINES[size()].map(l => l[0]), hit = (CAT_RX.find(([, rx]) => rx.test(title)) || [])[0];
+  if (!hit) return null;
+  if (keys.includes(hit)) return hit;
+  return ['travel', 'local'].includes(hit) && keys.includes('getting') ? 'getting' : null;
+}
+// What each line has actually cost so far: shared expenses (your share, or the
+// average share) plus, for flights, the price on your boarding pass or in My spend.
+function paidSoFar(who) {
+  const out = {}, other = { n: 0 }, heads = planHeads();
+  for (const e of S.expenses) {
+    const split = e.split || active().map(m => m.id);
+    const share = who === 'me' ? (split.includes(S.uid) ? e.amount / split.length : 0) : e.amount / heads;
+    if (!share) continue;
+    const k = lineFor(e.title || ''); if (k) out[k] = (out[k] || 0) + share; else other.n += share;
+  }
+  return { by: out, other: Math.round(other.n) };
+}
+function myFlight() {
+  const tk = (S.trip.tickets || {})[S.uid]; if (!tk) return null;
+  const spent = (S.mySpend || []).filter(x => /flight|airline|plane|✈/i.test(x.note || '')).reduce((n, x) => n + (+x.amount || 0), 0);
+  const price = +tk.price || spent || 0;
+  return { booked: true, price: price ? Math.round(price) : 0, from: +tk.price ? 'your boarding pass' : spent ? 'My spend' : '' };
+}
+function crewFlights() {
+  const tks = Object.values(S.trip.tickets || {}).filter(Boolean), prices = tks.map(x => +x.price).filter(x => x > 0);
+  return { booked: tks.length, prices };
+}
+// Estimates the app already has from earlier AI searches (flights, stays).
 function costHints() {
   const t = S.trip, d = dates(), nights = Math.max(1, nightsOf(d)), out = {};
   const fl = (t.deals?.data?.flights || []).map(f => moneyRange(f.roundTrip)).filter(Boolean);
-  if (fl.length && size() === 'trip') out.travel = { low: Math.min(...fl.map(r => r[0])), high: Math.max(...fl.map(r => r[1])), src: 'estimate', note: 'From the flight estimates' };
+  if (fl.length && size() === 'trip') out.travel = { low: Math.min(...fl.map(r => r[0])), high: Math.max(...fl.map(r => r[1])), src: 'ai', note: 'From the flight search estimates' };
   const stays = t.stay ? [t.stay] : (t.stays?.items || []);
   const pn = stays.map(s => moneyRange(s.perNight)).filter(Boolean);
-  if (pn.length && !isSmall()) { const n = planHeads(); out.stay = { low: Math.round(Math.min(...pn.map(r => r[0])) * nights / n), high: Math.round(Math.max(...pn.map(r => r[1])) * nights / n), src: t.stay ? 'quote' : 'estimate', note: `${t.stay ? t.stay.name : 'Stay ideas'}, ${nights} night${nights === 1 ? '' : 's'} split ${n} ways` }; }
+  if (pn.length && !isSmall()) { const n = planHeads(); out.stay = { low: Math.round(Math.min(...pn.map(r => r[0])) * nights / n), high: Math.round(Math.max(...pn.map(r => r[1])) * nights / n), src: t.stay ? 'quote' : 'ai', note: `${t.stay ? t.stay.name : 'Stay ideas'}, ${nights} night${nights === 1 ? '' : 's'} split ${n} ways` }; }
   return out;
 }
-function costSummary(t = S.trip) {
+// who: 'crew' (a typical person's range) or 'me' (your own, using your real numbers)
+function costSummary(t = S.trip, who = 'crew') {
   const lines = COST_LINES[sizeOf(t)], saved = t.costs || {}, hints = t === S.trip ? costHints() : {};
+  const paid = t === S.trip ? paidSoFar(who) : { by: {}, other: 0 }, fl = t === S.trip && size() === 'trip' ? (who === 'me' ? myFlight() : crewFlights()) : null;
   const rows = lines.map(([k, label, hint, major]) => {
     const s = saved[k], h = hints[k];
-    const v = s && (s.low || s.high) ? { low: +s.low || +s.high || 0, high: +s.high || +s.low || 0, src: s.src || 'estimate', note: s.note || '' } : h || null;
-    return { k, label, hint, major, v, auto: !(s && (s.low || s.high)) && !!h };
+    let v = s && (s.low || s.high) ? { low: +s.low || +s.high || 0, high: +s.high || +s.low || 0, src: s.src || 'estimate', note: s.note || '' } : h ? { ...h } : null;
+    const auto = !(s && (s.low || s.high)) && !!h;
+    let booked = null;
+    if (k === 'travel' && fl) {
+      if (who === 'me' && fl.price) v = { low: fl.price, high: fl.price, src: 'booked', note: `Your flight, from ${fl.from}` };
+      else if (who === 'me' && fl.booked) booked = 'noprice';
+      else if (who === 'crew' && fl.prices.length) { const all = fl.prices.length >= planHeads(); if (all) v = null; const lo = Math.min(...fl.prices, ...(v ? [v.low] : [])), hi = Math.max(...fl.prices, ...(v ? [v.high] : [])); v = { low: lo, high: hi, src: v && fl.prices.length < planHeads() ? v.src : 'booked', note: `${fl.prices.length} booked flight price${fl.prices.length === 1 ? '' : 's'}${v && fl.prices.length < planHeads() ? ' plus the estimate for the rest' : ''}` }; }
+    }
+    const p = Math.round(paid.by[k] || 0);
+    if (p) v = v ? { ...v, low: Math.max(v.low, p), high: Math.max(v.high, p), paid: p } : { low: p, high: p, src: 'paid', note: 'From logged expenses', paid: p };
+    return { k, label, hint, major, v, auto, booked };
   });
-  const buffer = t.costBuffer ?? 10;
-  const low = rows.reduce((n, r) => n + (r.v ? r.v.low : 0), 0), high = rows.reduce((n, r) => n + (r.v ? r.v.high : 0), 0);
+  const buffer = t.costBuffer ?? 10, other = paid.other;
+  const low = rows.reduce((n, r) => n + (r.v ? r.v.low : 0), other), high = rows.reduce((n, r) => n + (r.v ? r.v.high : 0), other);
   const withBuf = x => Math.round(x * (1 + buffer / 100));
-  const missing = rows.filter(r => r.major && !r.v), estimates = rows.filter(r => r.v && r.v.src === 'estimate');
-  return { rows, buffer, low: withBuf(low), high: withBuf(high), missing, estimates, any: rows.some(r => r.v) };
+  const missing = rows.filter(r => r.major && !r.v && !r.booked), estimates = rows.filter(r => r.v && ['estimate', 'ai'].includes(r.v.src));
+  return { rows, buffer, other, low: withBuf(low), high: withBuf(high), missing, estimates, any: rows.some(r => r.v) || other > 0 };
 }
 // Who can afford it: budget ≥ high fits, between low and high is a stretch, below low doesn't.
 function budgetFit(sum) {
@@ -1833,25 +1877,41 @@ function budgetFit(sum) {
   const fits = ms.filter(m => +m.budget >= sum.high), stretch = ms.filter(m => +m.budget < sum.high && +m.budget >= sum.low), over = ms.filter(m => +m.budget < sum.low);
   return { fits, stretch, over, n: ms.length, unknown: active().length - ms.length };
 }
+const rangeText = (lo, hi) => `${money(lo)}${hi !== lo ? '–' + money(hi) : ''}`;
 function costTab() {
-  const sum = costSummary(), fit = budgetFit(sum), ro = S.readOnly;
+  const sum = costSummary(), me = costSummary(S.trip, 'me'), fit = budgetFit(sum), ro = S.readOnly, mine = meDoc(), myB = +mine?.budget || 0;
+  const differs = me.low !== sum.low || me.high !== sum.high;
+  const empty = sum.rows.filter(r => !r.v || ['estimate', 'ai'].includes(r.v.src)).length;
   return `<section class="card stack cost">
-    <div class="row" style="justify-content:space-between;align-items:flex-start"><div class="stack" style="gap:2px"><h2>The cost of saying yes</h2><span class="small muted">Per person, all in. Anyone in the crew can fill in a line or swap an estimate for a real quote.</span></div></div>
-    <div class="cost-total"><span class="label">Each person, all in</span><b>${sum.any ? `${money(sum.low)}${sum.high !== sum.low ? '–' + money(sum.high) : ''}` : '—'}</b>
-      <span class="small muted">Includes a ${sum.buffer}% buffer for the stuff nobody plans for.</span></div>
+    <div class="stack" style="gap:2px"><h2>The cost of saying yes</h2><span class="small muted">Per person, all in. Built from what’s booked or paid first, then quotes, then estimates.</span></div>
+    <div class="cost-totals">
+      <div class="cost-total"><span class="label">${differs ? 'You, all in' : 'Each person, all in'}</span><b>${me.any ? rangeText(me.low, me.high) : '—'}</b>
+        <span class="small muted">${myB && me.any ? (me.high <= myB ? `Fits your ${money(myB)} budget.` : me.low <= myB ? `Could go over your ${money(myB)} budget.` : `Over your ${money(myB)} budget.`) + ' ' : ''}Includes a ${sum.buffer}% buffer.</span></div>
+      ${differs && sum.any ? `<div class="cost-total soft"><span class="label">Typical for the crew</span><b>${rangeText(sum.low, sum.high)}</b><span class="small muted">Everyone’s flights and shares differ a bit.</span></div>` : ''}
+    </div>
+    ${S.sample !== null && !ro ? `<div class="row" style="gap:8px;align-items:center"><button class="btn ${sum.any ? '' : 'primary'}" data-act="costAI" ${S.busy.cost || !dest() ? 'disabled' : ''}>${S.busy.cost ? '<i class="spin"></i>Estimating…' : sum.any ? 'Estimate the rest with AI' : 'Estimate it with AI'}</button>
+      <span class="small muted">${!dest() ? `Pick ${isSmall() ? 'the plan' : 'where you’re going'} first.` : empty ? 'Fills only lines without a real quote or booking.' : 'Every line has a real number. Nice.'}</span></div>`
+      : S.sample === null ? `<span class="small muted">AI estimates are off ${IN_CLAUDE ? 'for you right now' : 'until you add your Anthropic API key'}. Type in numbers below.</span>` : ''}
     ${sum.missing.length ? `<div class="cost-flag"><b>Not included yet:</b> ${sum.missing.map(r => esc(r.label.toLowerCase())).join(', ')}. The real total is higher than this.</div>` : ''}
-    ${sum.estimates.length ? `<div class="cost-flag soft">${sum.estimates.length === 1 ? `${esc(sum.estimates[0].label)} is an AI estimate` : `${sum.estimates.length} lines are AI estimates`}, not live prices. Swap in a real quote when you have one.</div>` : ''}
+    ${sum.estimates.length ? `<div class="cost-flag soft">${sum.estimates.length === 1 ? `${esc(sum.estimates[0].label)} is an estimate` : `${sum.estimates.length} lines are estimates`}, not live prices. Swap in a real quote when you have one.</div>` : ''}
     ${fit.n && sum.any ? `<div class="row" style="gap:6px">${fit.fits.length ? `<span class="pill lvl-in">Fits ${fit.fits.length}/${fit.n} budget${fit.n === 1 ? '' : 's'}</span>` : ''}${fit.stretch.length ? `<span class="pill lvl-maybe">A stretch for ${esc(budgetWho(fit.stretch))}</span>` : ''}${fit.over.length ? `<span class="pill out" style="color:#D63B3B">Over budget for ${esc(budgetWho(fit.over))}</span>` : ''}${fit.unknown ? `<span class="pill out">${fit.unknown} without a budget</span>` : ''}</div>` : ''}
-    <div class="cost-rows">${sum.rows.map(r => `<div class="cost-row ${r.v ? '' : 'empty-line'}">
-      <div class="cost-what"><b>${esc(r.label)}${r.major && !r.v ? ' <span class="small" style="color:#D63B3B">· missing</span>' : ''}</b><span class="small muted">${esc(r.v?.note || r.hint)}</span></div>
-      <div class="cost-in">
-        <label><span class="sr-only">${esc(r.label)} low</span><input id="cost-low-${r.k}" type="number" min="0" inputmode="numeric" placeholder="Low" value="${r.v && !r.auto ? r.v.low : ''}" ${ro ? 'disabled' : ''}></label>
-        <span class="muted">–</span>
-        <label><span class="sr-only">${esc(r.label)} high</span><input id="cost-high-${r.k}" type="number" min="0" inputmode="numeric" placeholder="High" value="${r.v && !r.auto ? r.v.high : ''}" ${ro ? 'disabled' : ''}></label>
-        <select id="cost-src-${r.k}" aria-label="Where this number comes from" ${ro ? 'disabled' : ''}>${Object.entries(SRC_LABEL).map(([k, l]) => `<option value="${k}" ${(r.v?.src || 'estimate') === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    <div class="cost-rows">${sum.rows.map(r => { const m = me.rows.find(x => x.k === r.k), shown = m && m.v && m.v.src === 'booked' ? m : r;
+      return `<div class="cost-row ${shown.v || m?.booked ? '' : 'empty-line'}">
+      <div class="cost-what"><b>${esc(r.label)}${r.major && !shown.v && !m?.booked ? ' <span class="small" style="color:#D63B3B">· missing</span>' : ''}</b>
+        <span class="small muted">${esc(shown.v?.note || r.hint)}</span>
+        ${shown.v ? `<span class="cost-val"><b>${rangeText(Math.round(shown.v.low), Math.round(shown.v.high))}</b> <span class="src-tag s-${shown.v.src}">${esc(SRC_LABEL[shown.v.src] || shown.v.src)}</span>${shown.v.paid ? ` <span class="small muted">· ${money(shown.v.paid)} paid so far</span>` : ''}</span>` : ''}
       </div>
-      ${r.auto ? `<span class="small src-tag">${esc(SRC_LABEL[r.v.src])}: ${money(r.v.low)}${r.v.high !== r.v.low ? '–' + money(r.v.high) : ''} · <button class="linkbtn" data-costkeep="${r.k}">Use it</button></span>` : r.v ? `<span class="small src-tag s-${r.v.src}">${esc(SRC_LABEL[r.v.src])}</span>` : ''}
-    </div>`).join('')}</div>
+      ${m?.booked === 'noprice' ? `<div class="cost-in"><span class="src-tag s-booked">You’re booked</span><label style="flex:1 1 120px"><span class="sr-only">What you paid for your flight</span><input id="my-flight-price" type="number" min="0" inputmode="numeric" placeholder="What you paid"></label></div>`
+      : shown.v && shown.v.src === 'booked' && r.k === 'travel' ? '' : ro ? '' : `<details class="cost-edit"><summary class="small">${r.v && !r.auto && r.v.src !== 'paid' ? 'Change' : 'Add a number'}</summary>
+        <div class="cost-in">
+          <label><span class="sr-only">${esc(r.label)} low</span><input id="cost-low-${r.k}" type="number" min="0" inputmode="numeric" placeholder="Low" value="${r.v && !r.auto && r.v.src !== 'paid' && r.v.src !== 'ai' ? Math.round(r.v.low) : ''}"></label>
+          <span class="muted">–</span>
+          <label><span class="sr-only">${esc(r.label)} high</span><input id="cost-high-${r.k}" type="number" min="0" inputmode="numeric" placeholder="High" value="${r.v && !r.auto && r.v.src !== 'paid' && r.v.src !== 'ai' ? Math.round(r.v.high) : ''}"></label>
+          <select id="cost-src-${r.k}" aria-label="Where this number comes from">${[['estimate', 'My estimate'], ['quote', 'Real quote'], ['booked', 'Booked']].map(([k, l]) => `<option value="${k}" ${(r.v?.src || 'estimate') === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        </div>${r.auto ? `<button class="linkbtn small" data-costkeep="${r.k}">Keep the ${esc(SRC_LABEL[r.v.src].toLowerCase())} as the plan</button>` : ''}</details>`}
+    </div>`; }).join('')}
+    ${sum.other ? `<div class="cost-row"><div class="cost-what"><b>Other spending</b><span class="small muted">Logged expenses that don’t fit a line</span><span class="cost-val"><b>${money(sum.other)}</b> <span class="src-tag s-paid">Paid</span></span></div></div>` : ''}
+    </div>
     <label class="row small" style="gap:8px;align-items:center">Buffer <select id="cost-buffer" style="width:auto" ${ro ? 'disabled' : ''}>${[0, 5, 10, 15, 20].map(n => `<option value="${n}" ${n === sum.buffer ? 'selected' : ''}>${n}%</option>`).join('')}</select> on top for surprises</label>
   </section>`;
 }
@@ -1869,6 +1929,29 @@ function saveCostLineNow(k) {
   delete DRAFT['cost-low-' + k]; delete DRAFT['cost-high-' + k];
   if (!l && !h) return saveTrip({ costs: { [k]: null } });
   saveTrip({ costs: { [k]: { low: l || h, high: Math.max(l, h), src, by: S.uid, at: Date.now() } } });
+}
+// AI fills only the lines that don't have a real quote or booking yet.
+function estimateCosts() {
+  const lines = COST_LINES[size()], saved = S.trip.costs || {}, heads = planHeads();
+  // skip what's already real: paid expenses, and flights once everyone's has a price
+  const paid = paidSoFar('crew').by, fl = size() === 'trip' ? crewFlights() : null;
+  const open = lines.filter(([k]) => (!saved[k] || ['estimate', 'ai'].includes(saved[k].src) && saved[k].by === 'ai') && !paid[k] && !(k === 'travel' && fl && fl.prices.length >= heads));
+  if (!open.length) { flash('Every line already has a real number.'); return; }
+  const sum = costSummary();
+  const known = sum.rows.filter(r => r.v && !open.some(o => o[0] === r.k)).map(r => `${r.label}: $${Math.round(r.v.low)}–${Math.round(r.v.high)} (${SRC_LABEL[r.v.src] || r.v.src})`);
+  askAI('cost', `${context()}
+Home cities: ${homes().join(', ') || 'unknown'}. Planning for ${heads} ${heads === 1 ? 'person' : 'people'}.
+Estimate what this costs PER PERSON in USD, as a realistic low–high range for each of these lines:
+${open.map(([k, l, hint]) => `- ${k}: ${l} (${hint})`).join('\n')}
+${known.length ? `Already known (don't change these): ${known.join('; ')}` : ''}
+Be honest: no live prices, so give typical ranges for these dates and this group. Shared costs (like the stay) are per person after splitting.
+Reply with only JSON: {"lines":{"${open[0][0]}":{"low":0,"high":0,"note":"what this covers, under 60 characters"}}}`, data => {
+    const got = data && data.lines || {}, patch = {};
+    for (const [k] of open) { const x = got[k]; if (!x) continue; const lo = Math.max(0, Math.round(+x.low || 0)), hi = Math.max(lo, Math.round(+x.high || 0)); if (!hi) continue; patch[k] = { low: lo, high: hi, src: 'ai', note: String(x.note || 'AI estimate').slice(0, 80), by: 'ai', at: Date.now() }; }
+    if (!Object.keys(patch).length) { flash('No estimates came back. Try again.'); return; }
+    flash(`Estimated ${Object.keys(patch).length} line${Object.keys(patch).length === 1 ? '' : 's'}. They’re marked as AI estimates.`);
+    return saveTrip({ costs: patch });
+  });
 }
 
 /* ---------- what if we changed this? ---------- */
@@ -3454,6 +3537,7 @@ app.addEventListener('click', e => {
   if (ds.act === 'wiAdd') { S.whatif = [...(S.whatif || [{}]), {}]; return render(); }
   if (ds.wirm !== undefined) { const l = (S.whatif || [{}]).filter((_, j) => j !== +ds.wirm); S.whatif = l.length ? l : [{}]; return render(); }
   if (ds.wiapply !== undefined) return whatifApply(+ds.wiapply);
+  if (ds.act === 'costAI') return estimateCosts();
   if (ds.costkeep) { const h = costHints()[ds.costkeep]; if (h) saveTrip({ costs: { [ds.costkeep]: { low: h.low, high: h.high, src: h.src, note: h.note, by: S.uid, at: Date.now() } } }); return; }
   if (ds.flex) { const f = { ...(meDoc()?.flex || {}) }; f[ds.flex] = !f[ds.flex]; return saveMe({ flex: f }, true); }
   if (ds.act === 'allDays') return saveMe({ days: span(S.trip.winStart, S.trip.winEnd) }, true);
@@ -3566,6 +3650,7 @@ app.addEventListener('change', e => {
   if (id === 'perm-invite' || id === 'perm-lock') saveTrip({ perm: { [id.slice(5)]: e.target.value } });
   if (id === 'me-budgetPublic') saveMe({ budgetPublic: e.target.checked }, true, true);
   if (id === 'me-hideLoc') saveMe({ hideLoc: e.target.checked }, true, true);
+  if (id === 'my-flight-price') { const v = Math.round(+e.target.value || 0); if (v > 0) { saveTrip({ tickets: { [S.uid]: { price: v } } }); flash('Got it. Your flight is in the cost now.'); } }
   if (id === 'cost-buffer') saveTrip({ costBuffer: +e.target.value });
   if (id.startsWith('task-owner-')) patchTask(id.slice(11), { owner: e.target.value });
   if (id.startsWith('task-due-')) patchTask(id.slice(9), { due: e.target.value });
