@@ -26,10 +26,11 @@
           <span class="label">Outta Here</span>
           <h1>What do your friends call you?</h1>
           <p class="muted">That’s all we need. This browser remembers you next time.</p>
-          <input id="join-name" maxlength="30" autocomplete="given-name" placeholder="Your name" required>
+          <input id="join-name" maxlength="30" autocomplete="given-name" autocapitalize="words" enterkeyhint="go" placeholder="Your name" required>
           <button class="btn primary big" type="submit">Let’s go</button>
         </form>`;
       document.body.appendChild(wrap);
+      showInvite(wrap);
       const input = wrap.querySelector('#join-name');
       input.focus();
       wrap.querySelector('form').addEventListener('submit', e => {
@@ -44,11 +45,32 @@
     document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', show) : show();
   });
 
+  // Opened from an invite link: say who invited you to what, above the name box.
+  async function showInvite(wrap) {
+    const h = (location.hash || '').slice(1), crew = h.match(/^c-([a-z0-9]{6,20})$/);
+    if (!crew && !/^[a-z0-9]{6,20}$/.test(h)) return;
+    try {
+      let what = '', host = '';
+      if (crew) {
+        const c = await call('get', 'crews/' + crew[1]); if (!c.exists) return;
+        what = c.data.name; host = c.data.profiles?.[c.data.by]?.nick || '';
+      } else {
+        const t = await call('get', 'trips/' + h); if (!t.exists) return;
+        what = t.data.name;
+        const m = await call('get', `trips/${h}/members/${t.data.createdBy}`).catch(() => ({}));
+        host = m.exists ? m.data.nick : '';
+      }
+      const label = wrap.querySelector('.label'), esc = x => String(x).replace(/[&<>"']/g, ch => '&#' + ch.charCodeAt(0) + ';');
+      if (label && what) label.outerHTML = `<p class="join-invite">${host ? `<b>${esc(host)}</b> invited you to` : 'You’re invited to'} <b>${esc(what)}</b></p>`;
+    } catch {}
+  }
+
   const user = Object.freeze({
     id: async () => { await nameReady; return uid; },
-    me: async () => ({ id: uid, name: await nameReady, avatarUrl: '', color: '', email: null, isOwner: true, canEdit: true }),
-    // Running on your own computer, everyone who can open the page can edit.
-    isOwner: async () => true,
+    me: async () => ({ id: uid, name: await nameReady, avatarUrl: '', color: '', email: null, isOwner: false, canEdit: true }),
+    // Everyone who can open the page can edit, but nobody is the page's owner:
+    // only the person who made a plan or crew can delete it.
+    isOwner: async () => false,
     canEdit: async () => true,
     can: async () => true,
     profiles: async ids => Object.fromEntries([].concat(ids).map(id => [id, { id, name: '', avatarUrl: '', color: '', email: null, isMe: id === uid, guest: false }])),

@@ -3,8 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "build:app": "node scripts/build.mjs",
+    "predev": "node scripts/build.mjs",
     "dev": "next dev",
+    "predev:lan": "node scripts/build.mjs",
     "dev:lan": "next dev -H 0.0.0.0",
+    "prebuild": "node scripts/build.mjs",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit"
