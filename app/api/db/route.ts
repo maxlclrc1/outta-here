@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { deleteDoc, getDoc, listCollection, rawDoc, segments, setDoc, StoreError, updateDoc, type Json } from '@/lib/store';
+import { deleteDoc, getDoc, listCollection, merge, rawDoc, segments, setDoc, StoreError, updateDoc, type Json } from '@/lib/store';
+import { boundLog } from '@/lib/changelog';
 import { checkWrite, listable, readable } from '@/lib/access';
 import { honoreeItinerary } from '@/lib/privacy';
 import { keepManaged, mergeListsIn } from '@/lib/merge';
@@ -40,7 +41,9 @@ export async function POST(req: Request) {
         if (isPlan && op === 'set') { const { _base, ...rest } = data; data = rest; }
         if (isMine && op === 'set' && prev) data = keepManaged(prev, data);
         checkWrite(op, path, data, prev, ctx);
-        if (op === 'set') setDoc(path, data, user);
+        // plans: written whole, with the change log kept within its limits (lib/changelog.ts)
+        if (isPlan && op !== 'delete' && (op === 'set' || prev)) setDoc(path, boundLog(op === 'set' ? data : merge(prev!, data)), user);
+        else if (op === 'set') setDoc(path, data, user);
         else if (op === 'update') updateDoc(path, data, user);
         else deleteDoc(path, user);
         return NextResponse.json({ ok: true });

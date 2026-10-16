@@ -91,7 +91,7 @@ export function setDoc(p: string, data: Json, user: string) {
   segments(p, 'doc');
   if (!visible(p, user)) throw new StoreError('invalid_argument', 'Not your data');
   if (!isObj(data)) throw new StoreError('invalid_argument', 'Document body must be an object');
-  if (JSON.stringify(data).length > 256 * 1024) throw new StoreError('invalid_argument', 'Document is over 256 KiB');
+  if (JSON.stringify(data).length > 256 * 1024) throw new StoreError('invalid_argument', 'Document is over 256 KiB, even after trimming old change history. Nothing was saved.');
   const prev = state().docs.get(p);
   state().docs.set(p, { data, version: (prev?.version || 0) + 1, updatedAt: Date.now() });
   changed(p);
