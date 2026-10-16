@@ -240,13 +240,27 @@ function merge(t, p) { const o = { ...t }; for (const [k, v] of Object.entries(p
 // Changes show right away and are written in the background. Every write goes to the plan it
 // was made in, even if you've moved on by the time it runs. If a write fails, the screen is
 // put back to what's actually saved, so it never shows something the crew can't see.
+// Whole lists (itinerary, destinations, pitches) say which items they started from and which
+// ones this save changed, so the server can merge with anyone else's edits (lib/merge.ts).
+function listBase(patch) {
+  if (IN_CLAUDE || S.demo || !S.trip) return {};
+  const base = {}, one = (key, next, cur) => {
+    if (!Array.isArray(next)) return;
+    const was = new Map((cur || []).filter(x => x && x.id != null).map(x => [String(x.id), JSON.stringify(x)]));
+    base[key] = { ids: [...was.keys()], changed: next.filter(x => x && x.id != null && was.get(String(x.id)) !== JSON.stringify(x)).map(x => String(x.id)) };
+  };
+  one('itinerary', patch.itinerary, S.trip.itinerary);
+  one('destinations', patch.destinations, S.trip.destinations);
+  one('pitches.items', patch.pitches?.items, S.trip.pitches?.items);
+  return Object.keys(base).length ? { _base: base } : {};
+}
 async function saveTrip(patch, tid = S.tid) {
   if (!tid) return false;
-  const here = tid === S.tid && S.trip;
+  const here = tid === S.tid && S.trip, send = here ? { ...patch, ...listBase(patch) } : patch;
   if (here) { S.trip = merge(S.trip, patch); render(); }
   if (S.demo) return true;
   if (!S.db) return false;
-  try { await S.db.doc('trips/' + tid).update(patch); return true; }
+  try { await S.db.doc('trips/' + tid).update(send); return true; }
   catch (e) { flash(writeErr(e)); if (here) resync(tid); return false; }
 }
 async function resync(tid) {
@@ -286,26 +300,39 @@ async function copy(text) {
   render();
   const ta = $('#copybox'); if (ta) { ta.focus(); ta.select(); }
 }
-let meT, meWriting = false, meSeq = 0;
+// Your own details are saved field by field: only what you changed is sent, so a save never
+// puts back something stale (like your status after an organizer counted you out).
+let meT, meWriting = false, meSeq = 0, meFields = new Set(), meSending = new Set(), meSaved = false;
 function saveMe(patch, now, quiet) {
   let m = meDoc();
   if (!m) { m = { id: S.uid, nick: S.myName || 'Me', home: '', budget: 0, status: 'in', days: [], votes: [] }; S.members.push(m); }
-  Object.assign(m, patch); if (!quiet) render();
+  Object.assign(m, patch); Object.keys(patch).forEach(k => meFields.add(k)); if (!quiet) render();
   if (S.demo) return;
   S.meDirty = true; meSeq++; clearTimeout(meT); meT = setTimeout(flushMe, now ? 0 : 600);
 }
 async function flushMe() {
   clearTimeout(meT);
   const m = meDoc(); if (!m || !S.db || S.demo || !S.tid) return;
-  const { id, ...body } = m, job = { tid: S.tid, body, seq: meSeq, joined: !!(S.trip?.people || {})[S.uid] && !(S.trip?.left || {})[S.uid] };
+  const fields = [...meFields].filter(k => k !== 'id'); meFields = new Set(); fields.forEach(k => meSending.add(k));
+  const { id, ...full } = m, changed = Object.fromEntries(fields.map(k => [k, m[k] === undefined ? null : m[k]]));
+  const job = { tid: S.tid, full, changed, fields, seq: meSeq, joined: !!(S.trip?.people || {})[S.uid] && !(S.trip?.left || {})[S.uid] };
   while (meWriting) await new Promise(r => setTimeout(r, 120));
   meWriting = true;
+  const ref = S.db.doc(`trips/${job.tid}/members/${S.uid}`);
   try {
-    await S.db.doc(`trips/${job.tid}/members/${S.uid}`).set({ ...job.body, updatedAt: Date.now() });
+    // only what changed; the whole record only the first time (when it doesn't exist yet)
+    const whole = () => ref.set({ ...job.full, updatedAt: Date.now() }).then(() => { meSaved = true; });
+    if (!meSaved) await whole();
+    else try { await ref.update({ ...job.changed, updatedAt: Date.now() }); }
+    catch (e) { if (IN_CLAUDE || /does not exist/i.test(e?.message || '')) await whole(); else throw e; }
     if (!job.joined) S.db.doc('trips/' + job.tid).update({ people: { [S.uid]: true }, left: { [S.uid]: null } }).catch(() => {});
   }
-  catch (e) { flash(S.tid === job.tid ? writeErr(e) : 'Your last change to the other plan didn’t save. Open it and try again.'); }
-  meWriting = false; if (job.seq === meSeq && S.tid === job.tid) S.meDirty = false;
+  catch (e) {
+    if (S.tid === job.tid) { flash(writeErr(e)); job.fields.forEach(k => meFields.add(k)); }
+    else flash('Your last change to the other plan didn’t save. Open it and try again.');
+  }
+  job.fields.forEach(k => meSending.delete(k));
+  meWriting = false; if (job.seq === meSeq && S.tid === job.tid && !meFields.size) S.meDirty = false;
 }
 
 /* ---------- AI ---------- */
@@ -4939,7 +4966,7 @@ app.addEventListener('submit', async e => {
 function stop() { if (S.meDirty && S.tid && !S.demo) flushMe(); S.unsub.forEach(u => { try { u(); } catch {} }); S.unsub = []; }
 function setHash(h) { try { history.replaceState(null, '', h ? '#' + h : location.pathname + location.search); } catch {} }
 function resetTrip() {
-  S.trip = null; S.members = []; S.membersIn = false; S.busy = {}; S.setup = null; S.addStay = false; S.whatif = null; S.repeat = null; S.recover = null; S.rc = null; S.editItem = null; S.alts = null; S.expenses = []; S.packing = []; S.readOnly = false;
+  S.trip = null; S.members = []; S.membersIn = false; S.busy = {}; meSaved = false; S.setup = null; S.addStay = false; S.whatif = null; S.repeat = null; S.recover = null; S.rc = null; S.editItem = null; S.alts = null; S.expenses = []; S.packing = []; S.readOnly = false;
   S.cardUrl = null; S.cardBlob = null; S.copyText = ''; S.split = null; S.confirm = null; S.tkFile = null; S.feed = []; S.bucket = []; S.photos = []; S.pot = []; S.mySpend = []; S.lostOpen = false; S.pinSel = null; S.hangPlan = null; S.wrapI = 0; S.img = null; S.show = null; clearInterval(showTimer);
   for (const k of Object.keys(DRAFT)) delete DRAFT[k];
 }
@@ -4955,8 +4982,9 @@ function openTrip(id, tab) {
   }, () => flash('Lost the connection to this trip. Reload to reconnect.')));
   S.unsub.push(S.db.collection(`trips/${id}/members`).onSnapshot(snap => {
     const local = meDoc();
-    S.members = snap.docs.map(d => ({ id: d.id, ...d.data() })); S.membersIn = true; budgetReset();
-    if (S.meDirty && local) { const i = S.members.findIndex(m => m.id === S.uid); i >= 0 ? S.members[i] = local : S.members.push(local); }
+    S.members = snap.docs.map(d => ({ id: d.id, ...d.data() })); S.membersIn = true; budgetReset(); meSaved = S.members.some(m => m.id === S.uid);
+    // while your own edits are still saving, show them on top of what the server has
+    if (S.meDirty && local) { const i = S.members.findIndex(m => m.id === S.uid), mine = Object.fromEntries([...meFields, ...meSending].map(k => [k, local[k]])); i >= 0 ? S.members[i] = { ...S.members[i], ...mine } : S.members.push(local); }
     S.members.sort((a, b) => (a.updatedAt || 0) - (b.updatedAt || 0));
     if (S.trip) render();
   }, () => {}));

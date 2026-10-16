@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { deleteDoc, getDoc, listCollection, rawDoc, segments, setDoc, StoreError, updateDoc, type Json } from '@/lib/store';
 import { checkWrite, listable, readable } from '@/lib/access';
 import { honoreeItinerary } from '@/lib/privacy';
+import { keepManaged, mergeListsIn } from '@/lib/merge';
 import { userOf } from '@/lib/user';
 
 export const runtime = 'nodejs';
@@ -31,9 +32,16 @@ export async function POST(req: Request) {
       }
       case 'set': case 'update': case 'delete': {
         segments(path, 'doc');
-        checkWrite(op, path, body.data, rawDoc(path), ctx);
-        if (op === 'set') setDoc(path, body.data ?? {}, user);
-        else if (op === 'update') { const prev = /^trips\/[^/]+$/.test(path) ? rawDoc(path) : null; updateDoc(path, prev ? honoreeItinerary(prev, body.data ?? {}, user) : body.data ?? {}, user); }
+        const prev = rawDoc(path), isPlan = /^trips\/[^/]+$/.test(path), isMine = path === `${path.split('/').slice(0, 3).join('/')}/${user}` && /^trips\/[^/]+\/members\//.test(path);
+        let data = body.data ?? {};
+        // what will actually be written: lists merged with others' edits, surprises kept,
+        // and a member's whole-record save never changing what organizers manage
+        if (isPlan && op === 'update' && prev) data = honoreeItinerary(prev, mergeListsIn(prev, data), user);
+        if (isPlan && op === 'set') { const { _base, ...rest } = data; data = rest; }
+        if (isMine && op === 'set' && prev) data = keepManaged(prev, data);
+        checkWrite(op, path, data, prev, ctx);
+        if (op === 'set') setDoc(path, data, user);
+        else if (op === 'update') updateDoc(path, data, user);
         else deleteDoc(path, user);
         return NextResponse.json({ ok: true });
       }

@@ -2,7 +2,7 @@
 function stop() { if (S.meDirty && S.tid && !S.demo) flushMe(); S.unsub.forEach(u => { try { u(); } catch {} }); S.unsub = []; }
 function setHash(h) { try { history.replaceState(null, '', h ? '#' + h : location.pathname + location.search); } catch {} }
 function resetTrip() {
-  S.trip = null; S.members = []; S.membersIn = false; S.busy = {}; S.setup = null; S.addStay = false; S.whatif = null; S.repeat = null; S.recover = null; S.rc = null; S.editItem = null; S.alts = null; S.expenses = []; S.packing = []; S.readOnly = false;
+  S.trip = null; S.members = []; S.membersIn = false; S.busy = {}; meSaved = false; S.setup = null; S.addStay = false; S.whatif = null; S.repeat = null; S.recover = null; S.rc = null; S.editItem = null; S.alts = null; S.expenses = []; S.packing = []; S.readOnly = false;
   S.cardUrl = null; S.cardBlob = null; S.copyText = ''; S.split = null; S.confirm = null; S.tkFile = null; S.feed = []; S.bucket = []; S.photos = []; S.pot = []; S.mySpend = []; S.lostOpen = false; S.pinSel = null; S.hangPlan = null; S.wrapI = 0; S.img = null; S.show = null; clearInterval(showTimer);
   for (const k of Object.keys(DRAFT)) delete DRAFT[k];
 }
@@ -18,8 +18,9 @@ function openTrip(id, tab) {
   }, () => flash('Lost the connection to this trip. Reload to reconnect.')));
   S.unsub.push(S.db.collection(`trips/${id}/members`).onSnapshot(snap => {
     const local = meDoc();
-    S.members = snap.docs.map(d => ({ id: d.id, ...d.data() })); S.membersIn = true; budgetReset();
-    if (S.meDirty && local) { const i = S.members.findIndex(m => m.id === S.uid); i >= 0 ? S.members[i] = local : S.members.push(local); }
+    S.members = snap.docs.map(d => ({ id: d.id, ...d.data() })); S.membersIn = true; budgetReset(); meSaved = S.members.some(m => m.id === S.uid);
+    // while your own edits are still saving, show them on top of what the server has
+    if (S.meDirty && local) { const i = S.members.findIndex(m => m.id === S.uid), mine = Object.fromEntries([...meFields, ...meSending].map(k => [k, local[k]])); i >= 0 ? S.members[i] = { ...S.members[i], ...mine } : S.members.push(local); }
     S.members.sort((a, b) => (a.updatedAt || 0) - (b.updatedAt || 0));
     if (S.trip) render();
   }, () => {}));
