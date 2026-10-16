@@ -43,10 +43,10 @@ function blockers() {
       return { k: 'decide', who: [], group: 'No perfect match yet. Settle it', tab: 'match', sel: '.settle', cta: 'Settle it' };
     }
     const ds = t.destinations || [];
-    if (!ds.length) return { k: 'ideas', who: [], group: small ? 'No ideas yet. Get pitches or add one' : 'No destinations yet. Get pitches or suggest one', tab: S.sample ? 'match' : 'where', sel: S.sample ? '[data-act="genPitches"]' : '#ad-city', cta: S.sample ? 'Get pitches' : 'Add one' };
+    if (!ds.length) return { k: 'ideas', who: [], group: small ? 'No ideas yet. Get pitches or add one' : 'No destinations yet. Get pitches or suggest one', tab: 'match', sel: S.sample ? '[data-act="genPitches"]' : '#ad-city', cta: S.sample ? 'Get pitches' : 'Add one' };
     const w = ms.filter(m => !(m.votes || []).length);
-    if (w.length) return { k: 'vote', who: w, group: whoHas(w, 'hasn’t', 'haven’t', `voted on ${small ? 'the plan' : 'where'}`), mine: `Vote on ${small ? 'the plan' : 'where to go'}`, ask: `vote on ${small ? 'the plan' : 'where we go'}`, tab: 'where', sel: '[data-vote]' };
-    return { k: 'decide', who: [], group: `${dest()?.city || 'One place'} is winning. Lock it in`, tab: 'where', sel: '[data-lockdest]', cta: 'Lock it in' };
+    if (w.length) return { k: 'vote', who: w, group: whoHas(w, 'hasn’t', 'haven’t', `voted on ${small ? 'the plan' : 'where'}`), mine: `Vote on ${small ? 'the plan' : 'where to go'}`, ask: `vote on ${small ? 'the plan' : 'where we go'}`, tab: 'match', sel: '[data-vote]' };
+    return { k: 'decide', who: [], group: `${dest()?.city || 'One place'} is winning. Lock it in`, tab: 'match', sel: '[data-lockdest]', cta: 'Lock it in' };
   }
   if (!t.lockedDates) {
     const w = ms.filter(m => !(m.days || []).length);

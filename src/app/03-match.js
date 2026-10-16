@@ -107,8 +107,8 @@ function matchTab() {
         ${p.highlights.length ? `<ul style="margin:0;padding-left:18px">${p.highlights.map(h => `<li>${esc(h)}</li>`).join('')}</ul>` : ''}
       </div>
     </article>`; };
-  return `<section class="card stack">
-    <div class="row" style="justify-content:space-between"><div class="stack" style="gap:2px"><h2>${isSmall() ? 'Plan Match' : 'Trip Match'}</h2><span class="small muted">The AI pitches ${isSmall() ? 'whole plans' : 'complete trips'} that fit everyone’s budget, free days and vibe. Everyone swipes. If you all say yes to the same one, it’s a match.</span></div>
+  return `${S.sample === null ? whereTab() : ''}<section class="card stack">
+    <div class="row" style="justify-content:space-between"><div class="stack" style="gap:2px"><h2>${isSmall() ? 'Plan Match' : 'Trip Match'}</h2><span class="small muted">The AI pitches ${isSmall() ? 'whole plans' : 'complete trips'} that fit everyone’s budget, free days and vibe. Everyone swipes. If you all say yes to the same one, it’s a match. Not feeling them? Add your own picks below.</span></div>
       ${S.sample !== null ? `<button class="btn ${items.length ? '' : 'primary'}" data-act="genPitches" ${S.busy.pitch ? 'disabled' : ''}>${S.busy.pitch ? '<i class="spin"></i>Pitching…' : items.length ? 'New pitches' : isSmall() ? 'Pitch us some plans' : 'Pitch us some trips'}</button>` : ''}</div>
     ${steerField()}
   </section>
@@ -116,7 +116,7 @@ function matchTab() {
   ${m ? `<section class="match"><span class="label" style="color:rgba(255,255,255,.85)">Everyone swiped yes</span><h1 style="color:#fff">It’s a match!</h1>
       <p style="font-size:17px">${esc(m.city)} · ${dayRange(m.start, m.end)}${m.time ? ' · ' + t12(m.time) : ''} · ${esc(m.perPerson)}</p>
       <div>${S.trip.lockedDest && dest()?.city === m.city && S.trip.lockedDates?.start === m.start ? `<span class="on-pill" style="background:#fff;color:#151A33">Locked in</span>` : `<button class="btn" data-lockpitch="${esc(m.id)}">Lock it in</button>`}</div></section>` : ''}
-  ${!items.length && S.sample === null ? `<div class="empty"><b>AI pitches are off ${IN_CLAUDE ? 'for you right now' : 'until you add your Anthropic API key'}.</b><span>You can still settle it by hand: add ideas, everyone votes, and you lock the winner.</span><button class="btn sm primary" data-tab="where">${isSmall() ? 'Add plan ideas' : 'Add places to vote on'}</button></div>`
+  ${!items.length && S.sample === null ? ''
   : !items.length ? `<div class="empty"><b>No pitches yet.</b><span>The more the crew fills in (${size() === 'trip' ? 'home airports, ' : size() === 'weekend' ? 'where everyone’s coming from, ' : ''}budgets, free days, the vibe quiz), the better the pitches get.</span></div>`
   : next ? `<section class="stack" style="align-items:center">${pitchCard(next)}
       <div class="row" style="justify-content:center;gap:22px"><button class="swipe-btn no" data-swipe="${esc(next.id)}|-1" aria-label="Pass">✕</button><button class="swipe-btn meh" data-swipe="${esc(next.id)}|0.5" aria-label="Could work">≈</button><button class="swipe-btn yes" data-swipe="${esc(next.id)}|1" aria-label="I'd go">♥</button></div>
@@ -128,7 +128,8 @@ function matchTab() {
       return `<div class="linkrow"><div style="min-width:0"><b>${esc(p.city)}</b> <span class="small muted">${p.start === p.end ? short(p.start) : short(p.start) + ' – ' + short(p.end)} · ${esc(p.perPerson)}</span>
         <div class="small muted">${yes.length} yes · ${workableOf(p)} could work${waiting.length ? ` · waiting on ${waiting.map(x => esc(x.nick || 'Someone')).join(', ')}` : ''}</div>${fitChips(p)}</div>
         <div class="row" style="gap:6px">${mine ? `<button class="chip ${mine === 1 ? 'on' : ''}" data-swipe="${esc(p.id)}|${mine === 1 ? -1 : 1}" title="Tap to change">${mine === 1 ? '♥ Yes' : mine === WORKABLE ? '≈ Could work' : '✕ Pass'}</button>` : ''}<div class="bar" style="width:80px"><i style="width:${yes.length / Math.max(1, vs.length) * 100}%"></i></div>${lockedOn(p) ? '<span class="pill lvl-confirmed">Locked</span>' : S.readOnly ? '' : `<button class="btn sm ${yes.length && !S.trip.lockedDest ? 'primary' : ''}" data-lockpitch="${esc(p.id)}">Lock it in</button>`}</div></div>`; }).join('')}
-  </section>` : ''}`;
+  </section>` : ''}
+  ${S.sample === null ? '' : whereTab()}`;
 }
 function bindSwipe() {
   const el = document.getElementById('pitch'); if (!el || el._swipe) return; el._swipe = true;

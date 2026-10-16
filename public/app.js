@@ -648,8 +648,8 @@ function datesTab() {
 function whereTab() {
   const ds = S.trip.destinations || [], my = new Set(meDoc()?.votes || []), max = Math.max(1, active().length);
   const sorted = [...ds].sort((a, b) => votesFor(b.id).length - votesFor(a.id).length);
-  return `<section class="card stack">
-    <div class="row" style="justify-content:space-between"><h2>${isSmall() ? 'What should we do?' : 'Where are we going?'}</h2><span class="small muted">Vote for as many as you’d do</span></div>
+  return `<section class="card stack own-picks">
+    <div class="stack" style="gap:2px"><h2>${isSmall() ? 'Your own ideas' : 'Your own picks'}</h2><span class="small muted">${S.sample === null ? `Add ${isSmall() ? 'ideas' : 'cities'}, vote for every one you’d do, and lock the winner.` : `Not feeling the pitches? Add your own ${isSmall() ? 'ideas' : 'cities'}, vote for every one you’d do, and lock one in.`}</span></div>
     ${S.trip.lockedDest ? `<div class="banner"><span><b>Locked:</b> ${esc(dest()?.city || '')}</span><button class="btn sm" data-act="unlockDest">Unlock</button></div>` : ''}
     ${sorted.length ? sorted.map(d => { const v = votesFor(d.id); return `<div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:12px">
       <div class="row" style="justify-content:space-between"><div class="row" style="gap:8px"><h3>${esc(d.city)}</h3>${d.code ? `<span class="mono small muted">${esc(d.code.toUpperCase())}</span>` : ''}</div>
@@ -673,7 +673,7 @@ function needDestDates(what, need = 'both') {
   const title = noDest && noDates ? (small ? 'First, pick the plan and the day' : 'First, decide where and when') : noDest ? `First, pick ${W}` : `First, pick ${N}`;
   return `<div class="empty"><b>${title}</b>
     <span>${esc(what)} ${/s$/.test(what) ? 'show' : 'shows'} up once you have ${noDest && noDates ? `${W} and ${N}` : noDest ? W : N}. ${small ? 'Plan Match settles it: the AI pitches plans' : 'Trip Match settles both: the AI pitches trips'} that fit everyone and the crew swipes.</span>
-    <div class="row" style="gap:6px"><button class="btn sm primary" data-tab="match">Open ${small ? 'Plan' : 'Trip'} Match</button>${noDest ? `<button class="btn sm" data-tab="where">${small ? 'Add ideas' : 'Vote on where'}</button>` : ''}${noDates ? `<button class="btn sm" data-tab="dates">${small ? 'Pick the day' : 'Pick dates'}</button>` : ''}</div></div>`;
+    <div class="row" style="gap:6px"><button class="btn sm primary" data-tab="match">Open ${small ? 'Plan' : 'Trip'} Match</button>${noDates ? `<button class="btn sm" data-tab="dates">${small ? 'Pick the day' : 'Pick dates'}</button>` : ''}</div></div>`;
 }
 
 function ticketsSection() {
@@ -1189,8 +1189,8 @@ function matchTab() {
         ${p.highlights.length ? `<ul style="margin:0;padding-left:18px">${p.highlights.map(h => `<li>${esc(h)}</li>`).join('')}</ul>` : ''}
       </div>
     </article>`; };
-  return `<section class="card stack">
-    <div class="row" style="justify-content:space-between"><div class="stack" style="gap:2px"><h2>${isSmall() ? 'Plan Match' : 'Trip Match'}</h2><span class="small muted">The AI pitches ${isSmall() ? 'whole plans' : 'complete trips'} that fit everyone’s budget, free days and vibe. Everyone swipes. If you all say yes to the same one, it’s a match.</span></div>
+  return `${S.sample === null ? whereTab() : ''}<section class="card stack">
+    <div class="row" style="justify-content:space-between"><div class="stack" style="gap:2px"><h2>${isSmall() ? 'Plan Match' : 'Trip Match'}</h2><span class="small muted">The AI pitches ${isSmall() ? 'whole plans' : 'complete trips'} that fit everyone’s budget, free days and vibe. Everyone swipes. If you all say yes to the same one, it’s a match. Not feeling them? Add your own picks below.</span></div>
       ${S.sample !== null ? `<button class="btn ${items.length ? '' : 'primary'}" data-act="genPitches" ${S.busy.pitch ? 'disabled' : ''}>${S.busy.pitch ? '<i class="spin"></i>Pitching…' : items.length ? 'New pitches' : isSmall() ? 'Pitch us some plans' : 'Pitch us some trips'}</button>` : ''}</div>
     ${steerField()}
   </section>
@@ -1198,7 +1198,7 @@ function matchTab() {
   ${m ? `<section class="match"><span class="label" style="color:rgba(255,255,255,.85)">Everyone swiped yes</span><h1 style="color:#fff">It’s a match!</h1>
       <p style="font-size:17px">${esc(m.city)} · ${dayRange(m.start, m.end)}${m.time ? ' · ' + t12(m.time) : ''} · ${esc(m.perPerson)}</p>
       <div>${S.trip.lockedDest && dest()?.city === m.city && S.trip.lockedDates?.start === m.start ? `<span class="on-pill" style="background:#fff;color:#151A33">Locked in</span>` : `<button class="btn" data-lockpitch="${esc(m.id)}">Lock it in</button>`}</div></section>` : ''}
-  ${!items.length && S.sample === null ? `<div class="empty"><b>AI pitches are off ${IN_CLAUDE ? 'for you right now' : 'until you add your Anthropic API key'}.</b><span>You can still settle it by hand: add ideas, everyone votes, and you lock the winner.</span><button class="btn sm primary" data-tab="where">${isSmall() ? 'Add plan ideas' : 'Add places to vote on'}</button></div>`
+  ${!items.length && S.sample === null ? ''
   : !items.length ? `<div class="empty"><b>No pitches yet.</b><span>The more the crew fills in (${size() === 'trip' ? 'home airports, ' : size() === 'weekend' ? 'where everyone’s coming from, ' : ''}budgets, free days, the vibe quiz), the better the pitches get.</span></div>`
   : next ? `<section class="stack" style="align-items:center">${pitchCard(next)}
       <div class="row" style="justify-content:center;gap:22px"><button class="swipe-btn no" data-swipe="${esc(next.id)}|-1" aria-label="Pass">✕</button><button class="swipe-btn meh" data-swipe="${esc(next.id)}|0.5" aria-label="Could work">≈</button><button class="swipe-btn yes" data-swipe="${esc(next.id)}|1" aria-label="I'd go">♥</button></div>
@@ -1210,7 +1210,8 @@ function matchTab() {
       return `<div class="linkrow"><div style="min-width:0"><b>${esc(p.city)}</b> <span class="small muted">${p.start === p.end ? short(p.start) : short(p.start) + ' – ' + short(p.end)} · ${esc(p.perPerson)}</span>
         <div class="small muted">${yes.length} yes · ${workableOf(p)} could work${waiting.length ? ` · waiting on ${waiting.map(x => esc(x.nick || 'Someone')).join(', ')}` : ''}</div>${fitChips(p)}</div>
         <div class="row" style="gap:6px">${mine ? `<button class="chip ${mine === 1 ? 'on' : ''}" data-swipe="${esc(p.id)}|${mine === 1 ? -1 : 1}" title="Tap to change">${mine === 1 ? '♥ Yes' : mine === WORKABLE ? '≈ Could work' : '✕ Pass'}</button>` : ''}<div class="bar" style="width:80px"><i style="width:${yes.length / Math.max(1, vs.length) * 100}%"></i></div>${lockedOn(p) ? '<span class="pill lvl-confirmed">Locked</span>' : S.readOnly ? '' : `<button class="btn sm ${yes.length && !S.trip.lockedDest ? 'primary' : ''}" data-lockpitch="${esc(p.id)}">Lock it in</button>`}</div></div>`; }).join('')}
-  </section>` : ''}`;
+  </section>` : ''}
+  ${S.sample === null ? '' : whereTab()}`;
 }
 function bindSwipe() {
   const el = document.getElementById('pitch'); if (!el || el._swipe) return; el._swipe = true;
@@ -1501,14 +1502,14 @@ const icon = k => `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" s
 function sections() {
   return [
     { k: 'home', label: 'Home', tabs: [['overview', 'Overview'], ['crew', 'Crew'], ['tasks', 'To-dos'], ['settings', 'Settings']] },
-    { k: 'plan', label: 'Plan', tabs: [['match', isSmall() ? 'Plan Match' : 'Trip Match'], ['dates', isSmall() ? 'When' : 'Dates'], ['whatif', 'What if'], ['where', 'Where'], ['spots', isSmall() ? 'Spots' : (mode().nightlife || 'Nightlife')], ['plan', isSmall() ? 'The plan' : 'Itinerary']] },
+    { k: 'plan', label: 'Plan', tabs: [['match', isSmall() ? 'Plan Match' : 'Trip Match'], ['dates', isSmall() ? 'When' : 'Dates'], ['whatif', 'What if'], ['spots', isSmall() ? 'Spots' : (mode().nightlife || 'Nightlife')], ['plan', isSmall() ? 'The plan' : 'Itinerary']] },
     { k: 'book', label: 'Book', tabs: [['flights', 'Flights'], ['stays', 'Stays'], ['tickets', 'Boarding passes'], ['pack', 'Packing']] },
     { k: 'live', label: 'Live', tabs: [['live', 'Today'], ['map', 'Map'], ['bucket', 'Bucket list'], ['hype', 'Hype']] },
     { k: 'money', label: 'Money', tabs: [['cost', 'All-in cost'], ['meter', 'My spend'], ['pot', 'Group pot'], ['money', 'Expenses']] },
     { k: 'memories', label: 'Memories', tabs: [['wrapped', isSmall() ? 'Recap' : 'Wrapped'], ['recap', 'Photos'], ['playlist', 'Playlist'], ['awards', 'Awards']] },
   ].map(s => ({ ...s, tabs: s.tabs.filter(([k]) => !HIDE_TABS[size()].includes(k)) })).filter(s => s.tabs.length);
 }
-const TAB_ALIAS = { deals: 'flights' };
+const TAB_ALIAS = { deals: 'flights', where: 'match' };
 const secOf = tab => sections().find(s => s.tabs.some(t => t[0] === tab)) || sections()[0];
 const TABFN = () => ({ overview: overviewTab, crew: crewTab, tasks: tasksTab, cost: costTab, whatif: whatifTab, settings: settingsTab, match: matchTab, dates: datesTab, where: whereTab, spots: spotsTab, plan: planTab,
   flights: flightsTab, stays: staysTab, tickets: ticketsTab, pack: packTab, live: liveTab, map: mapTab, bucket: bucketSection, hype: hypeTab,
@@ -1635,10 +1636,10 @@ function blockers() {
       return { k: 'decide', who: [], group: 'No perfect match yet. Settle it', tab: 'match', sel: '.settle', cta: 'Settle it' };
     }
     const ds = t.destinations || [];
-    if (!ds.length) return { k: 'ideas', who: [], group: small ? 'No ideas yet. Get pitches or add one' : 'No destinations yet. Get pitches or suggest one', tab: S.sample ? 'match' : 'where', sel: S.sample ? '[data-act="genPitches"]' : '#ad-city', cta: S.sample ? 'Get pitches' : 'Add one' };
+    if (!ds.length) return { k: 'ideas', who: [], group: small ? 'No ideas yet. Get pitches or add one' : 'No destinations yet. Get pitches or suggest one', tab: 'match', sel: S.sample ? '[data-act="genPitches"]' : '#ad-city', cta: S.sample ? 'Get pitches' : 'Add one' };
     const w = ms.filter(m => !(m.votes || []).length);
-    if (w.length) return { k: 'vote', who: w, group: whoHas(w, 'hasn’t', 'haven’t', `voted on ${small ? 'the plan' : 'where'}`), mine: `Vote on ${small ? 'the plan' : 'where to go'}`, ask: `vote on ${small ? 'the plan' : 'where we go'}`, tab: 'where', sel: '[data-vote]' };
-    return { k: 'decide', who: [], group: `${dest()?.city || 'One place'} is winning. Lock it in`, tab: 'where', sel: '[data-lockdest]', cta: 'Lock it in' };
+    if (w.length) return { k: 'vote', who: w, group: whoHas(w, 'hasn’t', 'haven’t', `voted on ${small ? 'the plan' : 'where'}`), mine: `Vote on ${small ? 'the plan' : 'where to go'}`, ask: `vote on ${small ? 'the plan' : 'where we go'}`, tab: 'match', sel: '[data-vote]' };
+    return { k: 'decide', who: [], group: `${dest()?.city || 'One place'} is winning. Lock it in`, tab: 'match', sel: '[data-lockdest]', cta: 'Lock it in' };
   }
   if (!t.lockedDates) {
     const w = ms.filter(m => !(m.days || []).length);
@@ -2970,9 +2971,9 @@ function guide() {
       if (!ro && items.length && active().length >= 2 && !matchedPitch() && active().every(m => items.every(p => swipeOf(p.id, m.id)))) return { tab: 'match', sel: '.settle', label: 'No perfect match. Settle it' };
       if (items.some(x => !swipeOf(x.id, S.uid))) return { tab: 'match', sel: '#pitch', label: 'Swipe on the pitches' };
       if (!items.length && S.sample) return { tab: 'match', sel: '[data-act="genPitches"]', label: isSmall() ? 'Get AI plan pitches' : 'Get AI trip pitches' };
-      if (!(t.destinations || []).length) return { tab: 'where', sel: '#ad-city', label: isSmall() ? 'Suggest a plan' : 'Suggest a destination' };
-      if (!(me.votes || []).length) return { tab: 'where', sel: '[data-vote]', label: 'Vote on where to go' };
-      return { tab: 'where', sel: '[data-lockdest]', label: isSmall() ? 'Lock the plan' : 'Lock the destination' };
+      if (!(t.destinations || []).length) return { tab: 'match', sel: '#ad-city', label: isSmall() ? 'Suggest a plan' : 'Suggest a destination' };
+      if (!(me.votes || []).length) return { tab: 'match', sel: '[data-vote]', label: 'Vote on where to go' };
+      return { tab: 'match', sel: '[data-lockdest]', label: isSmall() ? 'Lock the plan' : 'Lock the destination' };
     }
     if (s.go === 'dates') {
       if (!(me.days || []).length) return { tab: 'dates', sel: '.cal', label: 'Tap the days you’re free' };

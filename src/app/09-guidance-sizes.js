@@ -35,9 +35,9 @@ function guide() {
       if (!ro && items.length && active().length >= 2 && !matchedPitch() && active().every(m => items.every(p => swipeOf(p.id, m.id)))) return { tab: 'match', sel: '.settle', label: 'No perfect match. Settle it' };
       if (items.some(x => !swipeOf(x.id, S.uid))) return { tab: 'match', sel: '#pitch', label: 'Swipe on the pitches' };
       if (!items.length && S.sample) return { tab: 'match', sel: '[data-act="genPitches"]', label: isSmall() ? 'Get AI plan pitches' : 'Get AI trip pitches' };
-      if (!(t.destinations || []).length) return { tab: 'where', sel: '#ad-city', label: isSmall() ? 'Suggest a plan' : 'Suggest a destination' };
-      if (!(me.votes || []).length) return { tab: 'where', sel: '[data-vote]', label: 'Vote on where to go' };
-      return { tab: 'where', sel: '[data-lockdest]', label: isSmall() ? 'Lock the plan' : 'Lock the destination' };
+      if (!(t.destinations || []).length) return { tab: 'match', sel: '#ad-city', label: isSmall() ? 'Suggest a plan' : 'Suggest a destination' };
+      if (!(me.votes || []).length) return { tab: 'match', sel: '[data-vote]', label: 'Vote on where to go' };
+      return { tab: 'match', sel: '[data-lockdest]', label: isSmall() ? 'Lock the plan' : 'Lock the destination' };
     }
     if (s.go === 'dates') {
       if (!(me.days || []).length) return { tab: 'dates', sel: '.cal', label: 'Tap the days you’re free' };
