@@ -51,7 +51,7 @@ export async function POST(req: Request) {
       default: return NextResponse.json({ code: 'invalid_argument', message: 'Unknown op' }, { status: 400 });
     }
   } catch (e) {
-    if (e instanceof StoreError) return NextResponse.json({ code: e.code, message: e.message }, { status: e.code === 'permission_denied' ? 403 : 400 });
+    if (e instanceof StoreError) return NextResponse.json({ code: e.code, message: e.message }, { status: e.code === 'permission_denied' ? 403 : e.code === 'unavailable' ? 503 : 400 });
     console.error(e);
     return NextResponse.json({ code: 'unavailable', message: 'Store error' }, { status: 500 });
   }

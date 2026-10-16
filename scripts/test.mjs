@@ -27,6 +27,7 @@ const SERVER = [
   ['concurrency', 'tests/concurrency.mjs'],
   ['changelog', 'tests/changelog.mjs', ['--experimental-strip-types', '--no-warnings']],
   ['ai-uploads', 'tests/ai-uploads.mjs'],
+  ['storage', 'tests/storage.mjs'],
 ];
 const UI = readdirSync(join(root, 'tests/ui')).filter(f => f.endsWith('.mjs') && !f.startsWith('_')).sort().map(f => [f.replace(/\.mjs$/, ''), 'tests/ui/' + f]);
 const suites = (mode === 'ui' ? UI : mode === 'concurrency' ? [['ui-concurrency', 'tests/ui-concurrency.mjs']] : SERVER).filter(([n]) => !only || n === only);

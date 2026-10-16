@@ -79,7 +79,7 @@ Every test command starts its own copy of the app on a free port with a throwawa
 | Command | What it runs | Needs |
 |---|---|---|
 | `npm test` | The core suite: TypeScript check, app build, then every server suite below | Nothing extra |
-| `npm run test:server` | The server suites only: `access`, `budget-privacy`, `privacy`, `decisions`, `concurrency`, `changelog`, `ai-uploads` (in `tests/`) | Nothing extra |
+| `npm run test:server` | The server suites only: `access`, `budget-privacy`, `privacy`, `decisions`, `concurrency`, `changelog`, `ai-uploads`, `storage` (in `tests/`) | Nothing extra |
 | `npm run test:ui` | Browser tests in `tests/ui/`: setup, joining, crews, decisions, personal needs and the change log, budget, itinerary, pitches, recovery and undo, reliability, keyboard, journey, own picks, stays, script injection (`xss`: every text field filled with a harmless payload, every tab opened), and a broad feature walk | Playwright |
 | `npm run test:ui:concurrency` | `tests/ui-concurrency.mjs`: two real browsers saving at once | Playwright |
 
@@ -114,6 +114,8 @@ Without Playwright these two commands stop straight away with a message saying s
 | `data/` | Your local database and uploads (created on first run, never committed) |
 
 To start over with no trips, stop the app and delete the `data/` folder.
+
+Saving is crash-safe: each save is written to `data/db.json.tmp` and then swapped in, so `db.json` is never left half-written, and the previous good version is kept as `data/db.json.bak`. If `db.json` can't be read when the app starts, it's kept as `db.json.corrupt-<time>` and the backup is loaded (the terminal says so). If there's no usable backup either, the app starts with saving turned off rather than replace your file with an empty one: fix or remove `data/db.json` and restart.
 
 ## What's next
 
