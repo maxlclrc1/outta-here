@@ -29,7 +29,7 @@ function recoveryCard() {
   if (k === 'budget') {
     const m = meDoc() || {}, sum = costSummary(), fit = budgetFit(sum);
     return `<section class="card stack recover"><h3>Budget changed</h3>
-      <label class="field" style="flex:none"><span class="label">Your max now (USD)</span><input id="me-budget" type="number" min="0" inputmode="numeric" value="${m.budget || ''}"></label>
+      <label class="field" style="flex:none"><span class="label">Your max now (${cur()})</span><input id="me-budget" type="number" min="0" inputmode="numeric" value="${m.budget || ''}"></label>
       ${sum.any ? `<p class="small">The plan is <b>${money(sum.low)}–${money(sum.high)}</b> each. ${fit.over.length ? `Over budget for ${esc(budgetWho(fit.over))}.` : fit.stretch.length ? `A stretch for ${esc(budgetWho(fit.stretch))}.` : 'It fits everyone’s budget.'}</p>
         ${fit.over.length || fit.stretch.length ? '<div class="row" style="gap:6px"><button class="btn sm" data-tab="whatif">Compare cheaper options</button><button class="btn sm" data-tab="cost">See the costs</button></div>' : ''}` : '<p class="small muted">Fill in the All-in cost to see how this changes things.</p>'}
       <div class="row">${close}</div></section>`;

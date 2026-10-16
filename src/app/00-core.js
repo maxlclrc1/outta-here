@@ -16,7 +16,7 @@ const fmt = (s, o = { weekday: 'short', month: 'short', day: 'numeric' }) => D(s
 const short = s => fmt(s, { month: 'short', day: 'numeric' });
 const dow = s => fmt(s, { weekday: 'short' });
 const TODAY = iso(new Date());
-const money = n => '$' + Math.round(n).toLocaleString('en-US');
+const money = n => fmtMoney(Math.round(n), cur());
 
 /* ---------- state ---------- */
 const S = {
@@ -256,6 +256,7 @@ async function flushMe() {
 async function askAI(kind, prompt, done) {
   if (!S.sample) { flash(IN_CLAUDE ? 'AI picks need this page opened in Claude.' : 'AI is off. Add your Anthropic API key to .env.local and restart the app.'); return; }
   S.busy[kind] = true; render();
+  if (S.trip) prompt += `\n\nGive every price in ${cur()} (${curSymbol(cur())}), not in any other currency, and use that symbol in price text.`;
   try { const data = await S.sample.json(prompt, { modelTier: 'default' }); await done(data); }
   catch (e) { flash(aiErr(e)); }
   finally { S.busy[kind] = false; render(); }

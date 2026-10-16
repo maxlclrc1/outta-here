@@ -25,7 +25,7 @@ function planRow(t, opts = {}) {
     <div class="pr-date">${d ? `<span>${fmt(d.start, { month: 'short' })}</span><b>${D(d.start).getUTCDate()}</b><span>${t.time ? t12(t.time) : fmt(d.start, { weekday: 'short' })}</span>` : '<span>Date</span><b>TBD</b><span>&nbsp;</span>'}</div>
     <div class="pr-mid">
       <span class="pr-kind"><i style="background:var(--pc)"></i>${esc(sz.label)}${crew && !opts.noCrew ? ' · ' + esc(crew.name) : ''}${n ? ` · ${n} in` : ''}</span>
-      <h3><span class="sr-only">${esc(t.name)}</span><span class="flap" aria-hidden="true">${flap(t.name)}</span></h3>
+      ${sizeOf(t) === 'trip' ? `<h3><span class="sr-only">${esc(t.name)}</span><span class="flap" aria-hidden="true">${flap(t.name)}</span></h3>` : `<h3 class="pr-name">${esc(t.name)}</h3>`}
       <span class="small muted pr-line">${t.lockedDates ? (name && name !== t.name ? '→ ' + esc(name) + ' · ' : '') + moveLine(t) : moveLine(t)}${daysTo !== null && daysTo > 0 && daysTo <= 30 ? ` · <b style="color:var(--pc)">${daysTo === 1 ? 'Tomorrow' : 'in ' + daysTo + ' days'}</b>` : ''}</span>
     </div>
     <div class="pr-status"><span class="board-st">${BOARD[st]}</span>${mine ? '<span class="your-flag">Your move</span>' : ''}</div>
@@ -215,6 +215,7 @@ function newTripForm() {
       <div class="row">
         <label class="field"><span class="label">${small ? 'Could happen from' : 'Earliest date'}</span><input id="nt-start" type="date" value="${start}" min="${TODAY}" required></label>
         <label class="field"><span class="label">${small ? 'Until' : 'Latest date'}</span><input id="nt-end" type="date" value="${end}" min="${TODAY}" required></label>
+        <label class="field" style="flex:0 1 190px"><span class="label">Currency</span><select id="nt-cur">${curOptions(lsGetC('outta_lastcur', '') || myCur())}</select></label>
         ${small ? '' : `<label class="field" style="flex:0 1 110px"><span class="label">Nights</span><select id="nt-nights">${[1, 2, 3, 4, 5, 6, 7, 10, 14].map(n => `<option ${n === sz.nights ? 'selected' : ''}>${n}</option>`).join('')}</select></label>`}
       </div>
       <p class="small muted">${small ? 'Everyone taps which of these days they’re free. The crew picks the exact plan and day together.' : 'Not sure on dates yet? Give a wide window. The crew picks the exact nights later.'}</p>
@@ -231,7 +232,8 @@ async function createTrip() {
   if (small && !city) { flash('Add the city so the AI can pitch real places.'); return; }
   if (city) { try { localStorage.setItem('outta_city', city); } catch {} }
   const id = rid(10);
-  const trip = { name: name.slice(0, 60), size: sz, city, winStart: a, winEnd: b, nights: small ? 0 : +($('#nt-nights')?.value || SIZES[sz].nights), destinations: [], vibes: [], itinerary: [], lockedDates: null, lockedDest: null,
+  const currency = CUR_CODES.includes($('#nt-cur')?.value) ? $('#nt-cur').value : myCur(); try { localStorage.setItem('outta_lastcur', currency); } catch {}
+  const trip = { name: name.slice(0, 60), size: sz, city, currency, winStart: a, winEnd: b, nights: small ? 0 : +($('#nt-nights')?.value || SIZES[sz].nights), destinations: [], vibes: [], itinerary: [], lockedDates: null, lockedDest: null,
     mode: small ? 'friends' : (S.newMode || 'friends'), honoreeName: ($('#nt-honoree')?.value || '').trim().slice(0, 40), honoreeFree: true, people: { [S.uid]: true }, createdBy: S.uid, createdAt: Date.now() };
   try {
     await S.db.doc('trips/' + id).set(trip);

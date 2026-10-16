@@ -194,6 +194,8 @@ app.addEventListener('change', e => {
   if (id === 'me-budgetPublic') saveMe({ budgetPublic: e.target.checked }, true, true);
   if (id === 'me-hideLoc') saveMe({ hideLoc: e.target.checked }, true, true);
   if (id === 'my-flight-price') { const v = Math.round(+e.target.value || 0); if (v > 0) { saveTrip({ tickets: { [S.uid]: { price: v } } }); flash('Got it. Your flight is in the cost now.'); } }
+  if (id === 'set-cur' && CUR_CODES.includes(e.target.value)) { saveTrip({ currency: e.target.value }); flash(`Now in ${e.target.value}. Amounts already typed in weren’t converted.`); }
+  if (id === 'my-cur' && CUR_CODES.includes(e.target.value)) { try { localStorage.setItem('outta_mycur', e.target.value); } catch {} render(); }
   if (id === 'cost-buffer') saveTrip({ costBuffer: +e.target.value });
   if (id.startsWith('task-owner-')) patchTask(id.slice(11), { owner: e.target.value });
   if (id.startsWith('task-due-')) patchTask(id.slice(9), { due: e.target.value });

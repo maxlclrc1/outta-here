@@ -47,6 +47,7 @@ function accessCard() {
 function myPrivacy() {
   const m = meDoc(); if (!m || S.demo) return '';
   return `<div class="stack" style="gap:8px;border-top:1px solid var(--line);padding-top:12px">
+    <label class="field" style="flex:none;max-width:280px"><span class="label">Show me amounts in</span><select id="my-cur">${curOptions(myCur())}</select><span class="small muted">${myCur() === cur() ? 'Same as the plan.' : `Totals also show ≈ ${myCur()} (${fxNote()}).`}</span></label>
     <span class="label">Privacy</span>
     <label class="check-line"><input type="checkbox" id="me-budgetPublic" style="width:auto" ${m.budgetPublic ? 'checked' : ''}> Name me when something is over my budget. Off: I’m counted, but not named.</label>
     <label class="check-line"><input type="checkbox" id="me-hideLoc" style="width:auto" ${m.hideLoc ? 'checked' : ''}> Hide where I check in during the ${planWord()}. An SOS always shares your spot.</label>

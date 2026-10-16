@@ -22,7 +22,7 @@ function meterTab() {
         <text x="90" y="86" text-anchor="middle" class="ring-big">${budget ? Math.round(pct * 100) + '%' : '—'}</text>
         <text x="90" y="110" text-anchor="middle" class="ring-small">${budget ? 'of ' + money(budget) : 'no budget'}</text></svg>
       <div class="stack" style="gap:6px;min-width:0">
-        <span class="label">Spent so far</span><b class="tile-big">${money2(spent)}</b>
+        <span class="label">Spent so far</span><b class="tile-big">${money2(spent)}</b>${alsoMine(spent)}
         ${budget ? (left >= 0 ? `<span>${money2(left)} left · <b>${money(left / daysLeft)}/day</b> for ${daysLeft} day${daysLeft === 1 ? '' : 's'}</span>` : `<span style="color:var(--meter-over)"><b>${money2(-left)} over budget</b></span>`) : `<span class="small muted">Set your budget in Home › Crew to turn on the meter.</span>`}
         ${state === 'warn' ? `<span class="pill maybe" style="align-self:flex-start">Heads up: ${Math.round(pct * 100)}% used</span>` : state === 'over' ? `<span class="pill out" style="align-self:flex-start;color:var(--meter-over)">Over budget</span>` : ''}
       </div></div>
@@ -56,7 +56,7 @@ function potTab() {
   const hist = [...S.pot].sort((a, b) => (b.at || 0) - (a.at || 0));
   return `<section class="card stack">
     <div class="row" style="justify-content:space-between"><h2>Group pot</h2><span class="small muted">For Ubers, groceries, drinks</span></div>
-    <div class="pot-big ${low ? 'low' : ''}"><span class="label">In the pot</span><b>${money2(bal)}</b><span class="small muted">${money2(tin)} in · ${money2(tout)} spent</span>
+    <div class="pot-big ${low ? 'low' : ''}"><span class="label">In the pot</span><b>${money2(bal)}</b>${alsoMine(bal)}<span class="small muted">${money2(tin)} in · ${money2(tout)} spent</span>
       <div class="bigbar" style="margin-top:6px"><i style="width:${tin ? Math.max(0, bal / tin * 100) : 0}%;background:${low ? 'var(--meter-over)' : 'var(--good)'}"></i></div></div>
     ${low ? `<div class="lost-banner" style="background:color-mix(in oklab,var(--gold) 22%,var(--surface));color:var(--ink);border-color:var(--gold)"><div><b>The pot’s running low.</b><div class="small">Top up about ${money(topUp)} each to cover the rest of the ${planWord()}.</div></div><button class="btn sm" data-act="copyPot">Copy reminder</button></div>` : ''}
     <div class="row" style="gap:8px;align-items:center"><span class="small">Holding the pot:</span><select id="pot-keeper" style="width:auto">${active().map(m => `<option value="${esc(m.id)}" ${keeper === m.id ? 'selected' : ''}>${esc(m.nick || 'Someone')}</option>`).join('')}</select></div>

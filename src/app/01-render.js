@@ -161,7 +161,7 @@ function crewTab() {
     <div class="row">
       <label class="field"><span class="label">Name</span><input id="me-nick" maxlength="30" value="${esc(m.nick)}" placeholder="What the crew calls you"></label>
       ${isSmall() ? '' : `<label class="field"><span class="label">${size() === 'trip' ? 'Flying from' : 'Coming from'}</span><input id="me-home" maxlength="40" value="${esc(m.home)}" placeholder="${size() === 'trip' ? 'JFK or New York' : 'Your city or neighborhood'}"></label>`}
-      <label class="field"><span class="label">${isSmall() ? 'Max you’ll spend (USD)' : 'Max you’ll spend (total, USD)'}</span><input id="me-budget" type="number" min="0" step="${isSmall() ? 5 : 50}" inputmode="numeric" value="${m.budget ? esc(m.budget) : ''}" placeholder="${isSmall() ? '60' : size() === 'weekend' ? '400' : '800'}"></label>
+      <label class="field"><span class="label">${isSmall() ? `Max you’ll spend (${cur()})` : `Max you’ll spend (total, ${cur()})`}</span><input id="me-budget" type="number" min="0" step="${isSmall() ? 5 : 50}" inputmode="numeric" value="${m.budget ? esc(m.budget) : ''}" placeholder="${isSmall() ? '60' : size() === 'weekend' ? '400' : '800'}"></label>
     </div>
     <div class="row">
       <label class="field"><span class="label">Venmo</span><input id="me-venmo" maxlength="40" value="${esc(m.venmo || '')}" placeholder="@your-handle"></label>
@@ -355,7 +355,7 @@ function planTab() {
   </section>`; }).join('')}`;
 }
 
-const money2 = n => '$' + (Math.round(n * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
+const money2 = n => fmtMoney(Math.round(n * 100) / 100, cur(), true);
 const byAt = (a, b) => (a.at || 0) - (b.at || 0);
 function payLinks(toId, amt, note) {
   const m = S.members.find(x => x.id === toId) || {};
@@ -373,7 +373,7 @@ function moneyTab() {
   const total = S.expenses.reduce((a, e) => a + (+e.amount || 0), 0);
   const exps = [...S.expenses].sort((a, b) => (b.at || 0) - (a.at || 0));
   return `<section class="card stack">
-    <div class="row" style="justify-content:space-between"><h2>${isSmall() ? 'Expenses' : 'Trip expenses'}</h2><span class="mono">${money2(total)} total</span></div>
+    <div class="row" style="justify-content:space-between"><h2>${isSmall() ? 'Expenses' : 'Trip expenses'}</h2><span class="mono">${money2(total)} total ${alsoMine(total)}</span></div>
     <form id="expForm" class="stack">
       <div class="row" style="align-items:flex-end">
         <label class="field" style="flex:2 1 180px"><span class="label">What</span><input id="ex-what" maxlength="60" required placeholder="Dinner at Catch"></label>

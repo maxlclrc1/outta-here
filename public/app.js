@@ -16,7 +16,7 @@ const fmt = (s, o = { weekday: 'short', month: 'short', day: 'numeric' }) => D(s
 const short = s => fmt(s, { month: 'short', day: 'numeric' });
 const dow = s => fmt(s, { weekday: 'short' });
 const TODAY = iso(new Date());
-const money = n => '$' + Math.round(n).toLocaleString('en-US');
+const money = n => fmtMoney(Math.round(n), cur());
 
 /* ---------- state ---------- */
 const S = {
@@ -256,6 +256,7 @@ async function flushMe() {
 async function askAI(kind, prompt, done) {
   if (!S.sample) { flash(IN_CLAUDE ? 'AI picks need this page opened in Claude.' : 'AI is off. Add your Anthropic API key to .env.local and restart the app.'); return; }
   S.busy[kind] = true; render();
+  if (S.trip) prompt += `\n\nGive every price in ${cur()} (${curSymbol(cur())}), not in any other currency, and use that symbol in price text.`;
   try { const data = await S.sample.json(prompt, { modelTier: 'default' }); await done(data); }
   catch (e) { flash(aiErr(e)); }
   finally { S.busy[kind] = false; render(); }
@@ -362,6 +363,56 @@ function airbnb(ds, d, n, perNight) { return `https://www.airbnb.com/s/${encodeU
 function booking(ds, d, n) { return `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(ds.city)}&checkin=${d.start}&checkout=${d.end}&group_adults=${n}&no_rooms=${Math.max(1, Math.ceil(n / 2))}&order=price`; }
 function gHotels(ds, d) { return 'https://www.google.com/travel/search?q=' + encodeURIComponent(`cheap hotels in ${ds.city} ${d.start} to ${d.end}`); }
 const maps = (name, city) => 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(name + ' ' + city);
+
+/* ---------- currency ---------- */
+// Each plan has one currency everyone spends in. Each person can also pick their own,
+// and big totals then show roughly what that is for them. Rates come from a free,
+// keyless rates API, cached for 12 hours, with approximate built-in rates as a fallback.
+const CURRENCIES = [['USD', 'US dollar'], ['EUR', 'Euro'], ['JPY', 'Japanese yen'], ['GBP', 'British pound'], ['CNY', 'Chinese yuan'], ['AUD', 'Australian dollar'], ['CAD', 'Canadian dollar'], ['CHF', 'Swiss franc'], ['HKD', 'Hong Kong dollar'], ['SGD', 'Singapore dollar'],
+  ['SEK', 'Swedish krona'], ['KRW', 'South Korean won'], ['NOK', 'Norwegian krone'], ['NZD', 'New Zealand dollar'], ['INR', 'Indian rupee'], ['MXN', 'Mexican peso'], ['TWD', 'New Taiwan dollar'], ['ZAR', 'South African rand'], ['BRL', 'Brazilian real'], ['DKK', 'Danish krone']];
+const CUR_CODES = CURRENCIES.map(c => c[0]);
+// approximate USD rates, used only if the live rates can't be loaded
+const FX_FALLBACK = { USD: 1, EUR: 0.92, JPY: 150, GBP: 0.79, CNY: 7.2, AUD: 1.52, CAD: 1.37, CHF: 0.88, HKD: 7.8, SGD: 1.34, SEK: 10.5, KRW: 1380, NOK: 10.7, NZD: 1.66, INR: 84, MXN: 18.5, TWD: 32, ZAR: 18.3, BRL: 5.6, DKK: 6.85 };
+const EURO = 'AT BE CY DE EE ES FI FR GR HR IE IT LT LU LV MT NL PT SI SK'.split(' ');
+const REGION_CUR = { US: 'USD', GB: 'GBP', JP: 'JPY', CN: 'CNY', AU: 'AUD', CA: 'CAD', CH: 'CHF', HK: 'HKD', SG: 'SGD', SE: 'SEK', KR: 'KRW', NO: 'NOK', NZ: 'NZD', IN: 'INR', MX: 'MXN', TW: 'TWD', ZA: 'ZAR', BR: 'BRL', DK: 'DKK' };
+function guessCur() {
+  const region = (navigator.language || 'en-US').split('-')[1]?.toUpperCase() || '';
+  return REGION_CUR[region] || (EURO.includes(region) ? 'EUR' : 'USD');
+}
+const lsGetC = (k, d) => { try { const v = localStorage.getItem(k); return v || d; } catch { return d; } };
+const myCur = () => { const c = lsGetC('outta_mycur', ''); return CUR_CODES.includes(c) ? c : guessCur(); };
+const cur = () => S.trip && CUR_CODES.includes(S.trip.currency) ? S.trip.currency : 'USD';
+const noCents = c => ['JPY', 'KRW', 'TWD'].includes(c);
+function fmtMoney(n, c, cents) {
+  const dec = cents && !noCents(c) && Math.round(n * 100) % 100 ? 2 : 0;
+  try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: c, minimumFractionDigits: dec, maximumFractionDigits: dec }).format(n); }
+  catch { return c + ' ' + Math.round(n).toLocaleString('en-US'); }
+}
+const curSymbol = c => fmtMoney(0, c).replace(/[\d.,\s]/g, '') || c;
+let FX = null; try { FX = JSON.parse(localStorage.getItem('outta_fx') || 'null'); } catch {}
+const fxRate = c => (FX && FX.rates && FX.rates[c]) || FX_FALLBACK[c];
+const convert = (n, from, to) => from === to ? n : n / fxRate(from) * fxRate(to);
+async function loadRates() {
+  if (FX && FX.live && Date.now() - FX.got < 12 * 36e5) return;
+  try {
+    const r = await fetch('https://open.er-api.com/v6/latest/USD'), j = await r.json();
+    if (j && j.result === 'success' && j.rates) { FX = { rates: j.rates, day: (j.time_last_update_utc || '').slice(5, 16), got: Date.now(), live: true }; try { localStorage.setItem('outta_fx', JSON.stringify(FX)); } catch {} render(); }
+  } catch {}
+}
+const fxNote = () => FX && FX.live ? `rate from ${FX.day}` : 'approximate rate';
+// "≈ $1,240" in your own currency, when it differs from the plan's
+function alsoMine(lo, hi = lo) {
+  const me = myCur(), c = cur(); if (me === c || !fxRate(me) || !fxRate(c)) return '';
+  const a = fmtMoney(convert(lo, c, me), me), b = fmtMoney(convert(hi, c, me), me);
+  return `<span class="fx" title="${fxNote()}">≈ ${a}${b !== a ? '–' + b : ''}</span>`;
+}
+setTimeout(() => loadRates(), 1500);
+// a USD amount as a round number in the plan's currency (for presets and placeholders)
+function niceIn(usd, c = cur()) {
+  const v = convert(usd, 'USD', c), mag = Math.pow(10, Math.max(0, Math.floor(Math.log10(v)) - 1));
+  return Math.round(v / mag) * mag;
+}
+const curOptions = sel => CURRENCIES.map(([c, n]) => `<option value="${c}" ${c === sel ? 'selected' : ''}>${c} · ${n}</option>`).join('');
 
 /* ---------- render ---------- */
 /* ---------- rendering: patch the page in place so things can animate ---------- */
@@ -526,7 +577,7 @@ function crewTab() {
     <div class="row">
       <label class="field"><span class="label">Name</span><input id="me-nick" maxlength="30" value="${esc(m.nick)}" placeholder="What the crew calls you"></label>
       ${isSmall() ? '' : `<label class="field"><span class="label">${size() === 'trip' ? 'Flying from' : 'Coming from'}</span><input id="me-home" maxlength="40" value="${esc(m.home)}" placeholder="${size() === 'trip' ? 'JFK or New York' : 'Your city or neighborhood'}"></label>`}
-      <label class="field"><span class="label">${isSmall() ? 'Max you’ll spend (USD)' : 'Max you’ll spend (total, USD)'}</span><input id="me-budget" type="number" min="0" step="${isSmall() ? 5 : 50}" inputmode="numeric" value="${m.budget ? esc(m.budget) : ''}" placeholder="${isSmall() ? '60' : size() === 'weekend' ? '400' : '800'}"></label>
+      <label class="field"><span class="label">${isSmall() ? `Max you’ll spend (${cur()})` : `Max you’ll spend (total, ${cur()})`}</span><input id="me-budget" type="number" min="0" step="${isSmall() ? 5 : 50}" inputmode="numeric" value="${m.budget ? esc(m.budget) : ''}" placeholder="${isSmall() ? '60' : size() === 'weekend' ? '400' : '800'}"></label>
     </div>
     <div class="row">
       <label class="field"><span class="label">Venmo</span><input id="me-venmo" maxlength="40" value="${esc(m.venmo || '')}" placeholder="@your-handle"></label>
@@ -720,7 +771,7 @@ function planTab() {
   </section>`; }).join('')}`;
 }
 
-const money2 = n => '$' + (Math.round(n * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
+const money2 = n => fmtMoney(Math.round(n * 100) / 100, cur(), true);
 const byAt = (a, b) => (a.at || 0) - (b.at || 0);
 function payLinks(toId, amt, note) {
   const m = S.members.find(x => x.id === toId) || {};
@@ -738,7 +789,7 @@ function moneyTab() {
   const total = S.expenses.reduce((a, e) => a + (+e.amount || 0), 0);
   const exps = [...S.expenses].sort((a, b) => (b.at || 0) - (a.at || 0));
   return `<section class="card stack">
-    <div class="row" style="justify-content:space-between"><h2>${isSmall() ? 'Expenses' : 'Trip expenses'}</h2><span class="mono">${money2(total)} total</span></div>
+    <div class="row" style="justify-content:space-between"><h2>${isSmall() ? 'Expenses' : 'Trip expenses'}</h2><span class="mono">${money2(total)} total ${alsoMine(total)}</span></div>
     <form id="expForm" class="stack">
       <div class="row" style="align-items:flex-end">
         <label class="field" style="flex:2 1 180px"><span class="label">What</span><input id="ex-what" maxlength="60" required placeholder="Dinner at Catch"></label>
@@ -863,8 +914,8 @@ function setupView() {
       c: `<input id="me-home" class="big-input" maxlength="40" value="${esc(m.home || '')}" placeholder="${size() === 'trip' ? 'JFK or New York' : 'Brooklyn'}" autocomplete="address-level2" enterkeyhint="next">` },
     budget: { h: 'What’s your max?',
       p: isSmall() ? 'The most you’d spend on this, all in. Pitches stay under the lowest budget in the crew.' : 'The most you’d spend in total, travel included. Pitches stay under the lowest budget in the crew.',
-      c: `<div class="row" style="gap:6px">${BUDGETS[size()].map(v => `<button class="chip big-chip ${+m.budget === v ? 'on' : ''}" data-budget="${v}">${money(v)}</button>`).join('')}</div>
-        <label class="field"><span class="label">Or type it (USD)</span><input id="me-budget" class="big-input" type="number" min="0" step="${isSmall() ? 5 : 50}" inputmode="numeric" value="${m.budget ? esc(m.budget) : ''}" placeholder="${BUDGETS[size()][1]}" enterkeyhint="next"></label>` },
+      c: `<div class="row" style="gap:6px">${BUDGETS[size()].map(u => niceIn(u)).map(v => `<button class="chip big-chip ${+m.budget === v ? 'on' : ''}" data-budget="${v}">${money(v)}</button>`).join('')}</div>
+        <label class="field"><span class="label">Or type it (${cur()})</span><input id="me-budget" class="big-input" type="number" min="0" step="${isSmall() ? 5 : 50}" inputmode="numeric" value="${m.budget ? esc(m.budget) : ''}" placeholder="${niceIn(BUDGETS[size()][1])}" enterkeyhint="next"></label>` },
     vibe: { h: 'Quick vibe check',
       p: 'A few taps. It shapes what the AI pitches and the crew’s vibe.',
       c: QUIZ.map(q => `<div class="q"><span class="small"><b>${esc(q.q)}</b></span><div class="row" style="gap:6px">${q.o.map(o => `<button class="chip ${mq[q.k] === o ? 'on' : ''}" data-quiz="${q.k}|${esc(o)}">${esc(o)}</button>`).join('')}</div></div>`).join('') },
@@ -1528,6 +1579,7 @@ function overviewTab() {
 function settingsTab() {
   const m = mode();
   return `<section class="card stack"><h3>Plan size</h3><div class="row" style="gap:6px">${Object.entries(SIZES).map(([k, v]) => `<button class="chip ${size() === k ? 'on' : ''}" data-setsize="${k}">${esc(v.label)}</button>`).join('')}</div><p class="small muted">Changing the size keeps everyone’s votes and free days.</p></section>
+  <section class="card stack"><h3>Currency</h3><label class="field" style="flex:none;max-width:280px"><span class="label">Everyone spends in</span><select id="set-cur" ${S.readOnly ? 'disabled' : ''}>${curOptions(cur())}</select></label><p class="small muted">All amounts in this ${planWord()} show in this currency, and the AI prices in it. Changing it doesn’t convert amounts people already typed in.</p></section>
   ${isSmall() ? '' : `<section class="card stack"><h3>Type</h3>
     <div class="modes compact">${Object.entries(MODES).map(([k, v]) => `<button class="mode ${S.trip.mode === k || (!S.trip.mode && k === 'friends') ? 'on' : ''}" data-setmode="${k}" style="--mc:${v.color}"><b>${esc(modeLabel(v, size()))}</b></button>`).join('')}</div>
     ${m.honoree ? `<div class="row" style="gap:10px">
@@ -1885,9 +1937,9 @@ function costTab() {
   return `<section class="card stack cost">
     <div class="stack" style="gap:2px"><h2>The cost of saying yes</h2><span class="small muted">Per person, all in. Built from what’s booked or paid first, then quotes, then estimates.</span></div>
     <div class="cost-totals">
-      <div class="cost-total"><span class="label">${differs ? 'You, all in' : 'Each person, all in'}</span><b>${me.any ? rangeText(me.low, me.high) : '—'}</b>
+      <div class="cost-total"><span class="label">${differs ? 'You, all in' : 'Each person, all in'}</span><b>${me.any ? rangeText(me.low, me.high) : '—'}</b>${me.any ? alsoMine(me.low, me.high) : ''}
         <span class="small muted">${myB && me.any ? (me.high <= myB ? `Fits your ${money(myB)} budget.` : me.low <= myB ? `Could go over your ${money(myB)} budget.` : `Over your ${money(myB)} budget.`) + ' ' : ''}Includes a ${sum.buffer}% buffer.</span></div>
-      ${differs && sum.any ? `<div class="cost-total soft"><span class="label">Typical for the crew</span><b>${rangeText(sum.low, sum.high)}</b><span class="small muted">Everyone’s flights and shares differ a bit.</span></div>` : ''}
+      ${differs && sum.any ? `<div class="cost-total soft"><span class="label">Typical for the crew</span><b>${rangeText(sum.low, sum.high)}</b>${alsoMine(sum.low, sum.high)}<span class="small muted">Everyone’s flights and shares differ a bit.</span></div>` : ''}
     </div>
     ${S.sample !== null && !ro ? `<div class="row" style="gap:8px;align-items:center"><button class="btn ${sum.any ? '' : 'primary'}" data-act="costAI" ${S.busy.cost || !dest() ? 'disabled' : ''}>${S.busy.cost ? '<i class="spin"></i>Estimating…' : sum.any ? 'Estimate the rest with AI' : 'Estimate it with AI'}</button>
       <span class="small muted">${!dest() ? `Pick ${isSmall() ? 'the plan' : 'where you’re going'} first.` : empty ? 'Fills only lines without a real quote or booking.' : 'Every line has a real number. Nice.'}</span></div>`
@@ -1941,7 +1993,7 @@ function estimateCosts() {
   const known = sum.rows.filter(r => r.v && !open.some(o => o[0] === r.k)).map(r => `${r.label}: $${Math.round(r.v.low)}–${Math.round(r.v.high)} (${SRC_LABEL[r.v.src] || r.v.src})`);
   askAI('cost', `${context()}
 Home cities: ${homes().join(', ') || 'unknown'}. Planning for ${heads} ${heads === 1 ? 'person' : 'people'}.
-Estimate what this costs PER PERSON in USD, as a realistic low–high range for each of these lines:
+Estimate what this costs PER PERSON in ${cur()}, as a realistic low–high range for each of these lines:
 ${open.map(([k, l, hint]) => `- ${k}: ${l} (${hint})`).join('\n')}
 ${known.length ? `Already known (don't change these): ${known.join('; ')}` : ''}
 Be honest: no live prices, so give typical ranges for these dates and this group. Shared costs (like the stay) are per person after splitting.
@@ -2070,7 +2122,7 @@ function recoveryCard() {
   if (k === 'budget') {
     const m = meDoc() || {}, sum = costSummary(), fit = budgetFit(sum);
     return `<section class="card stack recover"><h3>Budget changed</h3>
-      <label class="field" style="flex:none"><span class="label">Your max now (USD)</span><input id="me-budget" type="number" min="0" inputmode="numeric" value="${m.budget || ''}"></label>
+      <label class="field" style="flex:none"><span class="label">Your max now (${cur()})</span><input id="me-budget" type="number" min="0" inputmode="numeric" value="${m.budget || ''}"></label>
       ${sum.any ? `<p class="small">The plan is <b>${money(sum.low)}–${money(sum.high)}</b> each. ${fit.over.length ? `Over budget for ${esc(budgetWho(fit.over))}.` : fit.stretch.length ? `A stretch for ${esc(budgetWho(fit.stretch))}.` : 'It fits everyone’s budget.'}</p>
         ${fit.over.length || fit.stretch.length ? '<div class="row" style="gap:6px"><button class="btn sm" data-tab="whatif">Compare cheaper options</button><button class="btn sm" data-tab="cost">See the costs</button></div>' : ''}` : '<p class="small muted">Fill in the All-in cost to see how this changes things.</p>'}
       <div class="row">${close}</div></section>`;
@@ -2172,6 +2224,7 @@ function accessCard() {
 function myPrivacy() {
   const m = meDoc(); if (!m || S.demo) return '';
   return `<div class="stack" style="gap:8px;border-top:1px solid var(--line);padding-top:12px">
+    <label class="field" style="flex:none;max-width:280px"><span class="label">Show me amounts in</span><select id="my-cur">${curOptions(myCur())}</select><span class="small muted">${myCur() === cur() ? 'Same as the plan.' : `Totals also show ≈ ${myCur()} (${fxNote()}).`}</span></label>
     <span class="label">Privacy</span>
     <label class="check-line"><input type="checkbox" id="me-budgetPublic" style="width:auto" ${m.budgetPublic ? 'checked' : ''}> Name me when something is over my budget. Off: I’m counted, but not named.</label>
     <label class="check-line"><input type="checkbox" id="me-hideLoc" style="width:auto" ${m.hideLoc ? 'checked' : ''}> Hide where I check in during the ${planWord()}. An SOS always shares your spot.</label>
@@ -2508,7 +2561,7 @@ function meterTab() {
         <text x="90" y="86" text-anchor="middle" class="ring-big">${budget ? Math.round(pct * 100) + '%' : '—'}</text>
         <text x="90" y="110" text-anchor="middle" class="ring-small">${budget ? 'of ' + money(budget) : 'no budget'}</text></svg>
       <div class="stack" style="gap:6px;min-width:0">
-        <span class="label">Spent so far</span><b class="tile-big">${money2(spent)}</b>
+        <span class="label">Spent so far</span><b class="tile-big">${money2(spent)}</b>${alsoMine(spent)}
         ${budget ? (left >= 0 ? `<span>${money2(left)} left · <b>${money(left / daysLeft)}/day</b> for ${daysLeft} day${daysLeft === 1 ? '' : 's'}</span>` : `<span style="color:var(--meter-over)"><b>${money2(-left)} over budget</b></span>`) : `<span class="small muted">Set your budget in Home › Crew to turn on the meter.</span>`}
         ${state === 'warn' ? `<span class="pill maybe" style="align-self:flex-start">Heads up: ${Math.round(pct * 100)}% used</span>` : state === 'over' ? `<span class="pill out" style="align-self:flex-start;color:var(--meter-over)">Over budget</span>` : ''}
       </div></div>
@@ -2542,7 +2595,7 @@ function potTab() {
   const hist = [...S.pot].sort((a, b) => (b.at || 0) - (a.at || 0));
   return `<section class="card stack">
     <div class="row" style="justify-content:space-between"><h2>Group pot</h2><span class="small muted">For Ubers, groceries, drinks</span></div>
-    <div class="pot-big ${low ? 'low' : ''}"><span class="label">In the pot</span><b>${money2(bal)}</b><span class="small muted">${money2(tin)} in · ${money2(tout)} spent</span>
+    <div class="pot-big ${low ? 'low' : ''}"><span class="label">In the pot</span><b>${money2(bal)}</b>${alsoMine(bal)}<span class="small muted">${money2(tin)} in · ${money2(tout)} spent</span>
       <div class="bigbar" style="margin-top:6px"><i style="width:${tin ? Math.max(0, bal / tin * 100) : 0}%;background:${low ? 'var(--meter-over)' : 'var(--good)'}"></i></div></div>
     ${low ? `<div class="lost-banner" style="background:color-mix(in oklab,var(--gold) 22%,var(--surface));color:var(--ink);border-color:var(--gold)"><div><b>The pot’s running low.</b><div class="small">Top up about ${money(topUp)} each to cover the rest of the ${planWord()}.</div></div><button class="btn sm" data-act="copyPot">Copy reminder</button></div>` : ''}
     <div class="row" style="gap:8px;align-items:center"><span class="small">Holding the pot:</span><select id="pot-keeper" style="width:auto">${active().map(m => `<option value="${esc(m.id)}" ${keeper === m.id ? 'selected' : ''}>${esc(m.nick || 'Someone')}</option>`).join('')}</select></div>
@@ -3009,7 +3062,7 @@ function planRow(t, opts = {}) {
     <div class="pr-date">${d ? `<span>${fmt(d.start, { month: 'short' })}</span><b>${D(d.start).getUTCDate()}</b><span>${t.time ? t12(t.time) : fmt(d.start, { weekday: 'short' })}</span>` : '<span>Date</span><b>TBD</b><span>&nbsp;</span>'}</div>
     <div class="pr-mid">
       <span class="pr-kind"><i style="background:var(--pc)"></i>${esc(sz.label)}${crew && !opts.noCrew ? ' · ' + esc(crew.name) : ''}${n ? ` · ${n} in` : ''}</span>
-      <h3><span class="sr-only">${esc(t.name)}</span><span class="flap" aria-hidden="true">${flap(t.name)}</span></h3>
+      ${sizeOf(t) === 'trip' ? `<h3><span class="sr-only">${esc(t.name)}</span><span class="flap" aria-hidden="true">${flap(t.name)}</span></h3>` : `<h3 class="pr-name">${esc(t.name)}</h3>`}
       <span class="small muted pr-line">${t.lockedDates ? (name && name !== t.name ? '→ ' + esc(name) + ' · ' : '') + moveLine(t) : moveLine(t)}${daysTo !== null && daysTo > 0 && daysTo <= 30 ? ` · <b style="color:var(--pc)">${daysTo === 1 ? 'Tomorrow' : 'in ' + daysTo + ' days'}</b>` : ''}</span>
     </div>
     <div class="pr-status"><span class="board-st">${BOARD[st]}</span>${mine ? '<span class="your-flag">Your move</span>' : ''}</div>
@@ -3199,6 +3252,7 @@ function newTripForm() {
       <div class="row">
         <label class="field"><span class="label">${small ? 'Could happen from' : 'Earliest date'}</span><input id="nt-start" type="date" value="${start}" min="${TODAY}" required></label>
         <label class="field"><span class="label">${small ? 'Until' : 'Latest date'}</span><input id="nt-end" type="date" value="${end}" min="${TODAY}" required></label>
+        <label class="field" style="flex:0 1 190px"><span class="label">Currency</span><select id="nt-cur">${curOptions(lsGetC('outta_lastcur', '') || myCur())}</select></label>
         ${small ? '' : `<label class="field" style="flex:0 1 110px"><span class="label">Nights</span><select id="nt-nights">${[1, 2, 3, 4, 5, 6, 7, 10, 14].map(n => `<option ${n === sz.nights ? 'selected' : ''}>${n}</option>`).join('')}</select></label>`}
       </div>
       <p class="small muted">${small ? 'Everyone taps which of these days they’re free. The crew picks the exact plan and day together.' : 'Not sure on dates yet? Give a wide window. The crew picks the exact nights later.'}</p>
@@ -3215,7 +3269,8 @@ async function createTrip() {
   if (small && !city) { flash('Add the city so the AI can pitch real places.'); return; }
   if (city) { try { localStorage.setItem('outta_city', city); } catch {} }
   const id = rid(10);
-  const trip = { name: name.slice(0, 60), size: sz, city, winStart: a, winEnd: b, nights: small ? 0 : +($('#nt-nights')?.value || SIZES[sz].nights), destinations: [], vibes: [], itinerary: [], lockedDates: null, lockedDest: null,
+  const currency = CUR_CODES.includes($('#nt-cur')?.value) ? $('#nt-cur').value : myCur(); try { localStorage.setItem('outta_lastcur', currency); } catch {}
+  const trip = { name: name.slice(0, 60), size: sz, city, currency, winStart: a, winEnd: b, nights: small ? 0 : +($('#nt-nights')?.value || SIZES[sz].nights), destinations: [], vibes: [], itinerary: [], lockedDates: null, lockedDest: null,
     mode: small ? 'friends' : (S.newMode || 'friends'), honoreeName: ($('#nt-honoree')?.value || '').trim().slice(0, 40), honoreeFree: true, people: { [S.uid]: true }, createdBy: S.uid, createdAt: Date.now() };
   try {
     await S.db.doc('trips/' + id).set(trip);
@@ -3651,6 +3706,8 @@ app.addEventListener('change', e => {
   if (id === 'me-budgetPublic') saveMe({ budgetPublic: e.target.checked }, true, true);
   if (id === 'me-hideLoc') saveMe({ hideLoc: e.target.checked }, true, true);
   if (id === 'my-flight-price') { const v = Math.round(+e.target.value || 0); if (v > 0) { saveTrip({ tickets: { [S.uid]: { price: v } } }); flash('Got it. Your flight is in the cost now.'); } }
+  if (id === 'set-cur' && CUR_CODES.includes(e.target.value)) { saveTrip({ currency: e.target.value }); flash(`Now in ${e.target.value}. Amounts already typed in weren’t converted.`); }
+  if (id === 'my-cur' && CUR_CODES.includes(e.target.value)) { try { localStorage.setItem('outta_mycur', e.target.value); } catch {} render(); }
   if (id === 'cost-buffer') saveTrip({ costBuffer: +e.target.value });
   if (id.startsWith('task-owner-')) patchTask(id.slice(11), { owner: e.target.value });
   if (id.startsWith('task-due-')) patchTask(id.slice(9), { due: e.target.value });
