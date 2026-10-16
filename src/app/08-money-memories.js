@@ -81,7 +81,7 @@ function potTab() {
 /* ---------- memories ---------- */
 function awardsTab() {
   const rs = superResults(), d = dates(), over = d && TODAY > d.end;
-  return `<section class="card stack">
+  return `${nightVoteCard()}<section class="card stack">
     <div class="row" style="justify-content:space-between"><div class="stack" style="gap:2px"><h2>${isSmall() ? 'Awards' : 'Trip awards'}</h2><span class="small muted">${over ? `The ${planWord()}’s over. Time to vote.` : `Voting is for after the ${planWord()}, but you can start now.`}</span></div>
       <button class="btn sm" data-act="awardsCard">Make awards card</button></div>
     ${S.img?.kind === 'awards' ? imgPanel() : ''}
@@ -118,23 +118,26 @@ function wrapData() {
   const hs = {}; for (const day of Object.values(S.trip.hangover || {})) for (const [id, v] of Object.entries(day)) (hs[id] ||= []).push(v);
   const wrecked = Object.entries(hs).map(([id, v]) => [id, v.reduce((a, b) => a + b, 0) / v.length]).sort((a, b) => b[1] - a[1])[0];
   const awards = superResults().filter(r => r.winners.length).slice(0, 4);
-  return { d, ds, ms, total, topSpot: spots[0]?.s, owl: owl && owl.n ? owl : null, photo: photo?.p, champ, hyper, wrecked, awards, over: d && TODAY > d.end, b: blend() };
+  return { night: d ? bestNight() : null, d, ds, ms, total, topSpot: spots[0]?.s, owl: owl && owl.n ? owl : null, photo: photo?.p, champ, hyper, wrecked, awards, over: d && TODAY > d.end, b: blend() };
 }
 function wrappedTab() {
   const w = wrapData(); if (!w.d || !w.ds) return needDestDates(isSmall() ? 'The recap' : 'Your Trip Wrapped');
   const nights = nightsOf(w.d);
   const slides = [
     { c: ['#D41C78', '#7048E8'], k: `${w.over ? '' : 'So far · '}${esc(S.trip.name)}`, h: `Your ${esc(w.ds.city)} Wrapped`, s: `${nights ? nights + ' night' + (nights === 1 ? '' : 's') + ' · ' : ''}${w.ms.length} ${w.ms.length === 1 ? 'person' : 'people'} · ${dayRange(w.d.start, w.d.end)}` },
-    { c: ['#0E9F6E', '#1098AD'], k: 'The damage', h: money(w.total), s: w.total ? `spent as a group. That’s about ${money(w.total / Math.max(1, w.ms.length))} each.` : 'No group spending logged. Suspicious.' },
-    w.topSpot && { c: ['#7048E8', '#3B5BDB'], k: 'Crew favorite spot', h: esc(w.topSpot.name), s: esc(w.topSpot.area || w.topSpot.type || '') },
-    w.owl && { c: ['#151A33', '#3A0B2C'], k: 'Night owl', h: esc(w.owl.m.nick || 'Someone'), s: `${w.owl.n} check-in${w.owl.n === 1 ? '' : 's'} between midnight and 6am.` },
-    w.photo && { c: ['#F08C00', '#D41C78'], k: `Photo of the ${isSmall() ? 'night' : 'trip'}`, h: '', img: w.photo.asset, s: `by ${esc(nameOf(w.photo.by))}` },
-    w.champ && { c: ['#F2B32B', '#E8590C'], k: 'Bucket list champion', h: esc(nameOf(w.champ[0])), s: `${w.champ[1]} points of chaos` },
-    w.wrecked && { c: ['#5C6A7A', '#151A33'], k: 'Most wrecked', h: esc(nameOf(w.wrecked[0])), s: `average hangover score ${w.wrecked[1].toFixed(1)}/5` },
-    w.hyper && { c: ['#E64980', '#7048E8'], k: 'Hype machine', h: esc(nameOf(w.hyper[0])), s: `${w.hyper[1]} messages in the hype feed` },
-    w.awards.length && { c: ['#FFC94D', '#E8590C'], k: 'The awards', h: '', list: w.awards.map(r => [r.c, r.winners.map(nameOf).join(' & ')]) },
-    songOfPlan()?.song && { c: ['#12B5A6', '#7048E8'], k: `Song of the ${isSmall() ? 'night' : 'trip'}`, h: esc(songOfPlan().song.title), s: `${esc(songOfPlan().song.artist || '')}${songOfPlan().song.artist ? ' · ' : ''}${songOfPlan().n} vote${songOfPlan().n === 1 ? '' : 's'}` },
-    w.b && { c: ['#D41C78', '#151A33'], k: 'You were', h: esc(w.b.persona), s: 'Same time next year?' },
+    { c: ['#0E9F6E', '#1098AD'], k: 'The damage', h: money(w.total), s: w.total ? `spent as a group. That’s about ${money(w.total / Math.max(1, w.ms.length))} each.` : 'No group spending logged. Suspicious.', src: `From ${S.expenses.length} logged expense${S.expenses.length === 1 ? '' : 's'}${S.pot.some(p => p.kind === 'out') ? ' and the group pot' : ''}` },
+    w.night && { c: ['#151A33', '#7048E8'], k: 'Best night', h: esc(fmt(w.night.day, { weekday: 'long' })), s: esc([fmt(w.night.day, { month: 'long', day: 'numeric' }), w.night.st?.checkins && `${w.night.st.checkins} check-ins`, w.night.st?.posts && `${w.night.st.posts} posts`, w.night.st?.photos && `${w.night.st.photos} photos`].filter(Boolean).join(' · ')), src: esc(w.night.why) },
+    w.topSpot && { c: ['#7048E8', '#3B5BDB'], k: 'Crew favorite spot', h: esc(w.topSpot.name), s: esc(w.topSpot.area || w.topSpot.type || ''), src: 'From the crew’s votes on the spot picks' },
+    w.owl && { c: ['#151A33', '#3A0B2C'], k: 'Night owl', h: esc(w.owl.m.nick || 'Someone'), s: `${w.owl.n} check-in${w.owl.n === 1 ? '' : 's'} between midnight and 6am.`, src: 'From everyone’s check-ins' },
+    w.photo && { c: ['#F08C00', '#D41C78'], k: `Photo of the ${isSmall() ? 'night' : 'trip'}`, h: '', img: w.photo.asset, s: `by ${esc(nameOf(w.photo.by))}`, src: 'Most upvoted in the album' },
+    S.photos.length > 1 && { c: ['#3B5BDB', '#151A33'], k: 'The album', h: '', imgs: S.photos.filter(p => p.asset && p !== w.photo).slice(0, 4).map(p => p.asset), s: `${S.photos.length} photos from ${new Set(S.photos.map(p => p.by)).size} people`, src: 'From the shared album' },
+    w.champ && { c: ['#F2B32B', '#E8590C'], k: 'Bucket list champion', h: esc(nameOf(w.champ[0])), s: `${w.champ[1]} points of chaos`, src: 'From the bucket list' },
+    w.wrecked && { c: ['#5C6A7A', '#151A33'], k: 'Most wrecked', h: esc(nameOf(w.wrecked[0])), s: `average hangover score ${w.wrecked[1].toFixed(1)}/5`, src: 'From the morning hangover check-ins' },
+    w.hyper && { c: ['#E64980', '#7048E8'], k: 'Hype machine', h: esc(nameOf(w.hyper[0])), s: `${w.hyper[1]} messages in the hype feed`, src: 'From the hype feed' },
+    w.awards.length && { c: ['#FFC94D', '#E8590C'], k: 'The awards', h: '', list: w.awards.map(r => [r.c, r.winners.map(nameOf).join(' & ')]), src: 'Voted by the crew' },
+    songOfPlan()?.song && { c: ['#12B5A6', '#7048E8'], k: `Song of the ${isSmall() ? 'night' : 'trip'}`, h: esc(songOfPlan().song.title), s: `${esc(songOfPlan().song.artist || '')}${songOfPlan().song.artist ? ' · ' : ''}${songOfPlan().n} vote${songOfPlan().n === 1 ? '' : 's'}`, src: 'Voted on the crew playlist' },
+    w.b && { c: ['#D41C78', '#151A33'], k: 'You were', h: esc(w.b.persona), s: 'Same time next year?', src: 'From everyone’s vibe quiz answers' },
+    { c: ['#0C0F21', '#3A0B2C'], k: w.over ? 'That’s a wrap' : 'So far', h: esc(S.trip.name), s: [`${span(w.d.start, w.d.end).length} day${span(w.d.start, w.d.end).length === 1 ? '' : 's'}`, `${w.ms.length} people`, S.photos.length && `${S.photos.length} photos`, S.songs?.length && `${S.songs.length} songs`, S.feed.length && `${S.feed.filter(f => f.by !== 'ai').length} posts`].filter(Boolean).join(' · '), end: true },
   ].filter(Boolean);
   const i = Math.min(S.wrapI || 0, slides.length - 1), sl = slides[i];
   return `<section class="stack" style="align-items:center">
@@ -144,7 +147,10 @@ function wrappedTab() {
       ${sl.img ? `<img src="/_blob/${esc(sl.img)}" alt="Top photo" class="wimg">` : ''}
       ${sl.h ? `<h1>${sl.h}</h1>` : ''}
       ${sl.list ? `<div class="stack" style="gap:10px">${sl.list.map(([c, n]) => `<div><span class="label" style="color:rgba(255,255,255,.75)">${esc(c)}</span><div class="wname">${esc(n)}</div></div>`).join('')}</div>` : ''}
+      ${sl.imgs && sl.imgs.length ? `<div class="wgrid">${sl.imgs.map(a => `<img src="/_blob/${esc(a)}" alt="">`).join('')}</div>` : ''}
       ${sl.s ? `<p>${sl.s}</p>` : ''}
+      ${sl.src ? `<span class="wsrc">${sl.src}</span>` : ''}
+      ${sl.end && !S.demo ? `<div style="position:relative;z-index:2"><button class="btn" data-act="nextPlan">Plan the next one</button></div>` : ''}
       <button class="wnav left" data-act="wrapPrev" aria-label="Previous slide"></button><button class="wnav right" data-act="wrapNext" aria-label="Next slide"></button>
     </div>
     <div class="row" style="gap:8px;justify-content:center"><button class="btn sm" data-act="wrapPrev" ${i === 0 ? 'disabled' : ''}>‹ Back</button><span class="small muted mono">${i + 1}/${slides.length}</span><button class="btn sm primary" data-act="wrapNext" ${i === slides.length - 1 ? 'disabled' : ''}>Next ›</button></div>
@@ -168,8 +174,10 @@ async function makeWrappedCard() {
 }
 
 const SETTINGS_HTML = () => `  ${crewSection()}
+  ${S.demo ? '' : accessCard()}
   <section class="card stack">
     <h3>Settings</h3>
+    ${S.demo ? '' : `<label class="check-line"><input type="checkbox" id="mute-plan" ${isMuted(S.tid) ? 'checked' : ''}> Mute reminders for this ${planWord()}</label>`}
     ${S.confirm === 'delete' ? `<div class="banner"><span><b>Delete “${esc(S.trip.name)}” for everyone?</b> The crew, votes, expenses and packing list all go. This can’t be undone.</span><div class="row" style="gap:6px"><button class="btn sm danger-fill" data-act="doDelete">Delete ${planWord()}</button><button class="btn sm" data-act="cancelConfirm">Cancel</button></div></div>`
     : S.confirm === 'leave' ? `<div class="banner"><span><b>Leave this ${planWord()}?</b> ${size() === 'trip' ? 'Your days, votes and boarding pass are removed.' : 'Your days and votes are removed.'} It disappears from your plans.</span><div class="row" style="gap:6px"><button class="btn sm danger-fill" data-act="doLeave">Leave ${planWord()}</button><button class="btn sm" data-act="cancelConfirm">Cancel</button></div></div>`
     : `<div class="row" style="gap:8px">${meDoc() && !S.demo ? `<button class="btn sm danger" data-act="askLeave">Leave ${planWord()}</button>` : ''}${canDelete(S.trip) ? `<button class="btn sm danger" data-act="askDelete">Delete ${planWord()}</button>` : `<span class="small muted">Only the person who created it can delete it.</span>`}</div>`}

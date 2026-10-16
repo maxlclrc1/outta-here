@@ -1,7 +1,7 @@
 /* ---------- invites ---------- */
 const SHARE_BASE = window.OUTTA_SHARE_BASE || (location.origin + '/');
 const IN_CLAUDE = !!window.OUTTA_SHARE_BASE;
-const inviteLink = () => SHARE_BASE + '#' + S.tid;
+const inviteLink = () => linkFor({ id: S.tid, inviteKey: S.trip?.inviteKey });
 function inviteCard() {
   if (S.demo) return `<section class="card stack"><h2>Invite the crew</h2><p class="small muted">Invites work on real trips. Start one from the home screen.</p></section>`;
   return `<section class="card stack">
@@ -119,14 +119,14 @@ const t12 = hm => { if (!hm) return ''; const [h, m] = hm.split(':').map(Number)
 const dayRange = (a, b) => a === b ? fmt(a) : `${fmt(a)} → ${fmt(b)}`;
 function planOn() {
   if (size() === 'trip') return tickets().on;
-  return !!(S.trip.lockedDest && S.trip.lockedDates && S.members.filter(m => m.status === 'in').length >= 2);
+  return !!(S.trip.lockedDest && S.trip.lockedDates && S.members.filter(going).length >= 2);
 }
 function passSmall() {
-  const d = dates(), ds = dest(), t = S.trip, inN = S.members.filter(m => m.status === 'in').length, c = countdown(), on = planOn();
+  const d = dates(), ds = dest(), t = S.trip, inN = S.members.filter(going).length, c = countdown(), on = planOn();
   return `<section class="pass">
     <div class="pass-main">
       <div class="row" style="justify-content:space-between"><span class="label">${esc(SIZES[size()].label)} · ${esc(t.name)}</span>
-        ${on ? `<span class="on-pill">It’s on</span>` : `<span class="pill maybe">Still deciding</span>`}</div>
+        ${on ? `<span class="on-pill">It’s on</span>` : stagePill(S.trip, S.members)}</div>
       <div class="ev-title ${ds ? '' : 'code-tbd'}">${ds ? esc(ds.city) : 'The plan: TBD'}</div>
       <div class="facts">
         <div><span class="label">When${d && !d.locked ? ' · best so far' : ''}</span><b>${d ? dayRange(d.start, d.end) : 'TBD'}${t.time ? ' · ' + t12(t.time) : ''}</b></div>
@@ -138,8 +138,8 @@ function passSmall() {
         <div class="stack" style="gap:8px">${S.downloads ? `<button class="btn primary sm" data-act="saveCard">Save image</button>` : `<span class="small muted">Press and hold the image to save it.</span>`}<button class="btn sm ghost" data-act="closeCard">Close</button></div></div>` : ''}
     </div>
     <div class="pass-stub">
-      <div><span class="label">Crew</span><div class="code" style="font-size:40px">${inN}<span class="muted" style="font-size:22px">/${S.members.length}</span></div><span class="small muted">in</span></div>
-      ${(() => { const m = meDoc(); return `<div class="row" style="gap:6px">${['in', 'maybe', 'out'].map(s => `<button class="chip ${m && m.status === s ? 'on' : ''}" data-status="${s}">${s === 'in' ? "I'm in" : s === 'maybe' ? 'Maybe' : 'Out'}</button>`).join('')}</div>`; })()}
+      <div><span class="label">Crew</span><div class="code" style="font-size:40px">${inN}<span class="muted" style="font-size:22px">/${S.members.length}</span></div><span class="small muted">going</span></div>
+      ${commitLadder()}
     </div>
   </section>`;
 }

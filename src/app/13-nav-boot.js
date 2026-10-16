@@ -2,7 +2,7 @@
 function stop() { S.unsub.forEach(u => { try { u(); } catch {} }); S.unsub = []; }
 function setHash(h) { try { history.replaceState(null, '', h ? '#' + h : location.pathname + location.search); } catch {} }
 function resetTrip() {
-  S.trip = null; S.members = []; S.membersIn = false; S.setup = null; S.expenses = []; S.packing = []; S.readOnly = false;
+  S.trip = null; S.members = []; S.membersIn = false; S.setup = null; S.whatif = null; S.recover = null; S.recoverWho = null; S.recoverItem = null; S.alts = null; S.expenses = []; S.packing = []; S.readOnly = false;
   S.cardUrl = null; S.cardBlob = null; S.copyText = ''; S.split = null; S.confirm = null; S.tkFile = null; S.feed = []; S.bucket = []; S.photos = []; S.pot = []; S.mySpend = []; S.lostOpen = false; S.pinSel = null; S.hangPlan = null; S.wrapI = 0; S.img = null; S.show = null; clearInterval(showTimer);
   for (const k of Object.keys(DRAFT)) delete DRAFT[k];
 }
@@ -155,14 +155,15 @@ render();
   S.loading = false;
   if (db) {
     db.collection('trips').orderBy('createdAt', 'desc').limit(50).onSnapshot(snap => {
-      S.trips = snap.docs.map(d => ({ id: d.id, ...d.data() })); S.tripsLoaded = true; if (!S.tid) render();
+      S.trips = snap.docs.map(d => ({ id: d.id, ...d.data() })); S.tripsLoaded = true; notifyNew(myPlans()); if (!S.tid) render();
     }, () => { S.tripsLoaded = true; if (!S.tid) render(); });
     db.collection('crews').orderBy('at', 'desc').limit(50).onSnapshot(snap => {
       S.crews = snap.docs.map(d => ({ id: d.id, ...d.data() })); if (!S.tid) render();
     }, () => {});
     const h = (location.hash || '').slice(1);
     const cm = h.match(/^c-([a-z0-9]{6,20})$/); if (cm) { joinCrew(cm[1]); return; }
-    if (/^[a-z0-9]{6,20}$/.test(h)) { let tab; try { tab = sessionStorage.getItem('outta_tab_' + h) || undefined; } catch {} openTrip(h, tab); return; }
+    const th = parseTripHash(h);
+    if (th) { S.linkKey = th.key; let tab; try { tab = sessionStorage.getItem('outta_tab_' + th.tid) || undefined; } catch {} openTrip(th.tid, tab); return; }
   }
   if (!S.tid) render(); else if (S.demo) render();
 })();

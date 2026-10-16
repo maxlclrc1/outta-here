@@ -43,6 +43,8 @@ function patchNode(el, nk, born) {
   for (const { name, value } of [...nk.attributes]) if (el.getAttribute(name) !== value) el.setAttribute(name, value);
   for (const { name } of [...el.attributes]) if (!nk.hasAttribute(name) && !(name === 'open' && el.tagName === 'DETAILS')) el.removeAttribute(name);
   const tag = el.tagName;
+  // never change the field someone is typing in; their draft wins until they leave it
+  if (el === document.activeElement && (tag === 'TEXTAREA' || (tag === 'INPUT' && !['checkbox', 'radio', 'file'].includes(el.type)))) return;
   if (tag === 'TEXTAREA') { if (el.value !== nk.value) el.value = nk.value; return; }
   if (tag === 'INPUT') {
     if (el.type === 'checkbox' || el.type === 'radio') el.checked = nk.hasAttribute('checked');
@@ -96,24 +98,26 @@ function paint() {
   applyBeacon(); checkMilestones();
   const stb = $('.subtabs'), son = $('.subtab.on'); if (stb && son) stb.scrollLeft = son.offsetLeft - stb.clientWidth / 2 + son.clientWidth / 2;
   const fd = $('#feed'); if (fd) fd.scrollTop = fd.scrollHeight;
+  syncPulse(); rememberSeen();
   if (fresh) enter([...app.children].filter(el => !el.matches('.top,.bottomnav,.subtabs,.mini,.fab-lost,script')));
   else popIn(born);
 }
 
 function topBar() {
+  const day = document.documentElement.dataset.theme === 'light';
   return `<div class="top"><button class="logo" data-act="home">Outta<span>/</span>Here</button>
-    ${S.tid ? `<span class="label">Code <span class="mono">${esc(S.demo ? 'DEMO' : S.tid)}</span></span>` : ''}</div>`;
+    <div class="row" style="gap:10px;flex-wrap:nowrap">${S.tid ? `<span class="label">Code <span class="mono">${esc(S.demo ? 'DEMO' : S.tid)}</span></span>` : ''}<button class="theme-t" data-act="theme" aria-label="${day ? 'Switch to night mode' : 'Switch to day mode'}" title="${day ? 'Night mode' : 'Day mode'}">${day ? '☾' : '☀'}</button></div></div>`;
 }
 
 function pass() {
   if (isSmall()) return passSmall();
   const d = dates(), ds = dest(), b = budgetCap(), ms = active();
   const from = homes().map(h => isCode(h) ? h.toUpperCase() : h).slice(0, 3);
-  const inN = S.members.filter(m => m.status === 'in').length;
+  const inN = S.members.filter(going).length;
   return `<section class="pass">
     <div class="pass-main">
       <div class="row" style="justify-content:space-between"><span class="label">${esc(S.trip.name)}</span>
-        ${planOn() ? `<span class="on-pill">${size() === 'trip' ? 'Trip' : 'Weekend'} is on</span>` : booking_time() ? `<span class="pill in">${size() === 'trip' ? 'Booking flights' : 'Booking'}</span>` : `<span class="pill maybe">Still deciding</span>`}</div>
+        ${planOn() ? `<span class="on-pill">${size() === 'trip' ? 'Trip' : 'Weekend'} is on</span>` : booking_time() ? `<span class="pill in">${size() === 'trip' ? 'Booking flights' : 'Booking'}</span>` : stagePill(S.trip, S.members)}</div>
       <div class="route">
         <span class="code ${from.length ? '' : 'code-tbd'}">${from.length ? esc(homes().length > 1 ? homes().length + ' CITIES' : from[0]) : 'US'}</span>
         <span class="plane" aria-hidden="true">${size() === 'trip' ? '✈' : '→'}</span>
@@ -133,8 +137,8 @@ function pass() {
         <div class="stack" style="gap:8px">${S.downloads ? `<button class="btn primary sm" data-act="saveCard">Save image</button>` : `<span class="small muted">Press and hold the image to save it.</span>`}<button class="btn sm ghost" data-act="closeCard">Close</button></div></div>` : ''}
     </div>
     <div class="pass-stub">
-      <div><span class="label">Crew</span><div class="code" style="font-size:40px">${inN}<span class="muted" style="font-size:22px">/${S.members.length}</span></div><span class="small muted">in</span></div>
-      ${(() => { const m = meDoc(); return `<div class="row" style="gap:6px">${['in','maybe','out'].map(s => `<button class="chip ${m && m.status===s?'on':''}" data-status="${s}">${s === 'in' ? "I'm in" : s === 'maybe' ? 'Maybe' : 'Out'}</button>`).join('')}</div>`; })()}
+      <div><span class="label">Crew</span><div class="code" style="font-size:40px">${inN}<span class="muted" style="font-size:22px">/${S.members.length}</span></div><span class="small muted">going</span></div>
+      ${commitLadder()}
     </div>
   </section>`;
 }
@@ -143,6 +147,7 @@ function crewTab() {
   const m = meDoc() || { nick: S.myName, home: '', budget: '' };
   const ns = nudges();
   return `${inviteCard()}
+  ${rsvpCard()}
   <section class="card stack">
     <div class="row" style="justify-content:space-between"><h2>Who’s holding things up</h2>
       ${ns.length ? `<button class="btn primary sm" data-act="copyNudge">Copy nudge for the group chat</button>` : ''}</div>
@@ -163,36 +168,41 @@ function crewTab() {
       <label class="field"><span class="label">Cash App</span><input id="me-cash" maxlength="40" value="${esc(m.cashapp || '')}" placeholder="$yourtag"></label>
     </div>
     <p class="small muted">Payment handles are shown to the crew so they can pay you back.</p>
+      ${myPrivacy()}
   </section>
   <section class="card">
     <div class="row" style="justify-content:space-between;margin-bottom:6px"><h2>The crew</h2><span class="small muted">Invite more with the card above</span></div>
-    ${S.members.length ? S.members.map(x => `<div class="crew-row">
+    ${S.members.length ? S.members.filter(x => !x.removed).map(x => `<div class="crew-row">
       <div class="av" style="background:${colorFor(x.id)}">${esc((x.nick || '?')[0].toUpperCase())}</div>
       <div style="min-width:0"><b>${esc(x.nick || 'Someone')}${x.id === S.uid ? ' <span class="muted small">(you)</span>' : ''}</b>
         <div class="small muted">${x.home && !isSmall() ? (size() === 'trip' ? '✈ ' : 'from ') + esc(x.home) + ' · ' : ''}${(x.days || []).length} ${(x.days || []).length === 1 ? 'day' : 'days'} free · ${(x.votes || []).length ? 'voted' : 'no vote yet'}${x.budget ? ' · budget set' : ''}</div></div>
-      <span class="pill ${x.status || 'maybe'}">${x.status === 'in' ? 'In' : x.status === 'out' ? 'Out' : 'Maybe'}</span>
+      <div class="cr-side"><span class="pill lvl-${x.status || 'maybe'}">${LEVEL_LABEL[x.status || 'maybe']}</span>${x.id === S.trip.createdBy || (S.trip.orgs || {})[x.id] ? '<span class="small muted">Organizer</span>' : ''}
+        ${isOrganizer() && !S.demo && x.id !== S.uid && x.id !== S.trip.createdBy ? (S.confirmRm === x.id ? `<span class="row" style="gap:4px"><button class="btn sm danger-fill" data-rmdo="${esc(x.id)}">Remove</button><button class="btn sm ghost" data-act="rmCancel">Cancel</button></span>` : `<span class="row" style="gap:8px"><button class="linkbtn small" data-mkorg="${esc(x.id)}">${(S.trip.orgs || {})[x.id] ? 'Not organizer' : 'Make organizer'}</button><button class="linkbtn small" data-rmmember="${esc(x.id)}">Remove</button></span>`) : ''}</div>
     </div>`).join('') : `<p class="muted">Nobody yet. Add your details above.</p>`}
   </section>`;
 }
 
 const monthName = d => D(d).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' });
 function datesTab() {
-  const t = S.trip, days = span(t.winStart, t.winEnd), ms = active(), mine = new Set(meDoc()?.days || []);
+  const t = S.trip, days = span(t.winStart, t.winEnd), ms = active(), mine = new Set(meDoc()?.days || []), myPref = new Set(meDoc()?.pref || []), flex = meDoc()?.flex || {};
   const best = bestWindows(), bestSet = new Set(best[0] ? span(best[0].start, best[0].end) : []);
   const max = Math.max(1, ms.length);
   const cells = days.map((d, i) => {
     const head = i === 0 ? '<span></span>'.repeat((D(d).getUTCDay() + 6) % 7) : D(d).getUTCDate() === 1 ? `<span class="cal-month">${monthName(d)}</span>${'<span></span>'.repeat((D(d).getUTCDay() + 6) % 7)}` : '';
-    const n = ms.filter(m => (m.days || []).includes(d)).length;
+    const n = ms.filter(m => (m.days || []).includes(d)).length, np = ms.filter(m => (m.pref || []).includes(d)).length;
     const pct = Math.round(n / max * 70);
-    return `${head}<button class="day ${mine.has(d) ? 'mine' : ''} ${bestSet.has(d) ? 'best' : ''}" data-day="${d}" aria-pressed="${mine.has(d)}" title="${fmt(d)} · ${n} free"
-      style="background:color-mix(in oklab,var(--accent) ${pct}%,var(--surface));${pct > 40 ? 'color:var(--accent-ink)' : ''}">${D(d).getUTCDate()}<small style="${pct > 40 ? 'color:inherit' : ''}">${n ? n + '/' + ms.length : ''}</small></button>`;
+    return `${head}<button class="day ${mine.has(d) ? 'mine' : ''} ${myPref.has(d) ? 'pref' : ''} ${bestSet.has(d) ? 'best' : ''}" data-day="${d}" aria-pressed="${mine.has(d)}" title="${fmt(d)} · ${n} free${np ? ` · ${np} prefer it` : ''}"
+      style="background:color-mix(in oklab,var(--accent) ${pct}%,var(--surface));${pct > 40 ? 'color:var(--accent-ink)' : ''}">${D(d).getUTCDate()}<small style="${pct > 40 ? 'color:inherit' : ''}">${n ? n + '/' + ms.length : ''}</small>${myPref.has(d) ? '<i class="star" aria-hidden="true">★</i>' : ''}</button>`;
   });
   return `<section class="grid2">
     <div class="card stack">
-      <div class="row" style="justify-content:space-between"><h2>${isSmall() ? 'Which days work for you?' : 'Tap the days you’re free'}</h2>
+      <div class="row" style="justify-content:space-between"><div class="stack" style="gap:2px"><h2>${isSmall() ? 'Which days work for you?' : 'Tap the days you’re free'}</h2><span class="small muted">Tap once: works. Twice: best for you ★. Three times: clear.</span></div>
         <div class="row" style="gap:6px"><button class="btn sm ghost" data-act="allDays">All</button><button class="btn sm ghost" data-act="weekends">Fri–Sun</button><button class="btn sm ghost" data-act="noDays">Clear</button></div></div>
       <div class="cal">${days.length ? `<span class="cal-month first">${monthName(days[0])}</span>` : ''}${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x => `<span class="dow">${x}</span>`).join('')}${cells.join('')}</div>
-      <div class="legend"><span><i class="sw" style="background:var(--accent)"></i>More people free</span><span><i class="sw" style="outline:2px solid var(--ink)"></i>You</span><span><i class="sw" style="box-shadow:inset 0 -3px 0 var(--gold)"></i>${isSmall() ? 'Best day' : 'Best window'}</span></div>
+      <div class="legend"><span><i class="sw" style="background:var(--accent)"></i>More people free</span><span><i class="sw" style="outline:2px solid var(--ink)"></i>You</span><span>★ Best for you</span><span><i class="sw" style="box-shadow:inset 0 -3px 0 var(--gold)"></i>${isSmall() ? 'Best day' : 'Best window'}</span></div>
+      ${isSmall() ? '' : `<div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:12px"><span class="label">How flexible are you?</span>
+        <div class="row" style="gap:6px"><button class="chip ${flex.late ? 'on' : ''}" data-flex="late" aria-pressed="${!!flex.late}">I can arrive a day late</button><button class="chip ${flex.early ? 'on' : ''}" data-flex="early" aria-pressed="${!!flex.early}">I can leave a day early</button></div>
+        <span class="small muted">Counts you in for dates where you’d miss the first or last day.</span></div>`}
       <div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:12px">
         <span class="label">${isSmall() ? 'Days that could work' : 'Trip window'}</span>
         <div class="win-edit">
@@ -210,6 +220,7 @@ function datesTab() {
         <div class="row" style="justify-content:space-between"><b class="mono">${dayRange(w.start, w.end)}</b><span class="small"><b>${w.ok.length}/${ms.length}</b> can go</span></div>
         <div class="bar"><i style="width:${Math.round(w.ok.length / max * 100)}%"></i></div>
         ${w.miss.length ? `<span class="small muted">Missing: ${w.miss.map(m => esc(m.nick || 'Someone')).join(', ')}</span>` : `<span class="small" style="color:var(--good)">Everyone can make it</span>`}
+        ${w.late.length || w.early.length || w.pref.length ? `<span class="small muted">${[w.late.length && `${esc(listNames(w.late))} ${w.late.length === 1 ? 'arrives' : 'arrive'} a day late`, w.early.length && `${esc(listNames(w.early))} ${w.early.length === 1 ? 'leaves' : 'leave'} a day early`, w.pref.length && `★ ${w.pref.length === ms.length ? 'everyone prefers' : w.pref.length + ' prefer'} ${isSmall() ? 'this day' : 'these dates'}`].filter(Boolean).join(' · ')}</span>` : ''}
         <div>${t.lockedDates && t.lockedDates.start === w.start && t.lockedDates.end === w.end ? '<span class="pill in">Locked</span>' : `<button class="btn sm ${i === 0 && !t.lockedDates ? 'primary' : ''}" data-lockdates="${w.start}|${w.end}">${t.lockedDates ? 'Switch to these' : isSmall() ? 'Lock this day' : 'Lock these dates'}</button>`}</div>
       </div>`).join('') : `<div class="empty">${(() => { const f = shorterFit(); return f
         ? `<b>No ${nightsSet(t) ? nightsSet(t) + '-night stretch' : 'day'} works yet</b><span>But a ${f.n}-night trip, ${fmt(f.w.start)} → ${fmt(f.w.end)}, works for ${f.w.ok.length} of ${ms.length}.</span><button class="btn sm primary" data-setnights="${f.n}">Switch to ${f.n} night${f.n === 1 ? '' : 's'}</button>`
@@ -250,7 +261,7 @@ function needDestDates(what, need = 'both') {
 }
 
 function ticketsSection() {
-  const t = tickets(), me = meDoc(), mine = t.tk[S.uid], imIn = me && me.status === 'in';
+  const t = tickets(), me = meDoc(), mine = t.tk[S.uid], imIn = going(me);
   return `<section class="card stack">
     <div class="row" style="justify-content:space-between"><h2>Boarding passes</h2>${t.on ? '<span class="on-pill">Trip is on</span>' : `<span class="pill maybe">${t.have.length}/${t.goal} in</span>`}</div>
     <p class="small muted">The trip is official once everyone who’s in has booked a flight and sent in their boarding pass or confirmation.${booking_time() ? '' : ' Lock the dates and the destination first so nobody books the wrong flight.'}</p>
@@ -452,6 +463,7 @@ async function sendTicket() {
   }
   S.tkFile = null;
   await saveTrip({ tickets: { [S.uid]: { asset, type, flight, at: Date.now() } } });
+  if (meDoc()?.status !== 'booked') saveMe({ status: 'booked', seen: true }, true);
   if (tickets().on) flash('That’s everyone. The trip is ON.');
 }
 async function delTicket() {

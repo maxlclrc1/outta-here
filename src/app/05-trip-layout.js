@@ -68,20 +68,21 @@ const ICONS = {
 const icon = k => `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[k]}</svg>`;
 function sections() {
   return [
-    { k: 'home', label: 'Home', tabs: [['overview', 'Overview'], ['crew', 'Crew'], ['settings', 'Settings']] },
-    { k: 'plan', label: 'Plan', tabs: [['match', isSmall() ? 'Plan Match' : 'Trip Match'], ['dates', isSmall() ? 'When' : 'Dates'], ['where', 'Where'], ['spots', isSmall() ? 'Spots' : (mode().nightlife || 'Nightlife')], ['plan', isSmall() ? 'The plan' : 'Itinerary']] },
+    { k: 'home', label: 'Home', tabs: [['overview', 'Overview'], ['crew', 'Crew'], ['tasks', 'To-dos'], ['settings', 'Settings']] },
+    { k: 'plan', label: 'Plan', tabs: [['match', isSmall() ? 'Plan Match' : 'Trip Match'], ['dates', isSmall() ? 'When' : 'Dates'], ['whatif', 'What if'], ['where', 'Where'], ['spots', isSmall() ? 'Spots' : (mode().nightlife || 'Nightlife')], ['plan', isSmall() ? 'The plan' : 'Itinerary']] },
     { k: 'book', label: 'Book', tabs: [['flights', 'Flights'], ['stays', 'Stays'], ['tickets', 'Boarding passes'], ['pack', 'Packing']] },
     { k: 'live', label: 'Live', tabs: [['live', 'Today'], ['map', 'Map'], ['bucket', 'Bucket list'], ['hype', 'Hype']] },
-    { k: 'money', label: 'Money', tabs: [['meter', 'My spend'], ['pot', 'Group pot'], ['money', 'Expenses']] },
+    { k: 'money', label: 'Money', tabs: [['cost', 'All-in cost'], ['meter', 'My spend'], ['pot', 'Group pot'], ['money', 'Expenses']] },
     { k: 'memories', label: 'Memories', tabs: [['wrapped', isSmall() ? 'Recap' : 'Wrapped'], ['recap', 'Photos'], ['playlist', 'Playlist'], ['awards', 'Awards']] },
   ].map(s => ({ ...s, tabs: s.tabs.filter(([k]) => !HIDE_TABS[size()].includes(k)) })).filter(s => s.tabs.length);
 }
 const TAB_ALIAS = { deals: 'flights' };
 const secOf = tab => sections().find(s => s.tabs.some(t => t[0] === tab)) || sections()[0];
-const TABFN = () => ({ overview: overviewTab, crew: crewTab, settings: settingsTab, match: matchTab, dates: datesTab, where: whereTab, spots: spotsTab, plan: planTab,
+const TABFN = () => ({ overview: overviewTab, crew: crewTab, tasks: tasksTab, cost: costTab, whatif: whatifTab, settings: settingsTab, match: matchTab, dates: datesTab, where: whereTab, spots: spotsTab, plan: planTab,
   flights: flightsTab, stays: staysTab, tickets: ticketsTab, pack: packTab, live: liveTab, map: mapTab, bucket: bucketSection, hype: hypeTab,
   meter: meterTab, pot: potTab, money: moneyTab, wrapped: wrappedTab, recap: photosTab, awards: awardsTab, playlist: playlistTab });
 function tripView() {
+  if (S.membersIn && accessState() !== 'ok') return blockedView(accessState());
   if (S.setup && S.membersIn && meDoc()) return setupView();
   if (TAB_ALIAS[S.tab]) S.tab = TAB_ALIAS[S.tab];
   const fns = TABFN(); if (!fns[S.tab]) S.tab = 'overview';
@@ -102,7 +103,7 @@ function tripView() {
 
 /* ---------- home: overview ---------- */
 function steps() {
-  const t = S.trip, tk = tickets(), ins = S.members.filter(m => m.status === 'in').length, d = dates(), small = isSmall();
+  const t = S.trip, tk = tickets(), ins = S.members.filter(going).length, d = dates(), small = isSmall();
   const all = {
     crew: { label: 'Get the crew in', done: ins >= 2, sub: `${ins} in so far. Send your friends the invite.`, go: 'crew', cta: 'Invite friends' },
     where: small ? { label: 'Pick the plan', done: !!t.lockedDest, sub: dest() ? `Leaning “${dest().city}”. Swipe on AI-pitched plans to settle it.` : 'Swipe on AI-pitched plans that fit everyone.', go: 'match', cta: 'Open Plan Match' }
@@ -127,11 +128,10 @@ function overviewTab() {
       <h2>${upNext ? `Up next: ${esc(upNext.title)}` : 'Nothing else planned today'}</h2>${upNext ? `<span>${esc(tShow(upNext.time) || '')}</span>` : ''}
       <div class="row" style="gap:8px"><button class="btn" data-tab="live">Open today</button><button class="btn ghost-light" data-tab="map">Map</button><button class="btn lost-btn" data-act="lostOpen">I’m lost</button></div></section>`
   : over ? `<section class="hero-card" style="--hc:#7048E8"><span class="label" style="color:inherit">That’s a wrap</span><h2>${isSmall() ? 'Your recap is ready' : `Your ${esc(dest()?.city || 'trip')} Wrapped is ready`}</h2><div><button class="btn" data-tab="wrapped">Watch it</button></div></section>`
-  : showWelcome() ? ''
-  : next ? (() => { const g = guide(); return `<section class="hero-card"><span class="label" style="color:inherit">Step ${st.indexOf(next) + 1} of ${st.length} · ${esc(next.label)}</span><h2>${esc(g && !g.wait ? g.label : g ? g.label : next.label)}</h2><p>${esc(next.sub)}</p>${g && !g.wait ? `<div><button class="btn" data-tab="${g.tab}" data-guide="1">Let’s go</button></div>` : ''}</section>`; })()
-  : `<section class="hero-card" style="--hc:#14915F"><span class="label" style="color:inherit">All set</span><h2>Everything’s booked. Now you just wait.</h2></section>`}
-  ${pass()}
-  <section class="card"><div class="steps">${st.map((s, i) => `<button class="step ${s.done ? 'ok' : s === next ? 'cur' : ''}" data-tab="${s.go}"><span class="dot">${s.done ? '✓' : i + 1}</span><span>${esc(s.label)}</span></button>`).join('')}</div></section>
+  : showWelcome() ? '' : moveCard()}
+  ${STAGES.findIndex(([k]) => k === stageOf(S.trip, S.members)) >= 2 ? passport() : pass()}
+  ${showWelcome() ? '' : stageTrack()}
+  ${showWelcome() ? '' : recoveryCard()}
   ${isSmall() ? '' : `<section class="grid2">${size() === 'trip' ? `
     <button class="tile" data-tab="flights"><span class="label">Flights</span><b class="tile-big">${tk.have.length}/${tk.goal || 0} booked</b>
       <span class="small muted">${fl.length ? 'Typical: ' + esc(fl.map(f => f.roundTrip).filter(Boolean)[0] || '') + ' round trip' : 'Search fares from every home city'}</span><span class="tile-go">Find flights →</span></button>` : ''}

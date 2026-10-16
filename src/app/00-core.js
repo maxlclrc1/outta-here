@@ -4,6 +4,8 @@
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const app = $('#app');
+// Night (the club look) unless someone picked day mode.
+try { document.documentElement.dataset.theme = localStorage.getItem('outta_theme') === 'light' ? 'light' : 'dark'; } catch { document.documentElement.dataset.theme = 'dark'; }
 
 /* ---------- dates ---------- */
 const D = s => new Date(s + 'T00:00:00Z');
@@ -63,15 +65,31 @@ function aiErr(e) {
 /* ---------- derived ---------- */
 const active = () => S.members.filter(m => m.status !== 'out');
 const meDoc = () => S.members.find(m => m.id === S.uid);
+// Can this person make these days? All of them, or all but the first (arrives a day late)
+// or the last (leaves a day early) if they said they're flexible that way.
+function fitOf(m, d) {
+  const has = new Set(m.days || []);
+  if (d.every(x => has.has(x))) return 'full';
+  if (d.length > 1) {
+    const f = m.flex || {};
+    if (f.late && !has.has(d[0]) && d.slice(1).every(x => has.has(x))) return 'late';
+    if (f.early && !has.has(d[d.length - 1]) && d.slice(0, -1).every(x => has.has(x))) return 'early';
+  }
+  return null;
+}
 function bestWindows(nights) {
   const t = S.trip; const len = (nights ?? nightsSet(t)) + 1; const days = span(t.winStart, t.winEnd); const ms = active();
   const out = [];
   for (let i = 0; i + len <= days.length; i++) {
-    const d = days.slice(i, i + len);
-    const ok = ms.filter(m => d.every(x => (m.days || []).includes(x)));
-    if (ok.length) out.push({ start: d[0], end: d[len - 1], ok, miss: ms.filter(m => !ok.includes(m)) });
+    const d = days.slice(i, i + len), fit = new Map(ms.map(m => [m, fitOf(m, d)]));
+    const ok = ms.filter(m => fit.get(m));
+    if (!ok.length) continue;
+    const pref = ms.filter(m => d.some(x => (m.pref || []).includes(x)));
+    const prefN = ms.reduce((n, m) => n + d.filter(x => (m.pref || []).includes(x)).length, 0);
+    out.push({ start: d[0], end: d[len - 1], ok, full: ok.filter(m => fit.get(m) === 'full'), late: ok.filter(m => fit.get(m) === 'late'), early: ok.filter(m => fit.get(m) === 'early'), pref, prefN, miss: ms.filter(m => !fit.get(m)) });
   }
-  out.sort((a, b) => b.ok.length - a.ok.length || (a.start < b.start ? -1 : 1));
+  // most people first, then most people for the whole thing, then most preferred
+  out.sort((a, b) => b.ok.length - a.ok.length || b.full.length - a.full.length || b.prefN - a.prefN || (a.start < b.start ? -1 : 1));
   // drop heavily overlapping windows so the top 3 are real alternatives
   const picked = [];
   for (const w of out) { if (picked.every(p => Math.abs(D(p.start) - D(w.start)) >= 2 * 864e5)) picked.push(w); if (picked.length === 3) break; }
@@ -106,7 +124,7 @@ function countdown() {
   return { n: -1, text: 'Done' };
 }
 function tickets() {
-  const tk = S.trip.tickets || {}, ins = S.members.filter(m => m.status === 'in');
+  const tk = S.trip.tickets || {}, ins = S.members.filter(going);
   const have = ins.filter(m => tk[m.id]);
   return { tk, ins, have, goal: ins.length, on: ins.length > 0 && have.length === ins.length };
 }
@@ -119,7 +137,7 @@ function nudges() {
     if (!(m.days || []).length && !S.trip.lockedDates) todo.push(isSmall() ? 'say which days work' : 'pick your dates');
     if (!m.budget) todo.push('set your budget');
     if (hasDest && !(m.votes || []).length && !S.trip.lockedDest) todo.push(isSmall() ? 'vote on the plan' : 'vote on where');
-    if (size() === 'trip' && booking_time() && m.status === 'in' && !tk[m.id]) todo.push('book your flight and upload your boarding pass');
+    if (size() === 'trip' && booking_time() && going(m) && !tk[m.id]) todo.push('book your flight and upload your boarding pass');
     if (!m.quiz || Object.keys(m.quiz).length < QUIZ.length) todo.push('take the vibe quiz');
     return { m, todo };
   }).filter(x => x.todo.length);

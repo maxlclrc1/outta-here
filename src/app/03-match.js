@@ -1,3 +1,29 @@
+/* ---------- group fit: evidence, not a score ---------- */
+// For any option: does it fit people's budgets, can they make the dates, and how did
+// they rate it. Shown as plain facts so the trade-offs are visible.
+const WORKABLE = 0.5;
+const workableOf = p => active().filter(m => swipeOf(p.id, m.id) === WORKABLE).length;
+const rated = p => active().filter(m => swipeOf(p.id, m.id));
+const okForAll = p => { const vs = active(); return vs.length >= 2 && vs.every(m => swipeOf(p.id, m.id) >= WORKABLE); };
+const fitScore = p => yesOf(p) * 2 + workableOf(p);
+function groupFit(p) {
+  const vs = active(), out = [], r = moneyRange(p.perPerson);
+  const withB = vs.filter(m => +m.budget > 0);
+  if (r && withB.length) {
+    const over = withB.filter(m => +m.budget < r[0]), stretch = withB.filter(m => +m.budget >= r[0] && +m.budget < r[1]);
+    out.push(over.length ? { ok: false, text: `Over budget for ${budgetWho(over)}` } : stretch.length ? { ok: 'meh', text: `A stretch for ${budgetWho(stretch)}` } : { ok: true, text: withB.length === vs.length ? `Fits ${vs.length}/${vs.length} budgets` : `Fits every budget set (${withB.length} of ${vs.length})` });
+  } else out.push({ ok: 'meh', text: withB.length ? 'No price to check yet' : 'Nobody set a budget yet' });
+  const days = span(p.start, p.end), can = vs.filter(m => fitOf(m, days)), cant = vs.filter(m => !fitOf(m, days)), picked = vs.filter(m => (m.days || []).length);
+  if (picked.length) out.push(cant.filter(m => (m.days || []).length).length ? { ok: false, text: `${listNames(cant.filter(m => (m.days || []).length))} can’t make ${p.start === p.end ? 'that day' : 'those dates'}` } : { ok: true, text: `Free: ${can.length}/${vs.length}` });
+  const rs = rated(p);
+  if (rs.length) {
+    const no = rs.filter(m => swipeOf(p.id, m.id) === -1);
+    out.push(okForAll(p) ? { ok: true, text: yesOf(p) === vs.length ? 'Everyone said yes' : 'Everyone rated it at least workable' } : no.length ? { ok: false, text: `${listNames(no)} passed` } : { ok: 'meh', text: `${yesOf(p)} yes · ${workableOf(p)} could work` });
+  }
+  return out;
+}
+const fitChips = p => `<div class="fit">${groupFit(p).map(f => `<span class="fit-c ${f.ok === true ? 'y' : f.ok === false ? 'n' : 'm'}">${f.ok === true ? '✓' : f.ok === false ? '✕' : '~'} ${esc(f.text)}</span>`).join('')}</div>`;
+
 /* ---------- trip match (swipe) ---------- */
 const GRADS = [['#FF4FA3', '#7048E8'], ['#FF8A3D', '#D41C78'], ['#12B5A6', '#3B5BDB'], ['#F2B32B', '#E8590C'], ['#7048E8', '#1098AD'], ['#E5484D', '#7A1FA2']];
 const hashStr = s => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
@@ -10,7 +36,7 @@ function matchedPitch() {
 function dateOptions() {
   const t = S.trip, len = nightsSet(t) + 1, days = span(t.winStart, t.winEnd), ms = active(), out = [];
   for (let i = 0; i + len <= days.length; i++) {
-    const d = days.slice(i, i + len), ok = ms.filter(m => d.every(x => (m.days || []).includes(x))).length;
+    const d = days.slice(i, i + len), ok = ms.filter(m => fitOf(m, d)).length;
     out.push({ start: d[0], end: d[len - 1], ok });
   }
   out.sort((a, b) => b.ok - a.ok || (a.start < b.start ? -1 : 1));
@@ -69,13 +95,14 @@ function matchTab() {
     return `<article class="pitch" id="pitch" data-key="pitch-${esc(p.id)}" data-pid="${esc(p.id)}">
       <span class="stamp yes" id="stamp-yes">I'D GO</span><span class="stamp no" id="stamp-no">PASS</span>
       <div class="pitch-top" style="background:linear-gradient(135deg,${c1},${c2})">
-        <span class="label" style="color:rgba(255,255,255,.8)">${items.indexOf(p) + 1} of ${items.length}${p.vibeMatch ? ` · ${p.vibeMatch}% vibe match` : ''}</span>
+        <span class="label" style="color:rgba(255,255,255,.8)">${items.indexOf(p) + 1} of ${items.length}</span>
         ${p.small ? `<h2 style="color:#fff;font-size:34px">${esc(p.title)}</h2>${p.where ? `<span style="color:rgba(255,255,255,.85)">${esc(p.where)}</span>` : ''}` : `<span class="code" style="color:#fff">${esc(p.code || p.city.slice(0, 3).toUpperCase())}</span>
         <h2 style="color:#fff">${esc(p.city)}</h2>`}
         <span style="color:#fff;font-weight:600">${esc(p.tagline)}</span>
       </div>
       <div class="pitch-body">
         <div class="facts"><div><span class="label">${p.small ? 'When' : 'Dates'}</span><b>${p.small ? fmt(p.start) + (p.time ? ' · ' + t12(p.time) : '') : short(p.start) + ' → ' + short(p.end)}</b></div><div><span class="label">Per person</span><b>${esc(p.perPerson || '?')}</b></div>${p.weather ? `<div><span class="label">Weather</span><b style="font-family:var(--f-body)">${esc(p.weather)}</b></div>` : ''}</div>
+        ${fitChips(p)}
         <p>${esc(p.why)}</p>
         ${p.highlights.length ? `<ul style="margin:0;padding-left:18px">${p.highlights.map(h => `<li>${esc(h)}</li>`).join('')}</ul>` : ''}
       </div>
@@ -92,15 +119,15 @@ function matchTab() {
   ${!items.length && S.sample === null ? `<div class="empty"><b>AI pitches are off ${IN_CLAUDE ? 'for you right now' : 'until you add your Anthropic API key'}.</b><span>You can still settle it by hand: add ideas, everyone votes, and you lock the winner.</span><button class="btn sm primary" data-tab="where">${isSmall() ? 'Add plan ideas' : 'Add places to vote on'}</button></div>`
   : !items.length ? `<div class="empty"><b>No pitches yet.</b><span>The more the crew fills in (${size() === 'trip' ? 'home airports, ' : size() === 'weekend' ? 'where everyone’s coming from, ' : ''}budgets, free days, the vibe quiz), the better the pitches get.</span></div>`
   : next ? `<section class="stack" style="align-items:center">${pitchCard(next)}
-      <div class="row" style="justify-content:center;gap:22px"><button class="swipe-btn no" data-swipe="${esc(next.id)}|-1" aria-label="Pass">✕</button><button class="swipe-btn yes" data-swipe="${esc(next.id)}|1" aria-label="I'd go">♥</button></div>
-      <span class="small muted">Drag the card or tap the buttons</span></section>`
+      <div class="row" style="justify-content:center;gap:22px"><button class="swipe-btn no" data-swipe="${esc(next.id)}|-1" aria-label="Pass">✕</button><button class="swipe-btn meh" data-swipe="${esc(next.id)}|0.5" aria-label="Could work">≈</button><button class="swipe-btn yes" data-swipe="${esc(next.id)}|1" aria-label="I'd go">♥</button></div>
+      <span class="small muted">Swipe right if you’re in, left to pass. ≈ means it could work.</span></section>`
   : !m && active().length >= 2 ? settleCard(items) : `<div class="empty"><b>You’ve swiped them all.</b><span>Results are below.</span></div>`}
   ${items.length ? `<section class="card"><h3 style="margin-bottom:6px">Scoreboard</h3>
-    ${[...items].sort((a, b) => vs.filter(x => swipeOf(b.id, x.id) === 1).length - vs.filter(x => swipeOf(a.id, x.id) === 1).length).map(p => {
+    ${[...items].sort((a, b) => fitScore(b) - fitScore(a)).map(p => {
       const yes = vs.filter(x => swipeOf(p.id, x.id) === 1), waiting = vs.filter(x => !swipeOf(p.id, x.id)), mine = swipeOf(p.id, S.uid);
       return `<div class="linkrow"><div style="min-width:0"><b>${esc(p.city)}</b> <span class="small muted">${p.start === p.end ? short(p.start) : short(p.start) + ' – ' + short(p.end)} · ${esc(p.perPerson)}</span>
-        <div class="small muted">${yes.length}/${vs.length} yes${waiting.length ? ` · waiting on ${waiting.map(x => esc(x.nick || 'Someone')).join(', ')}` : ''}</div></div>
-        <div class="row" style="gap:6px">${mine ? `<button class="chip ${mine === 1 ? 'on' : ''}" data-swipe="${esc(p.id)}|${mine === 1 ? -1 : 1}">${mine === 1 ? '♥ Yes' : '✕ Pass'}</button>` : ''}<div class="bar" style="width:80px"><i style="width:${yes.length / Math.max(1, vs.length) * 100}%"></i></div></div></div>`; }).join('')}
+        <div class="small muted">${yes.length} yes · ${workableOf(p)} could work${waiting.length ? ` · waiting on ${waiting.map(x => esc(x.nick || 'Someone')).join(', ')}` : ''}</div>${fitChips(p)}</div>
+        <div class="row" style="gap:6px">${mine ? `<button class="chip ${mine === 1 ? 'on' : ''}" data-swipe="${esc(p.id)}|${mine === 1 ? -1 : 1}" title="Tap to change">${mine === 1 ? '♥ Yes' : mine === WORKABLE ? '≈ Could work' : '✕ Pass'}</button>` : ''}<div class="bar" style="width:80px"><i style="width:${yes.length / Math.max(1, vs.length) * 100}%"></i></div></div></div>`; }).join('')}
   </section>` : ''}`;
 }
 function bindSwipe() {

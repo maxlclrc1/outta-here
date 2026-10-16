@@ -5,9 +5,9 @@ const showWelcome = () => S.membersIn && !S.demo && !S.readOnly && (!meDoc() || 
 const setupSteps = () => ['days', ...(isSmall() ? [] : ['home']), 'budget', 'vibe'];
 const BUDGETS = { hangout: [30, 60, 100], day: [50, 100, 200], weekend: [250, 450, 700], trip: [600, 1000, 1600] };
 function dayPicker() {
-  const t = S.trip, days = span(t.winStart, t.winEnd), mine = new Set(meDoc()?.days || []);
+  const t = S.trip, days = span(t.winStart, t.winEnd), mine = new Set(meDoc()?.days || []), pref = new Set(meDoc()?.pref || []);
   const pad = d => '<span></span>'.repeat((D(d).getUTCDay() + 6) % 7);
-  const cells = days.map((d, i) => `${i === 0 ? pad(d) : D(d).getUTCDate() === 1 ? `<span class="cal-month">${monthName(d)}</span>${pad(d)}` : ''}<button class="day ${mine.has(d) ? 'mine' : ''} ${d === TODAY ? 'is-today' : ''}" data-day="${d}" aria-pressed="${mine.has(d)}" aria-label="${fmt(d)}">${D(d).getUTCDate()}</button>`);
+  const cells = days.map((d, i) => `${i === 0 ? pad(d) : D(d).getUTCDate() === 1 ? `<span class="cal-month">${monthName(d)}</span>${pad(d)}` : ''}<button class="day ${mine.has(d) ? 'mine' : ''} ${pref.has(d) ? 'pref' : ''} ${d === TODAY ? 'is-today' : ''}" data-day="${d}" aria-pressed="${mine.has(d)}" aria-label="${fmt(d)}${pref.has(d) ? ', best for you' : mine.has(d) ? ', works' : ''}">${D(d).getUTCDate()}${pref.has(d) ? '<i class="star" aria-hidden="true">★</i>' : ''}</button>`);
   return `<div class="cal">${days.length ? `<span class="cal-month first">${monthName(days[0])}</span>` : ''}${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(x => `<span class="dow">${x}</span>`).join('')}${cells.join('')}</div>`;
 }
 function setupView() {
@@ -15,7 +15,7 @@ function setupView() {
   const nDays = (m.days || []).length, mq = m.quiz || {};
   const step = {
     days: { h: isSmall() ? 'Which days work for you?' : 'When are you free?',
-      p: `Tap every ${isSmall() ? 'day' : 'day you could be away'} between ${short(S.trip.winStart)} and ${short(S.trip.winEnd)}. The app finds the ${isSmall() ? 'day that works' : 'dates that work'} for the most people.`,
+      p: `Tap every ${isSmall() ? 'day' : 'day you could be away'} between ${short(S.trip.winStart)} and ${short(S.trip.winEnd)}. Tap twice for the ones that are best for you ★.`,
       c: `<div class="row" style="gap:6px"><button class="btn sm" data-act="allDays">All of them</button><button class="btn sm" data-act="weekends">Fri–Sun</button><button class="btn sm ghost" data-act="noDays">Clear</button></div>
         ${dayPicker()}<span class="small muted">${nDays ? `${nDays} day${nDays === 1 ? '' : 's'} picked` : 'Nothing picked yet'}</span>` },
     home: { h: size() === 'trip' ? 'Where are you flying from?' : 'Where are you coming from?',
@@ -84,7 +84,7 @@ async function joinCrewQuiet(cid) {
 }
 // First thing someone sees when they open an invite: what it is, who's in, and one tap to answer.
 function welcomeCard() {
-  const t = S.trip, host = S.members.find(m => m.id === t.createdBy), ins = S.members.filter(m => m.status === 'in');
+  const t = S.trip, host = S.members.find(m => m.id === t.createdBy), ins = S.members.filter(going);
   const crew = S.crews.find(c => c.id === t.crewId), ds = dest(), sz = SIZES[size()];
   const when = t.lockedDates ? planWhen(t) : `Picking ${isSmall() ? 'a day' : 'dates'} together`;
   return `<section class="card welcome" style="--pc:${sz.color}">
@@ -92,6 +92,7 @@ function welcomeCard() {
     <h1>${esc(t.name)}</h1>
     <p class="muted">${esc(sz.label)}${crew ? ' with ' + esc(crew.name) : ''} · ${esc(when)}${ds ? ' · ' + esc(ds.city) : ''}</p>
     ${ins.length ? `<div class="row" style="gap:8px;align-items:center"><div class="avs">${ins.slice(0, 7).map(m => `<span class="av-sm" style="background:${colorFor(m.id)}" title="${esc(m.nick || 'Someone')}">${esc((m.nick || '?')[0].toUpperCase())}</span>`).join('')}</div><span class="small muted">${ins.length} in so far</span></div>` : ''}
+    ${S.trip.rsvpBy && TODAY <= S.trip.rsvpBy ? `<span class="small"><b>Answer by ${fmt(S.trip.rsvpBy)}</b> so the crew knows how many to plan for.</span>` : ''}
     <div class="welcome-acts"><button class="btn primary big" data-join="in">I’m in</button><button class="btn big" data-join="maybe">Maybe</button><button class="btn ghost big" data-join="out">Can’t make it</button></div>
     ${t.crewId ? `<span class="small muted">Saying you’re in also adds you to ${crew ? esc(crew.name) : 'the crew'}, so you’re part of their next plans too.</span>` : ''}
   </section>`;
@@ -107,7 +108,7 @@ const pName = p => p.small ? p.title : p.city;
 const yesOf = p => active().filter(m => swipeOf(p.id, m.id) === 1).length;
 function swipeSummary() {
   const vs = active();
-  return (S.trip.pitches?.items || []).map(p => ({ n: pName(p), y: yesOf(p), x: vs.filter(m => swipeOf(p.id, m.id) === -1).length })).filter(h => h.y || h.x);
+  return (S.trip.pitches?.items || []).map(p => ({ n: pName(p), y: yesOf(p), w: workableOf(p), x: vs.filter(m => swipeOf(p.id, m.id) === -1).length })).filter(h => h.y || h.w || h.x);
 }
 const nextHistory = () => [...swipeSummary(), ...(S.trip.pitchHistory || [])].slice(0, 16);
 // What the AI should learn before pitching again: the crew's own request, how they swiped, what they've done before.
@@ -115,7 +116,7 @@ function pitchMemory() {
   const t = S.trip, hist = nextHistory(), lines = [];
   const past = S.trips.filter(x => x.id !== S.tid && t.crewId && x.crewId === t.crewId && x.lockedDest).map(x => (x.destinations || []).find(d => d.id === x.lockedDest)?.city || x.name).slice(0, 8);
   if (t.pitchNote) lines.push(`The crew asked for: "${t.pitchNote}". Treat this as a requirement.`);
-  if (hist.length) lines.push(`How the crew (${active().length} people) swiped on earlier pitches. Lean toward what got yeses, steer away from what most people passed on, and don't repeat any of these:\n${hist.map(h => `- ${h.n}: ${h.y} yes, ${h.x} pass`).join('\n')}`);
+  if (hist.length) lines.push(`How the crew (${active().length} people) swiped on earlier pitches. Lean toward what got yeses, steer away from what most people passed on, and don't repeat any of these:\n${hist.map(h => `- ${h.n}: ${h.y} yes, ${h.w || 0} could work, ${h.x} pass`).join('\n')}`);
   if (past.length) lines.push(`Plans this crew already locked before: ${past.join(', ')}. Don't repeat them; use them as a hint about their taste.`);
   return lines.join('\n');
 }
@@ -136,7 +137,7 @@ function runoffState() {
   if (ps.length < 2) return null;
   const vs = active(), votes = (S.trip.roVotes || {})[r.key] || {};
   const count = id => vs.filter(m => votes[m.id] === id).length, waiting = vs.filter(m => !votes[m.id]);
-  const ranked = [...ps].sort((a, b) => count(b.id) - count(a.id) || yesOf(b) - yesOf(a) || (b.vibeMatch || 0) - (a.vibeMatch || 0));
+  const ranked = [...ps].sort((a, b) => count(b.id) - count(a.id) || fitScore(b) - fitScore(a) || (b.vibeMatch || 0) - (a.vibeMatch || 0));
   const winner = !waiting.length || count(ranked[0].id) > vs.length / 2 ? ranked[0] : null;
   return { key: r.key, ps, count, waiting, winner, mine: votes[S.uid] };
 }
@@ -161,15 +162,19 @@ function settleCard(items) {
   const waiting = vs.filter(m => items.some(p => !swipeOf(p.id, m.id)));
   if (waiting.length) return `<div class="empty"><b>You’ve swiped them all.</b><span>Waiting on ${waiting.map(m => esc(m.nick || 'Someone')).join(', ')}. Results are below.</span>${S.readOnly ? '' : '<button class="btn sm" data-act="nudgeSwipe">Nudge them</button>'}</div>`;
   if (runoffState()) return '';
-  const ranked = [...items].sort((a, b) => yesOf(b) - yesOf(a) || (b.vibeMatch || 0) - (a.vibeMatch || 0)), top = ranked[0], y = yesOf(top);
-  const second = ranked[1] && yesOf(ranked[1]) ? ranked[1] : null;
-  if (!y) return `<section class="card settle stack"><h2>Nobody loved these</h2><p class="small muted">Every pitch got passed. Say what you want in “Steer the pitches” and get a new round. It learns from what you passed on.</p>
+  const ranked = [...items].sort((a, b) => fitScore(b) - fitScore(a) || (b.vibeMatch || 0) - (a.vibeMatch || 0)), top = ranked[0], y = yesOf(top);
+  const second = ranked[1] && fitScore(ranked[1]) ? ranked[1] : null, liveWith = items.filter(okForAll).sort((a, b) => fitScore(b) - fitScore(a))[0];
+  if (liveWith) return `<section class="card settle stack"><span class="label">No perfect match, but</span><h2>Everyone can live with ${esc(pName(liveWith))}</h2>
+    <p class="small muted">${yesOf(liveWith)} said yes and the rest said it could work. Nobody passed.</p>${fitChips(liveWith)}
+    <div class="row" style="gap:6px"><button class="btn primary" data-lockpitch="${esc(liveWith.id)}">Go with ${esc(pName(liveWith))}</button>${second ? '<button class="btn" data-act="startRunoff">Final vote: top two</button>' : ''}</div></section>`;
+  if (!fitScore(top)) return `<section class="card settle stack"><h2>Nobody loved these</h2><p class="small muted">Every pitch got passed. Say what you want in “Steer the pitches” and get a new round. It learns from what you passed on.</p>
     ${S.sample ? `<div><button class="btn primary" data-act="genPitches">Pitch a new round</button></div>` : ''}</section>`;
   const passers = vs.filter(m => swipeOf(top.id, m.id) === -1);
   return `<section class="card settle stack">
     <span class="label">No perfect match</span>
     <h2>Closest: ${esc(pName(top))}</h2>
-    <p class="small muted">${y} of ${n} said yes${passers.length ? `. ${passers.map(m => esc(m.nick || 'Someone')).join(', ')} passed` : ''}.${second ? ` Runner-up: ${esc(pName(second))} with ${yesOf(second)}.` : ''}</p>
+    <p class="small muted">${y} of ${n} said yes${workableOf(top) ? `, ${workableOf(top)} said it could work` : ''}${passers.length ? `. ${passers.map(m => esc(m.nick || 'Someone')).join(', ')} passed` : ''}.${second ? ` Runner-up: ${esc(pName(second))}.` : ''}</p>
+    ${fitChips(top)}
     <div class="row" style="gap:6px">
       ${y > n / 2 ? `<button class="btn primary" data-lockpitch="${esc(top.id)}">Go with ${esc(pName(top))} (majority)</button>` : ''}
       ${second ? `<button class="btn ${y > n / 2 ? '' : 'primary'}" data-act="startRunoff">Final vote: top two</button>` : ''}
@@ -178,7 +183,7 @@ function settleCard(items) {
   </section>`;
 }
 function startRunoff() {
-  const items = S.trip.pitches?.items || [], ranked = [...items].sort((a, b) => yesOf(b) - yesOf(a) || (b.vibeMatch || 0) - (a.vibeMatch || 0));
+  const items = S.trip.pitches?.items || [], ranked = [...items].sort((a, b) => fitScore(b) - fitScore(a) || (b.vibeMatch || 0) - (a.vibeMatch || 0));
   if (ranked.length < 2) return;
   saveTrip({ runoff: { key: rid(6), ids: [ranked[0].id, ranked[1].id], by: S.uid, at: Date.now() } });
   flash('Final vote started. Everyone picks one of the top two.');

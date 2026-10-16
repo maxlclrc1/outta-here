@@ -13,7 +13,8 @@ app.addEventListener('click', e => {
     const t = S.trips.find(x => x.id === ds.share); if (!t) return;
     const w = SIZES[sizeOf(t)].label.toLowerCase();
     S.shareHome = t.id;
-    return sendInvite(inviteText(t), SHARE_BASE + '#' + t.id, t.name).then(render);
+    if (!canInvite(t)) { flash('Only organizers can invite people to this one.'); return; }
+    return sendInvite(inviteText(t), linkFor(t), t.name).then(render);
   }
   if (ds.startcrew) return startNewPlan(ds.startcrew);
   if (ds.act === 'clearCrew') { S.newCrew = null; return render(); }
@@ -34,20 +35,57 @@ app.addEventListener('click', e => {
   if (ds.sec) { const sec = sections().find(x => x.k === ds.sec); S.tab = S.secTab[ds.sec] || (ds.sec === 'live' && !isLive() && !S.secTab.live ? 'live' : sec.tabs[0][0]); S.tabPicked = true; S.show = null; clearInterval(showTimer); render(); window.scrollTo({ top: 0 }); return; }
   if (ds.tab) { S.guideJump = !!ds.guide; S.tab = TAB_ALIAS[ds.tab] || ds.tab; S.secTab[secOf(S.tab).k] = S.tab; S.tabPicked = true; if (ds.tab !== 'recap') { S.show = null; clearInterval(showTimer); } render(); window.scrollTo({ top: 0 }); return; }
   if (!S.trip) return;
-  if (ds.status) { const m = meDoc(), fresh = !m || (!(m.days || []).length && !m.budget); saveMe({ status: ds.status, seen: true }, true); if (ds.status === 'in' && fresh) startSetup(); return; }
+  if (ds.status) return setStatus(ds.status);
+  if (ds.act === 'rsvpNudge') return rsvpNudge();
+  if (ds.act === 'rsvpCountOut') return rsvpCountOut();
+  if (ds.act === 'rsvpClear') return saveTrip({ rsvpBy: null });
   if (ds.budget) { saveMe({ budget: +ds.budget }); delete DRAFT['me-budget']; return; }
   if (ds.act === 'setupNext') return setupGo(1);
   if (ds.act === 'setupBack') return setupGo(-1);
   if (ds.act === 'setupLater') { setupSave(); S.setup = null; S.tab = 'overview'; render(); window.scrollTo({ top: 0 }); flash('No problem. Finish it any time in Home › Crew.'); return; }
   if (ds.join) return joinPlan(ds.join);
+  if (ds.act === 'moveNudge') return nudgeMove();
   if (ds.runoff) { const ro = runoffState(); if (!ro || ro.winner) return; return saveTrip({ roVotes: { [ro.key]: { [S.uid]: ds.runoff } } }); }
   if (ds.act === 'startRunoff') return startRunoff();
   if (ds.act === 'endRunoff') return saveTrip({ runoff: null });
   if (ds.act === 'nudgeSwipe') return sendInvite(`Swipe on our ${planWord()} options for ${S.trip.name}. We’re waiting on you!`, inviteLink(), S.trip.name);
-  if (ds.day) { const set = new Set(meDoc()?.days || []); set.has(ds.day) ? set.delete(ds.day) : set.add(ds.day); return saveMe({ days: [...set].sort() }); }
+  if (ds.day) {
+    const days = new Set(meDoc()?.days || []), pref = new Set(meDoc()?.pref || []), d = ds.day;
+    if (!days.has(d)) days.add(d); else if (!pref.has(d)) pref.add(d); else { days.delete(d); pref.delete(d); }
+    return saveMe({ days: [...days].sort(), pref: [...pref].filter(x => days.has(x)).sort() });
+  }
+  if (ds.taskdone) { const x = (S.trip.tasks || {})[ds.taskdone]; if (x) { patchTask(ds.taskdone, { done: !x.done, doneBy: x.done ? '' : S.uid }); if (!x.done) flash(`Done: ${x.title}`); } return; }
+  if (ds.taketask) return patchTask(ds.taketask, { owner: S.uid });
+  if (ds.deltask) return saveTrip({ tasks: { [ds.deltask]: null } });
+  if (ds.taskidea) return addTask(ds.taskidea);
+  if (ds.recover !== undefined) { S.recover = ds.recover || null; S.recoverWho = null; S.recoverItem = null; S.alts = null; return render(); }
+  if (ds.act === 'recoverDrop') return recoverDrop();
+  if (ds.act === 'recoverAlts') return recoverAlts();
+  if (ds.act === 'recoverRemove') { const id = S.recoverItem; S.recover = null; S.recoverItem = null; flash('Dropped from the plan.'); return saveTrip({ itinerary: (S.trip.itinerary || []).filter(i => i.id !== id) }); }
+  if (ds.swapin !== undefined) { const o = S.alts?.options?.[+ds.swapin]; if (o) swapItem(o.title); return; }
+  if (ds.act === 'recoverDates') { S.recover = null; saveTrip({ lockedDates: null }); S.tab = 'dates'; render(); window.scrollTo({ top: 0 }); flash('Dates reopened. Everyone’s free days are still here.'); return; }
+  if (ds.act === 'remindOpen') { S.remindOpen = !S.remindOpen; return render(); }
+  if (ds.remind) { const p = remindPrefs(); p[ds.remind] = !p[ds.remind]; lsSet('outta_remind', p); return render(); }
+  if (ds.act === 'notifyAsk') { try { Notification.requestPermission().then(render); } catch {} return; }
+  if (ds.act === 'linkReset') { saveTrip({ inviteKey: rid(6), invitesOff: false }); flash('New link made. Old invite links stop working for people who haven’t joined.'); return; }
+  if (ds.act === 'linkToggle') { const off = !S.trip.invitesOff; saveTrip({ invitesOff: off }); flash(off ? 'Invites are off. Nobody new can join.' : 'Invites are back on.'); return; }
+  if (ds.rmmember) { S.confirmRm = ds.rmmember; return render(); }
+  if (ds.act === 'rmCancel') { S.confirmRm = null; return render(); }
+  if (ds.rmdo) return removeMember(ds.rmdo);
+  if (ds.mkorg) { const on = !(S.trip.orgs || {})[ds.mkorg]; saveTrip({ orgs: { [ds.mkorg]: on || null } }); flash(on ? 'Now an organizer.' : 'No longer an organizer.'); return; }
+  if (ds.act === 'passportImg') return makePassportImg();
+  if (ds.nightvote) { const cur = (S.trip.nightVotes || {})[S.uid]; return saveTrip({ nightVotes: { [S.uid]: cur === ds.nightvote ? null : ds.nightvote } }); }
+  if (ds.act === 'nextPlan') return S.trip.crewId ? startNewPlan(S.trip.crewId) : (goHome(), startNewPlan());
+  if (ds.act === 'theme') { const day = document.documentElement.dataset.theme !== 'light'; document.documentElement.dataset.theme = day ? 'light' : 'dark'; try { localStorage.setItem('outta_theme', day ? 'light' : 'dark'); } catch {} return render(); }
+  if (ds.act === 'wiAdd') { S.whatif = [...(S.whatif || [{}]), {}]; return render(); }
+  if (ds.wirm !== undefined) { const l = (S.whatif || [{}]).filter((_, j) => j !== +ds.wirm); S.whatif = l.length ? l : [{}]; return render(); }
+  if (ds.wiapply !== undefined) return whatifApply(+ds.wiapply);
+  if (ds.costkeep) { const h = costHints()[ds.costkeep]; if (h) saveTrip({ costs: { [ds.costkeep]: { low: h.low, high: h.high, src: h.src, note: h.note, by: S.uid, at: Date.now() } } }); return; }
+  if (ds.flex) { const f = { ...(meDoc()?.flex || {}) }; f[ds.flex] = !f[ds.flex]; return saveMe({ flex: f }, true); }
   if (ds.act === 'allDays') return saveMe({ days: span(S.trip.winStart, S.trip.winEnd) }, true);
-  if (ds.act === 'noDays') return saveMe({ days: [] }, true);
+  if (ds.act === 'noDays') return saveMe({ days: [], pref: [] }, true);
   if (ds.act === 'weekends') return saveMe({ days: span(S.trip.winStart, S.trip.winEnd).filter(x => [0, 5, 6].includes(D(x).getUTCDay())) }, true);
+  if ((ds.lockdates || ds.lockdest || ds.lockpitch) && !canLock()) { flash('Only organizers can lock this one. Your vote still counts.'); return; }
   if (ds.lockdates) { const [start, end] = ds.lockdates.split('|'); return saveTrip({ lockedDates: { start, end } }); }
   if (ds.act === 'unlockDates') return saveTrip({ lockedDates: null });
   if (ds.vote) { const set = new Set(meDoc()?.votes || []); set.has(ds.vote) ? set.delete(ds.vote) : set.add(ds.vote); return saveMe({ votes: [...set] }, true); }
@@ -146,6 +184,18 @@ app.addEventListener('click', e => {
 app.addEventListener('change', e => {
   const id = e.target.id;
   if (id === 'me-nick') saveMe({ nick: e.target.value.trim().slice(0, 30) }, true, true);
+  if (/^cost-(low|high|src)-/.test(id)) saveCostLine(id.replace(/^cost-(low|high|src)-/, ''));
+  { const w = id.match(/^wi-(start|nights|dest|stay)-(\d)$/); if (w) whatifSet(+w[2], { [w[1]]: w[1] === 'nights' ? +e.target.value : e.target.value || undefined }); }
+  if (id === 'recover-who') { S.recoverWho = e.target.value || null; render(); }
+  if (id === 'recover-item') { S.recoverItem = e.target.value || null; S.alts = null; render(); }
+  if (id === 'mute-plan') { lsSet('outta_mute_' + S.tid, e.target.checked); flash(e.target.checked ? 'Muted. It won’t show up in Needs you.' : 'Reminders are back on for this plan.'); }
+  if (id === 'perm-invite' || id === 'perm-lock') saveTrip({ perm: { [id.slice(5)]: e.target.value } });
+  if (id === 'me-budgetPublic') saveMe({ budgetPublic: e.target.checked }, true, true);
+  if (id === 'me-hideLoc') saveMe({ hideLoc: e.target.checked }, true, true);
+  if (id === 'cost-buffer') saveTrip({ costBuffer: +e.target.value });
+  if (id.startsWith('task-owner-')) patchTask(id.slice(11), { owner: e.target.value });
+  if (id.startsWith('task-due-')) patchTask(id.slice(9), { due: e.target.value });
+  if (id === 'rsvp-by') saveTrip({ rsvpBy: e.target.value || null });
   if (id === 'me-home') saveMe({ home: e.target.value.trim().slice(0, 40) }, true, true);
   if (id === 'me-budget') saveMe({ budget: Math.max(0, Math.round(+e.target.value || 0)) }, true, true);
   if (id === 'ph-files') { uploadPhotos(e.target.files); return; }
@@ -188,7 +238,7 @@ app.addEventListener('touchend', e => {
   render(); window.scrollTo({ top: 0 });
 }, { passive: true });
 // opening an invite link while the app is already open only changes the #code, so watch for it
-window.addEventListener('hashchange', () => { const h = (location.hash || '').slice(1); if (!S.db) return; const cm = h.match(/^c-([a-z0-9]{6,20})$/); if (cm && cm[1] !== S.crewView) return joinCrew(cm[1]); if (/^[a-z0-9]{6,20}$/.test(h) && h !== S.tid) openTrip(h); });
+window.addEventListener('hashchange', () => { const h = (location.hash || '').slice(1); if (!S.db) return; const cm = h.match(/^c-([a-z0-9]{6,20})$/); if (cm && cm[1] !== S.crewView) return joinCrew(cm[1]); const th = parseTripHash(h); if (th && th.key) S.linkKey = th.key; if (th && th.tid !== S.tid) return openTrip(th.tid); if (/^[a-z0-9]{6,20}$/.test(h) && h !== S.tid) openTrip(h); });
 let lastDown = null;
 app.addEventListener('pointerdown', e => { const f = e.target.closest && e.target.closest('input,textarea,select'); lastDown = f && f.id ? { id: f.id, at: Date.now() } : null; }, true);
 // keep half-typed text when someone else's change re-renders the page
@@ -203,6 +253,8 @@ app.addEventListener('submit', async e => {
   if (f.id === 'newCrewForm') { const n = $('#nc-name').value.trim(); if (n) return createCrew(n); return; }
   if (f.id === 'songForm') { const title = $('#sg-title').value.trim(); if (!title) return; return addSong(title, $('#sg-artist').value.trim(), $('#sg-link').value.trim()); }
   if (f.id === 'tkForm') return sendTicket();
+  if (f.id === 'swapForm') return swapItem($('#swap-title').value);
+  if (f.id === 'addTask') { addTask($('#task-title').value); $('#task-title').value = ''; return; }
   if (f.id === 'lostForm') return sendLost($('#lost-where').value);
   if (f.id === 'spendForm') { const note = $('#sp-note').value.trim(), amount = Math.round(+$('#sp-amt').value * 100) / 100; if (!note || !(amount > 0)) return; return saveMySpend([...(S.mySpend || []), { id: rid(6), note: note.slice(0, 50), amount, at: Date.now() }]); }
   if (f.id === 'potIn') { const amount = Math.round(+$('#pi-amt').value * 100) / 100; if (!(amount > 0)) return; return putSub('pot', rid(8), { kind: 'in', by: $('#pi-by').value, amount, note: '', at: Date.now() }); }
