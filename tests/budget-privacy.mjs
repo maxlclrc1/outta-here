@@ -23,7 +23,7 @@ const res = await fit(A, T, [{ lo: 400, hi: 500 }, { lo: 400, hi: 400, key: 'p:x
 check('fit comes back as counts', f.n === 3 && f.fits.count === 2 && f.over.count === 1 && f.stretch.count === 0);
 check('only you and people who chose it are named', JSON.stringify(f.fits.ids.sort()) === JSON.stringify([A, C].sort()) && f.over.ids.length === 0);
 check('the answer contains no budget amounts', !JSON.stringify(res.results).match(/\b(300|600|900)\b/));
-check('the shared cap is the lowest budget (as the app already shows)', res.cap.cap === 300 && res.cap.n === 3);
+check('no exact lowest budget is returned, only a band', !('cap' in res) && res.band.lo <= 300 && res.band.hi > 300 && res.band.hi - res.band.lo >= 50 && !JSON.stringify(res).match(/"cap"/), JSON.stringify(res.band));
 const bob = (await fit(B, T, [{ lo: 400, hi: 500 }])).results[0];
 check('Bob is named to himself', bob.over.ids.includes(B));
 check('hard limit: counted, not named to others', res.results[1].hard.count === 1 && res.results[1].hard.ids.length === 0 && res.results[1].hardOpen.count === 1);
@@ -32,5 +32,26 @@ check('after Bob agrees, it no longer blocks', (await fit(A, T, [{ lo: 400, hi: 
 check('“what if Bob drops out” leaves him out of the count', (await fit(A, T, [{ lo: 400, hi: 500, exclude: [B] }])).results[0].over.count === 0);
 check('“what if my budget changes” only changes your own', (await fit(A, T, [{ lo: 400, hi: 500, myBudget: 350 }])).results[0].over.count === 2);
 check('you can’t use “my budget” to change someone else’s', (await fit(A, T, [{ lo: 400, hi: 500, myBudget: 0 }])).results[0].over.count === 1);
+// probing: prices that aren't real plan options are snapped to a grid, so nearby prices give the same answer
+const near = (await fit(A, T, [{ lo: 285, hi: 285 }, { lo: 315, hi: 315 }])).results;
+check('nearby made-up prices can’t tell 285 from 315', JSON.stringify(near[0]) === JSON.stringify(near[1]));
+// a pitch check uses the pitch's real price from the plan, not what the browser sends
+await db(A, 'update', 'trips/' + T, { pitches: { at: 1, items: [{ id: 'p1', city: 'Lisbon', perPerson: '€500–650' }] } });
+const pr = (await fit(A, T, [{ pitch: 'p1', lo: 1, hi: 1 }])).results[0];
+check('pitch checks use the plan’s price, not the browser’s', pr.over.count === 1 && pr.fits.count === 1, `over ${pr.over.count}, fits ${pr.fits.count}`);
+// input validation
+const bad = async c => (await fit(A, T, c)).status;
+check('rejects negative or non-numeric prices', await bad([{ lo: -5 }]) === 400 && await bad([{ lo: 'x' }]) === 400);
+check('rejects leaving out more than one person', await bad([{ lo: 100, exclude: [B, C] }]) === 400);
+check('rejects oversized requests', await bad(Array.from({ length: 25 }, () => ({ lo: 100 }))) === 400);
+check('rejects malformed option keys', await bad([{ lo: 100, key: '../x' }]) === 400);
+// rate limit: a member trying lots of different prices is cut off
+let limited = 0, asked = 0;
+for (let i = 0; i < 12 && !limited; i++) {
+  const r = await fit(C, T, Array.from({ length: 10 }, (_, j) => ({ lo: Math.round(100 * 1.07 ** (i * 10 + j)), hi: Math.round(100 * 1.07 ** (i * 10 + j)) })));
+  if (r.status === 429) limited = 1; else asked += 10;
+}
+check('probing many different prices gets rate limited', !!limited, `cut off after ${asked} prices`);
+check('…the limit is per person', (await fit(A, T, [{ lo: 400, hi: 500 }])).status === 200);
 await db(A, 'delete', 'trips/' + T);
 console.log(fails ? `${fails} FAILED` : 'budget privacy checks passed'); process.exit(fails ? 1 : 0);

@@ -207,7 +207,7 @@
   async function sample(input, opts = {}) {
     let res;
     try {
-      res = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-outta-user': uid }, body: JSON.stringify({ input }), signal: opts.signal });
+      res = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-outta-user': uid }, body: JSON.stringify({ input, ...(opts.tid ? { tid: opts.tid } : {}) }), signal: opts.signal });
     } catch (e) {
       if (opts.signal?.aborted) throw err('cancelled', 'Stopped');
       throw err('upstream_error', 'Can’t reach the local server.');

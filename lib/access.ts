@@ -1,4 +1,5 @@
 import { StoreError, rawDoc, type Json } from '@/lib/store';
+import { feedFor, memberFor, tripFor } from '@/lib/privacy';
 
 // Who may read and write what. The app's own checks only decide what to show; these are
 // the ones that count, applied to every request before it touches the store.
@@ -64,22 +65,32 @@ const ORG_FIELDS = ['orgs', 'perm', 'inviteKey', 'invitesOff', 'createdBy'];
 export function readable(p: string, data: Json, ctx: Ctx): Json | null {
   const s = p.split('/');
   if (s[0] === 'trips' && s.length >= 4) {
-    if (inTrip(s[1], ctx.user)) return s[2] === 'members' && s.length === 4 && s[3] !== ctx.user ? hideBudget(data) : data;
-    return s[2] === 'members' && s.length === 4 ? redactMember(data) : null;
+    const t = rawDoc('trips/' + s[1]);
+    if (!inTrip(s[1], ctx.user, t)) return s[2] === 'members' && s.length === 4 ? redactMember(data) : null;
+    if (s[2] === 'members' && s.length === 4) return s[3] === ctx.user ? data : hideBudget(memberFor(t!, s[3], data, ctx.user));
+    if (s[2] === 'feed' && s.length === 4) return feedFor(t, data, ctx.user);
+    return data;
   }
+  if (s[0] === 'trips' && s.length === 2) return tripFor(data, ctx.user);
   return data; // a plan or crew by its id, and everything else, is open to the link holder
 }
 /** Whether a document shows up when listing its collection. */
 export function listable(p: string, data: Json, ctx: Ctx): Json | null {
   const s = p.split('/');
-  if (s[0] === 'trips' && s.length === 2) return inTrip(s[1], ctx.user, data) ? data : null;
+  if (s[0] === 'trips' && s.length === 2) return inTrip(s[1], ctx.user, data) ? tripFor(data, ctx.user) : null;
   if (s[0] === 'crews' && s.length === 2) return flag(data.people, ctx.user) || data.by === ctx.user ? data : null;
   return readable(p, data, ctx);
 }
 /** Whether a change to a path should be announced to this person's open tabs. */
 export function notifiable(p: string, user: string) {
   const s = p.split('/');
-  if (s[0] === 'trips') { const t = rawDoc('trips/' + s[1]); return !t || inTrip(s[1], user, t); }
+  if (s[0] === 'trips') {
+    const t = rawDoc('trips/' + s[1]); if (!t) return true;
+    if (!inTrip(s[1], user, t)) return false;
+    // don't even say a planners-only post exists to the guest of honor
+    if (s[2] === 'feed' && s.length === 4) { const d = rawDoc(p); return !d || !!feedFor(t, d, user); }
+    return true;
+  }
   if (s[0] === 'crews') { const c = rawDoc('crews/' + s[1]); return !c || flag(c.people, user) || c.by === user; }
   if (s[0] === 'data' && s[1] === 'users') return s[2] === user;
   return true;

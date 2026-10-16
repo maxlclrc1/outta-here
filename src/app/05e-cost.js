@@ -96,6 +96,8 @@ function budgetReset() { BQ.cache.clear(); BQ.cap = undefined; }
 function bq(check) {
   if (BQ.tid !== S.tid) { BQ.tid = S.tid; budgetReset(); BQ.queue.clear(); }
   if (budgetsHere()) return budgetLocal(check);
+  // only people in the plan can ask, so wait until joining has actually been saved
+  const me = meDoc(); if (!me || !(me.updatedAt || (S.trip.people || {})[S.uid] || S.trip.createdBy === S.uid)) return { ...NO_FIT, pending: false };
   const k = JSON.stringify(check);
   if (BQ.cache.has(k)) return BQ.cache.get(k);
   if (!BQ.queue.has(k)) { BQ.queue.set(k, check); clearTimeout(BQ.t); BQ.t = setTimeout(budgetFetch, 0); }
@@ -112,7 +114,7 @@ async function budgetFetch() {
   if (S.tid !== tid) return;
   // a failed check counts as "no budgets to compare" rather than retrying in a loop
   items.forEach(([k], i) => BQ.cache.set(k, data ? budgetShape(data.results[i]) : { ...NO_FIT, pending: false }));
-  if (data) BQ.cap = data.cap; else if (BQ.cap === undefined) BQ.cap = null;
+  if (data) BQ.cap = data.band; else if (BQ.cap === undefined) BQ.cap = null;
   render();
 }
 // counts from the server → lists the UI can use: named people, then anonymous stand-ins
@@ -120,16 +122,23 @@ function budgetShape(r) {
   const list = g => [...g.ids.map(id => S.members.find(m => m.id === id) || { id, nick: 'Someone' }), ...Array.from({ length: Math.max(0, g.count - g.ids.length) }, (_, i) => ({ id: 'anon-' + i, nick: 'Someone' }))];
   return { n: r.n, unknown: r.total - r.n, fits: list(r.fits), stretch: list(r.stretch), over: list(r.over), hard: list(r.hard), hardOpen: list(r.hardOpen) };
 }
-function budgetLocal({ lo = 0, hi = 0, key = '' }) {
+function budgetLocal({ lo = 0, hi = 0, key = '', pitch }) {
+  if (pitch) { const r = moneyRange((S.trip.pitches?.items || []).find(x => x.id === pitch)?.perPerson); lo = r ? r[0] : 0; hi = r ? r[1] : 0; }
   const ms = active().filter(m => +m.budget > 0), h = Math.max(lo, hi || lo), consent = ((S.trip.consent || {})[key]) || {};
   const hard = lo ? ms.filter(m => m.hard?.budget && lo > +m.budget) : [];
   return { n: ms.length, unknown: active().length - ms.length, fits: ms.filter(m => +m.budget >= h), stretch: ms.filter(m => +m.budget < h && +m.budget >= lo), over: ms.filter(m => +m.budget < lo), hard, hardOpen: hard.filter(m => !consent[m.id]) };
 }
 // extra: { exclude: [ids], myBudget } for "what if" questions (someone drops out, my budget changes)
 function budgetFit(sum, extra) { return bq({ lo: Math.round(sum.low || 0), hi: Math.round(sum.high || 0), ...(extra || {}) }) || NO_FIT; }
+// The tightest budget in the crew, as a band ("€250–300"), never the exact number. `cap` is
+// the low end, which is what the AI and the suggested splits plan around.
+const BAND_STEPS = [1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 8];
+function bandOf(v) { const e = Math.pow(10, Math.floor(Math.log10(v))), g = [0.1, 1, 10].flatMap(m => BAND_STEPS.map(x => x * e * m)); return { lo: Math.round(Math.max(...g.filter(x => x <= v))), hi: Math.round(Math.min(...g.filter(x => x > v))) }; }
 function budgetCapShared() {
-  if (budgetsHere()) { const b = active().map(m => +m.budget || 0).filter(x => x > 0); return b.length ? { cap: Math.min(...b), n: b.length } : null; }
-  bq({}); return BQ.cap || null;
+  let b;
+  if (budgetsHere()) { const v = active().map(m => +m.budget || 0).filter(x => x > 0); b = v.length ? { ...bandOf(Math.min(...v)), n: v.length } : null; }
+  else { bq({}); b = BQ.cap || null; }
+  return b ? { cap: b.lo, lo: b.lo, hi: b.hi, n: b.n, label: `${money(b.lo)}–${money(b.hi)}` } : null;
 }
 const rangeText = (lo, hi) => `${money(lo)}${hi !== lo ? '–' + money(hi) : ''}`;
 function costTab() {

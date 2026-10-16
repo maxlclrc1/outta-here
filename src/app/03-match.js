@@ -8,7 +8,7 @@ const okForAll = p => { const vs = active(); return vs.length >= 2 && vs.every(m
 const fitScore = p => yesOf(p) * 2 + workableOf(p);
 function groupFit(p) {
   const vs = active(), out = [], r = moneyRange(p.perPerson);
-  const nB = vs.filter(m => +m.budget > 0 || m.budgetSet).length, f = r && nB ? budgetFit({ low: r[0], high: r[1] }) : null;
+  const nB = vs.filter(m => +m.budget > 0 || m.budgetSet).length, f = r && nB ? (p.id && (S.trip.pitches?.items || []).some(x => x.id === p.id) ? bq({ pitch: p.id }) || NO_FIT : budgetFit({ low: r[0], high: r[1] })) : null;
   if (f && f.pending) out.push({ ok: 'meh', text: 'Checking budgets…' });
   else if (f && f.n) {
     const { over, stretch } = f;
@@ -53,7 +53,7 @@ function genPitches() {
   const prompt = `You're pitching ${size() === 'weekend' ? 'weekend getaways (1–2 nights, ideally a few hours’ drive or a short flight away)' : 'group trips'} to a friend group. They will each swipe yes or no on every pitch, like a dating app, so make each pitch exciting, specific and honest.
 Trip type: ${mode().label}. ${mode().ai}
 Crew: ${active().length} people ${size() === 'trip' ? 'flying' : 'coming'} from ${homes().join(', ') || 'unknown cities'}.
-Per-person budget cap (all-in, flights included): ${b ? money(b.cap) : 'not set, assume moderate'}.
+Per-person budget cap (all-in, flights included): ${b ? `${b.label}. That's the range the tightest budget in the crew falls in; keep every pitch at or under ${money(b.cap)}` : 'not set, assume moderate'}.
 Trip length: ${nightsSet(S.trip)} nights.
 ${blend() ? 'Crew vibe quiz:\n' + blendText() : 'Vibe: fun, social, nightlife'}
 Destinations already suggested by the crew: ${(S.trip.destinations || []).map(d => d.city).join(', ') || 'none'}
