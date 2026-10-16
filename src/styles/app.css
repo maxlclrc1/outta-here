@@ -759,11 +759,11 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 .theme-t:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 /* departure board rows */
 .board-h{font:800 13px var(--f-mono);letter-spacing:.16em;text-transform:uppercase;color:var(--board);display:flex;align-items:center;gap:8px}
-.board-row{display:grid;grid-template-columns:62px minmax(0,1fr) auto;align-items:center;gap:6px 14px;border-left:0;padding:12px 14px;position:relative}
-.board-row::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0;background:var(--pc)}
-.board-row .pr-date{flex:none;width:62px;height:auto;padding:6px 0;background:color-mix(in oklab,var(--ink) 6%,transparent);color:var(--ink);border-radius:10px;display:flex;flex-direction:column;align-items:center;gap:0}
-.board-row .pr-date span{font:600 10px var(--f-mono);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0}
-.board-row .pr-date b{font:900 26px var(--f-display);font-variation-settings:"wdth" 70;line-height:1.05}
+.dep-row{display:grid;grid-template-columns:62px minmax(0,1fr) auto;align-items:center;gap:6px 14px;border-left:0;padding:12px 14px;position:relative}
+.dep-row::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0;background:var(--pc)}
+.dep-row .pr-date{flex:none;width:62px;height:auto;padding:6px 0;background:color-mix(in oklab,var(--ink) 6%,transparent);color:var(--ink);border-radius:10px;display:flex;flex-direction:column;align-items:center;gap:0}
+.dep-row .pr-date span{font:600 10px var(--f-mono);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0}
+.dep-row .pr-date b{font:900 26px var(--f-display);font-variation-settings:"wdth" 70;line-height:1.05}
 .pr-mid{display:flex;flex-direction:column;gap:3px;min-width:0}
 .pr-kind{font:600 11px var(--f-mono);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pr-kind i{width:7px;height:7px;border-radius:2px;flex:none}
@@ -776,20 +776,20 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 .your-flag{font:800 10px var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent);display:flex;align-items:center;gap:5px}
 .your-flag::before{content:"";width:7px;height:7px;border-radius:99px;background:var(--accent);animation:blink 1.2s ease-in-out infinite}
 @keyframes blink{50%{opacity:.35}}
-.board-row .pr-acts{grid-column:2/-1;justify-content:flex-end;margin:0}
-.board-row .pr-copy{grid-column:1/-1}
-.board-row.needs-me{box-shadow:inset 0 0 0 1.5px color-mix(in oklab,var(--accent) 45%,transparent)}
+.dep-row .pr-acts{grid-column:2/-1;justify-content:flex-end;margin:0}
+.dep-row .pr-copy{grid-column:1/-1}
+.dep-row.needs-me{box-shadow:inset 0 0 0 1.5px color-mix(in oklab,var(--accent) 45%,transparent)}
 /* split-flap letters */
 .flap{font:800 17px/1.25 var(--f-mono);letter-spacing:.02em;text-transform:uppercase;display:flex;flex-wrap:wrap;gap:3px 7px}
 .flap .fw{display:inline-flex;gap:1.5px;white-space:nowrap}
 .flap i{font-style:normal;display:inline-block;min-width:.72em;text-align:center;padding:1px .5px;border-radius:3px;background:color-mix(in oklab,var(--ink) 9%,transparent);box-shadow:inset 0 -1px 0 color-mix(in oklab,var(--bg) 60%,transparent);animation:flip .5s cubic-bezier(.3,1.4,.6,1) calc(var(--i) * 28ms) both;transform-origin:50% 50%}
 @keyframes flip{0%{transform:rotateX(90deg);opacity:0}60%{transform:rotateX(-12deg);opacity:1}100%{transform:none}}
 @media (max-width:600px){
-  .board-row{grid-template-columns:54px minmax(0,1fr);grid-template-areas:"date status" "date mid" "acts acts";padding:12px;gap:4px 12px}
-  .board-row .pr-date{grid-area:date;width:54px;align-self:start}
-  .board-row .pr-status{grid-area:status;flex-direction:row;align-items:center;justify-content:flex-start;gap:8px}
-  .board-row .pr-mid{grid-area:mid}
-  .board-row .pr-acts{grid-area:acts;padding-top:6px}
+  .dep-row{grid-template-columns:54px minmax(0,1fr);grid-template-areas:"date status" "date mid" "acts acts";padding:12px;gap:4px 12px}
+  .dep-row .pr-date{grid-area:date;width:54px;align-self:start}
+  .dep-row .pr-status{grid-area:status;flex-direction:row;align-items:center;justify-content:flex-start;gap:8px}
+  .dep-row .pr-mid{grid-area:mid}
+  .dep-row .pr-acts{grid-area:acts;padding-top:6px}
   .flap{font-size:15px}
 }
 @media (prefers-reduced-motion:reduce){.flap i,.your-flag::before,.st-happening .board-st{animation:none}}

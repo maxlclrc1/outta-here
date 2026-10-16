@@ -3,6 +3,10 @@ app.addEventListener('click', e => {
   const t = e.target.closest('button,[data-open],[data-pin],[data-act]'); if (!t) return;
   const ds = t.dataset;
   if (ds.act === 'home') return goHome();
+  if (ds.act === 'remindOpen') { S.remindOpen = !S.remindOpen; return render(); }
+  if (ds.remind) { const p = remindPrefs(); p[ds.remind] = !p[ds.remind]; lsSet('outta_remind', p); return render(); }
+  if (ds.act === 'notifyAsk') { try { Notification.requestPermission().then(render); } catch {} return; }
+  if (ds.act === 'theme') { const day = document.documentElement.dataset.theme !== 'light'; document.documentElement.dataset.theme = day ? 'light' : 'dark'; try { localStorage.setItem('outta_theme', day ? 'light' : 'dark'); } catch {} return render(); }
   if (ds.act === 'demo') return openDemo();
   if (ds.open) return openTrip(ds.open);
   if (ds.homedel) { S.confirmHome = ds.homedel; return render(); }
@@ -64,9 +68,6 @@ app.addEventListener('click', e => {
   if (ds.act === 'recoverRemove') { const id = S.recoverItem; S.recover = null; S.recoverItem = null; flash('Dropped from the plan.'); return saveTrip({ itinerary: (S.trip.itinerary || []).filter(i => i.id !== id) }); }
   if (ds.swapin !== undefined) { const o = S.alts?.options?.[+ds.swapin]; if (o) swapItem(o.title); return; }
   if (ds.act === 'recoverDates') { S.recover = null; saveTrip({ lockedDates: null }); S.tab = 'dates'; render(); window.scrollTo({ top: 0 }); flash('Dates reopened. Everyone’s free days are still here.'); return; }
-  if (ds.act === 'remindOpen') { S.remindOpen = !S.remindOpen; return render(); }
-  if (ds.remind) { const p = remindPrefs(); p[ds.remind] = !p[ds.remind]; lsSet('outta_remind', p); return render(); }
-  if (ds.act === 'notifyAsk') { try { Notification.requestPermission().then(render); } catch {} return; }
   if (ds.act === 'linkReset') { saveTrip({ inviteKey: rid(6), invitesOff: false }); flash('New link made. Old invite links stop working for people who haven’t joined.'); return; }
   if (ds.act === 'linkToggle') { const off = !S.trip.invitesOff; saveTrip({ invitesOff: off }); flash(off ? 'Invites are off. Nobody new can join.' : 'Invites are back on.'); return; }
   if (ds.rmmember) { S.confirmRm = ds.rmmember; return render(); }
@@ -76,7 +77,6 @@ app.addEventListener('click', e => {
   if (ds.act === 'passportImg') return makePassportImg();
   if (ds.nightvote) { const cur = (S.trip.nightVotes || {})[S.uid]; return saveTrip({ nightVotes: { [S.uid]: cur === ds.nightvote ? null : ds.nightvote } }); }
   if (ds.act === 'nextPlan') return S.trip.crewId ? startNewPlan(S.trip.crewId) : (goHome(), startNewPlan());
-  if (ds.act === 'theme') { const day = document.documentElement.dataset.theme !== 'light'; document.documentElement.dataset.theme = day ? 'light' : 'dark'; try { localStorage.setItem('outta_theme', day ? 'light' : 'dark'); } catch {} return render(); }
   if (ds.act === 'wiAdd') { S.whatif = [...(S.whatif || [{}]), {}]; return render(); }
   if (ds.wirm !== undefined) { const l = (S.whatif || [{}]).filter((_, j) => j !== +ds.wirm); S.whatif = l.length ? l : [{}]; return render(); }
   if (ds.wiapply !== undefined) return whatifApply(+ds.wiapply);

@@ -35,7 +35,8 @@ function inbox() {
     else if (prefs.decision && p.k === 'decide' && (t.createdBy === S.uid || (t.orgs || {})[S.uid])) out.push({ k: 'decision', t, text: p.text, w: 2 });
     if (prefs.deadline && t.rsvpBy && t.rsvpBy >= TODAY && t.rsvpBy <= add(TODAY, 2) && (p.und || []).includes(S.uid)) out.push({ k: 'deadline', t, text: `Answer by ${t.rsvpBy === TODAY ? 'today' : fmt(t.rsvpBy)}`, w: 4 });
     if (prefs.soon && d && d.start === add(TODAY, 1)) out.push({ k: 'soon', t, text: `Tomorrow${t.time ? ' at ' + t12(t.time) : ''}`, w: 1 });
-    if (prefs.change) for (const c of changesOf(t)) out.push({ k: 'change', t, text: c, w: 0 });
+    const ch = prefs.change ? changesOf(t) : [];
+    if (ch.length) out.push({ k: 'change', t, text: ch.length === 1 ? ch[0] : `${ch[0]} · ${ch.length - 1} more change${ch.length === 2 ? '' : 's'}`, w: 0 });
   }
   return out.sort((a, b) => b.w - a.w);
 }

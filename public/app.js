@@ -4,6 +4,8 @@
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const app = $('#app');
+// Night (the club look) unless someone picked day mode.
+try { document.documentElement.dataset.theme = localStorage.getItem('outta_theme') === 'light' ? 'light' : 'dark'; } catch { document.documentElement.dataset.theme = 'dark'; }
 
 /* ---------- dates ---------- */
 const D = s => new Date(s + 'T00:00:00Z');
@@ -467,8 +469,9 @@ function paint() {
 }
 
 function topBar() {
+  const day = document.documentElement.dataset.theme === 'light';
   return `<div class="top"><button class="logo" data-act="home">Outta<span>/</span>Here</button>
-    ${S.tid ? `<span class="label">Code <span class="mono">${esc(S.demo ? 'DEMO' : S.tid)}</span></span>` : ''}</div>`;
+    <div class="row" style="gap:10px;flex-wrap:nowrap">${S.tid ? `<span class="label">Code <span class="mono">${esc(S.demo ? 'DEMO' : S.tid)}</span></span>` : ''}<button class="theme-t" data-act="theme" aria-label="${day ? 'Switch to night mode' : 'Switch to day mode'}" title="${day ? 'Night mode' : 'Day mode'}">${day ? '☾' : '☀'}</button></div></div>`;
 }
 
 function pass() {
@@ -1506,7 +1509,7 @@ function overviewTab() {
       <div class="row" style="gap:8px"><button class="btn" data-tab="live">Open today</button><button class="btn ghost-light" data-tab="map">Map</button><button class="btn lost-btn" data-act="lostOpen">I’m lost</button></div></section>`
   : over ? `<section class="hero-card" style="--hc:#7048E8"><span class="label" style="color:inherit">That’s a wrap</span><h2>${isSmall() ? 'Your recap is ready' : `Your ${esc(dest()?.city || 'trip')} Wrapped is ready`}</h2><div><button class="btn" data-tab="wrapped">Watch it</button></div></section>`
   : showWelcome() ? '' : moveCard()}
-  ${pass()}
+  ${STAGES.findIndex(([k]) => k === stageOf(S.trip, S.members)) >= 2 ? passport() : pass()}
   ${showWelcome() ? '' : stageTrack()}
   ${showWelcome() ? '' : recoveryCard()}
   ${isSmall() ? '' : `<section class="grid2">${size() === 'trip' ? `
@@ -1653,10 +1656,11 @@ function syncPulse() {
   if (!S.trip || S.demo || !S.db || !S.membersIn || S.readOnly) return;
   const b = blockers(), st = stageOf(S.trip, S.members);
   const pulse = { stage: st, k: b?.k || '', text: b ? b.group : (st === 'confirmed' ? 'All set' : ''), mine: b?.mine || '', who: (b?.who || []).map(m => m.id), und: undecided().map(m => m.id) };
-  const old = S.trip.pulse || {};
-  if (old.stage === pulse.stage && old.k === pulse.k && old.text === pulse.text && old.mine === pulse.mine && (old.who || []).join() === pulse.who.join() && (old.und || []).join() === pulse.und.join()) return;
+  const old = S.trip.pulse || {}, miles = syncMilestones();
+  const same = old.stage === pulse.stage && old.k === pulse.k && old.text === pulse.text && old.mine === pulse.mine && (old.who || []).join() === pulse.who.join() && (old.und || []).join() === pulse.und.join();
+  if (same && !miles) return;
   clearTimeout(pulseT); const tid = S.tid;
-  pulseT = setTimeout(() => { if (S.tid === tid) S.db.doc('trips/' + tid).update({ pulse: { ...pulse, at: Date.now() } }).catch(() => {}); }, 1200);
+  pulseT = setTimeout(() => { if (S.tid === tid) S.db.doc('trips/' + tid).update({ ...(same ? {} : { pulse: { ...pulse, at: Date.now() } }), ...(miles ? { miles } : {}) }).catch(() => {}); }, 1200);
 }
 function stagePill(t, ms) {
   const st = stageOf(t, ms);
@@ -2469,7 +2473,7 @@ function potTab() {
 /* ---------- memories ---------- */
 function awardsTab() {
   const rs = superResults(), d = dates(), over = d && TODAY > d.end;
-  return `<section class="card stack">
+  return `${nightVoteCard()}<section class="card stack">
     <div class="row" style="justify-content:space-between"><div class="stack" style="gap:2px"><h2>${isSmall() ? 'Awards' : 'Trip awards'}</h2><span class="small muted">${over ? `The ${planWord()}’s over. Time to vote.` : `Voting is for after the ${planWord()}, but you can start now.`}</span></div>
       <button class="btn sm" data-act="awardsCard">Make awards card</button></div>
     ${S.img?.kind === 'awards' ? imgPanel() : ''}
@@ -2506,23 +2510,26 @@ function wrapData() {
   const hs = {}; for (const day of Object.values(S.trip.hangover || {})) for (const [id, v] of Object.entries(day)) (hs[id] ||= []).push(v);
   const wrecked = Object.entries(hs).map(([id, v]) => [id, v.reduce((a, b) => a + b, 0) / v.length]).sort((a, b) => b[1] - a[1])[0];
   const awards = superResults().filter(r => r.winners.length).slice(0, 4);
-  return { d, ds, ms, total, topSpot: spots[0]?.s, owl: owl && owl.n ? owl : null, photo: photo?.p, champ, hyper, wrecked, awards, over: d && TODAY > d.end, b: blend() };
+  return { night: d ? bestNight() : null, d, ds, ms, total, topSpot: spots[0]?.s, owl: owl && owl.n ? owl : null, photo: photo?.p, champ, hyper, wrecked, awards, over: d && TODAY > d.end, b: blend() };
 }
 function wrappedTab() {
   const w = wrapData(); if (!w.d || !w.ds) return needDestDates(isSmall() ? 'The recap' : 'Your Trip Wrapped');
   const nights = nightsOf(w.d);
   const slides = [
     { c: ['#D41C78', '#7048E8'], k: `${w.over ? '' : 'So far · '}${esc(S.trip.name)}`, h: `Your ${esc(w.ds.city)} Wrapped`, s: `${nights ? nights + ' night' + (nights === 1 ? '' : 's') + ' · ' : ''}${w.ms.length} ${w.ms.length === 1 ? 'person' : 'people'} · ${dayRange(w.d.start, w.d.end)}` },
-    { c: ['#0E9F6E', '#1098AD'], k: 'The damage', h: money(w.total), s: w.total ? `spent as a group. That’s about ${money(w.total / Math.max(1, w.ms.length))} each.` : 'No group spending logged. Suspicious.' },
-    w.topSpot && { c: ['#7048E8', '#3B5BDB'], k: 'Crew favorite spot', h: esc(w.topSpot.name), s: esc(w.topSpot.area || w.topSpot.type || '') },
-    w.owl && { c: ['#151A33', '#3A0B2C'], k: 'Night owl', h: esc(w.owl.m.nick || 'Someone'), s: `${w.owl.n} check-in${w.owl.n === 1 ? '' : 's'} between midnight and 6am.` },
-    w.photo && { c: ['#F08C00', '#D41C78'], k: `Photo of the ${isSmall() ? 'night' : 'trip'}`, h: '', img: w.photo.asset, s: `by ${esc(nameOf(w.photo.by))}` },
-    w.champ && { c: ['#F2B32B', '#E8590C'], k: 'Bucket list champion', h: esc(nameOf(w.champ[0])), s: `${w.champ[1]} points of chaos` },
-    w.wrecked && { c: ['#5C6A7A', '#151A33'], k: 'Most wrecked', h: esc(nameOf(w.wrecked[0])), s: `average hangover score ${w.wrecked[1].toFixed(1)}/5` },
-    w.hyper && { c: ['#E64980', '#7048E8'], k: 'Hype machine', h: esc(nameOf(w.hyper[0])), s: `${w.hyper[1]} messages in the hype feed` },
-    w.awards.length && { c: ['#FFC94D', '#E8590C'], k: 'The awards', h: '', list: w.awards.map(r => [r.c, r.winners.map(nameOf).join(' & ')]) },
-    songOfPlan()?.song && { c: ['#12B5A6', '#7048E8'], k: `Song of the ${isSmall() ? 'night' : 'trip'}`, h: esc(songOfPlan().song.title), s: `${esc(songOfPlan().song.artist || '')}${songOfPlan().song.artist ? ' · ' : ''}${songOfPlan().n} vote${songOfPlan().n === 1 ? '' : 's'}` },
-    w.b && { c: ['#D41C78', '#151A33'], k: 'You were', h: esc(w.b.persona), s: 'Same time next year?' },
+    { c: ['#0E9F6E', '#1098AD'], k: 'The damage', h: money(w.total), s: w.total ? `spent as a group. That’s about ${money(w.total / Math.max(1, w.ms.length))} each.` : 'No group spending logged. Suspicious.', src: `From ${S.expenses.length} logged expense${S.expenses.length === 1 ? '' : 's'}${S.pot.some(p => p.kind === 'out') ? ' and the group pot' : ''}` },
+    w.night && { c: ['#151A33', '#7048E8'], k: 'Best night', h: esc(fmt(w.night.day, { weekday: 'long' })), s: esc([fmt(w.night.day, { month: 'long', day: 'numeric' }), w.night.st?.checkins && `${w.night.st.checkins} check-ins`, w.night.st?.posts && `${w.night.st.posts} posts`, w.night.st?.photos && `${w.night.st.photos} photos`].filter(Boolean).join(' · ')), src: esc(w.night.why) },
+    w.topSpot && { c: ['#7048E8', '#3B5BDB'], k: 'Crew favorite spot', h: esc(w.topSpot.name), s: esc(w.topSpot.area || w.topSpot.type || ''), src: 'From the crew’s votes on the spot picks' },
+    w.owl && { c: ['#151A33', '#3A0B2C'], k: 'Night owl', h: esc(w.owl.m.nick || 'Someone'), s: `${w.owl.n} check-in${w.owl.n === 1 ? '' : 's'} between midnight and 6am.`, src: 'From everyone’s check-ins' },
+    w.photo && { c: ['#F08C00', '#D41C78'], k: `Photo of the ${isSmall() ? 'night' : 'trip'}`, h: '', img: w.photo.asset, s: `by ${esc(nameOf(w.photo.by))}`, src: 'Most upvoted in the album' },
+    S.photos.length > 1 && { c: ['#3B5BDB', '#151A33'], k: 'The album', h: '', imgs: S.photos.filter(p => p.asset && p !== w.photo).slice(0, 4).map(p => p.asset), s: `${S.photos.length} photos from ${new Set(S.photos.map(p => p.by)).size} people`, src: 'From the shared album' },
+    w.champ && { c: ['#F2B32B', '#E8590C'], k: 'Bucket list champion', h: esc(nameOf(w.champ[0])), s: `${w.champ[1]} points of chaos`, src: 'From the bucket list' },
+    w.wrecked && { c: ['#5C6A7A', '#151A33'], k: 'Most wrecked', h: esc(nameOf(w.wrecked[0])), s: `average hangover score ${w.wrecked[1].toFixed(1)}/5`, src: 'From the morning hangover check-ins' },
+    w.hyper && { c: ['#E64980', '#7048E8'], k: 'Hype machine', h: esc(nameOf(w.hyper[0])), s: `${w.hyper[1]} messages in the hype feed`, src: 'From the hype feed' },
+    w.awards.length && { c: ['#FFC94D', '#E8590C'], k: 'The awards', h: '', list: w.awards.map(r => [r.c, r.winners.map(nameOf).join(' & ')]), src: 'Voted by the crew' },
+    songOfPlan()?.song && { c: ['#12B5A6', '#7048E8'], k: `Song of the ${isSmall() ? 'night' : 'trip'}`, h: esc(songOfPlan().song.title), s: `${esc(songOfPlan().song.artist || '')}${songOfPlan().song.artist ? ' · ' : ''}${songOfPlan().n} vote${songOfPlan().n === 1 ? '' : 's'}`, src: 'Voted on the crew playlist' },
+    w.b && { c: ['#D41C78', '#151A33'], k: 'You were', h: esc(w.b.persona), s: 'Same time next year?', src: 'From everyone’s vibe quiz answers' },
+    { c: ['#0C0F21', '#3A0B2C'], k: w.over ? 'That’s a wrap' : 'So far', h: esc(S.trip.name), s: [`${span(w.d.start, w.d.end).length} day${span(w.d.start, w.d.end).length === 1 ? '' : 's'}`, `${w.ms.length} ${w.ms.length === 1 ? 'person' : 'people'}`, S.photos.length && `${S.photos.length} photos`, S.songs?.length && `${S.songs.length} songs`, S.feed.length && `${S.feed.filter(f => f.by !== 'ai').length} posts`].filter(Boolean).join(' · '), end: true },
   ].filter(Boolean);
   const i = Math.min(S.wrapI || 0, slides.length - 1), sl = slides[i];
   return `<section class="stack" style="align-items:center">
@@ -2532,7 +2539,10 @@ function wrappedTab() {
       ${sl.img ? `<img src="/_blob/${esc(sl.img)}" alt="Top photo" class="wimg">` : ''}
       ${sl.h ? `<h1>${sl.h}</h1>` : ''}
       ${sl.list ? `<div class="stack" style="gap:10px">${sl.list.map(([c, n]) => `<div><span class="label" style="color:rgba(255,255,255,.75)">${esc(c)}</span><div class="wname">${esc(n)}</div></div>`).join('')}</div>` : ''}
+      ${sl.imgs && sl.imgs.length ? `<div class="wgrid">${sl.imgs.map(a => `<img src="/_blob/${esc(a)}" alt="">`).join('')}</div>` : ''}
       ${sl.s ? `<p>${sl.s}</p>` : ''}
+      ${sl.src ? `<span class="wsrc">${sl.src}</span>` : ''}
+      ${sl.end && !S.demo ? `<div style="position:relative;z-index:2"><button class="btn" data-act="nextPlan">Plan the next one</button></div>` : ''}
       <button class="wnav left" data-act="wrapPrev" aria-label="Previous slide"></button><button class="wnav right" data-act="wrapNext" aria-label="Next slide"></button>
     </div>
     <div class="row" style="gap:8px;justify-content:center"><button class="btn sm" data-act="wrapPrev" ${i === 0 ? 'disabled' : ''}>‹ Back</button><span class="small muted mono">${i + 1}/${slides.length}</span><button class="btn sm primary" data-act="wrapNext" ${i === slides.length - 1 ? 'disabled' : ''}>Next ›</button></div>
@@ -2576,6 +2586,115 @@ function liveQuick() {
   </section>`;
 }
 function jumpTo(sel) { const el = $(sel); if (!el) return; el.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); setTimeout(() => el.focus({ preventScroll: true }), 300); }
+
+/* ---------- plan passport ---------- */
+// Once a plan is decided, its pass becomes a ticket: destination, dates, crew, status and
+// countdown, with a stamp for each milestone the crew actually hits.
+const MILESTONES = [['decided', 'Decided'], ['everyone', 'Everyone confirmed'], ['booked', 'Booked'], ['planned', 'Plan set'], ['happening', 'Happening'], ['memories', 'Memories']];
+function milestonesNow() {
+  const t = S.trip, sz = size(), ms = S.members.filter(m => m.status !== 'out'), d = t.lockedDates, st = stageOf(t, S.members);
+  const goers = ms.filter(going);
+  return {
+    decided: !!(t.lockedDest && d),
+    everyone: goers.length >= 2 && ms.every(m => ['confirmed', 'booked'].includes(m.status)),
+    booked: sz === 'trip' ? tickets().on : sz === 'weekend' ? !!t.stay : !!(t.lockedDest && d) && taskList().filter(x => /book|ticket|table|reserv/i.test(x.title)).every(x => x.done),
+    planned: (t.itinerary || []).length > 0 && taskList().every(x => x.done),
+    happening: st === 'happening' || st === 'memories',
+    memories: st === 'memories',
+  };
+}
+// Milestone dates are written once, the first time each one is reached.
+function syncMilestones() {
+  if (!S.trip || S.demo || !S.db || !S.membersIn || S.readOnly) return null;
+  const now = milestonesNow(), have = S.trip.miles || {}, patch = {};
+  for (const [k] of MILESTONES) { if (now[k] && !have[k]) patch[k] = Date.now(); if (!now[k] && have[k]) patch[k] = null; }
+  return Object.keys(patch).length ? patch : null;
+}
+function passport() {
+  const t = S.trip, ds = dest(), d = dates(), sz = SIZES[size()], cd = countdown(), st = stageOf(t, S.members), now = milestonesNow(), miles = t.miles || {};
+  const goers = S.members.filter(going), small = isSmall();
+  const code = ds ? (ds.code ? ds.code.toUpperCase() : ds.city.toUpperCase().slice(0, 14)) : '—';
+  const big = st === 'memories' ? 'DONE' : st === 'happening' ? 'NOW' : cd ? String(cd.n ?? 0) : '—';
+  return `<section class="passport" style="--pc:${sz.color}">
+    <div class="pp-band"><span>OUTTA/HERE · PLAN PASSPORT</span><span class="mono">${esc(S.tid || 'DEMO').toUpperCase()}</span></div>
+    <div class="pp-body">
+      <div class="pp-main">
+        <span class="pp-k">${esc(t.name)}</span>
+        <div class="pp-code">${esc(code)}</div>
+        ${ds && ds.code ? `<span class="pp-city">${esc(ds.city)}</span>` : ''}
+        <div class="pp-facts">
+          <div><span>${small ? 'When' : 'Dates'}</span><b>${d ? (small ? fmt(d.start) : `${short(d.start)} – ${short(d.end)}`) : 'TBD'}</b></div>
+          <div><span>${small ? 'Time' : 'Nights'}</span><b>${small ? (t.time ? t12(t.time) : 'TBD') : nightsOf(d)}</b></div>
+          <div><span>Crew</span><b>${goers.length}</b></div>
+        </div>
+        <div class="avs">${goers.slice(0, 10).map(m => `<span class="av-sm" title="${esc(m.nick || 'Someone')}" style="background:${colorFor(m.id)}">${esc((m.nick || '?')[0].toUpperCase())}</span>`).join('')}</div>
+      </div>
+      <div class="pp-count"><b>${big}</b><span>${st === 'memories' ? 'that’s a wrap' : st === 'happening' ? 'happening' : cd && cd.n === 0 ? 'today' : cd && cd.n === 1 ? 'day to go' : 'days to go'}</span><span class="stage-pill s-${st}">${STAGE_LABEL[st]}</span></div>
+    </div>
+    <div class="pp-stamps">${MILESTONES.map(([k, l], i) => `<div class="pp-stamp ${now[k] ? 'on' : ''}" style="--r:${[-8, 5, -4, 7, -6, 4][i]}deg"><b>${l}</b>${now[k] && miles[k] ? `<span>${short(iso(new Date(miles[k])))}</span>` : ''}</div>`).join('')}</div>
+    <div class="pp-act"><button class="btn sm" data-act="passportImg">Share passport</button>${S.img?.kind === 'passport' ? '' : ''}</div>
+    ${S.img?.kind === 'passport' ? imgPanel() : ''}
+  </section>`;
+}
+async function makePassportImg() {
+  const t = S.trip, ds = dest(), d = dates(), st = stageOf(t, S.members), now = milestonesNow(), goers = S.members.filter(going), cd = countdown();
+  try { await Promise.all(['900 120px Anybody', '700 40px Figtree', '600 30px "JetBrains Mono"'].map(f => document.fonts.load(f))); } catch {}
+  const W = 1080, H = 1350, c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d');
+  const pc = SIZES[size()].color;
+  x.fillStyle = '#0C0F21'; x.fillRect(0, 0, W, H);
+  x.fillStyle = '#F7F3EA'; x.beginPath(); x.roundRect(60, 60, W - 120, H - 120, 40); x.fill();
+  x.fillStyle = pc; x.beginPath(); x.roundRect(60, 60, W - 120, 120, [40, 40, 0, 0]); x.fill();
+  x.fillStyle = '#fff'; x.font = CF(600, 30, 'mono'); x.fillText('OUTTA/HERE · PLAN PASSPORT', 110, 132);
+  x.fillStyle = '#151A33'; cfit(x, t.name.toUpperCase(), W - 240, 34, 600, 'mono'); x.fillText(t.name.toUpperCase(), 110, 260);
+  const code = ds ? (ds.code ? ds.code.toUpperCase() : ds.city.toUpperCase()) : 'TBD';
+  x.fillStyle = pc; cfit(x, code, W - 240, 230, 900); x.fillText(code, 110, 480);
+  if (ds && ds.code) { x.fillStyle = '#151A33'; cfit(x, ds.city, W - 240, 52, 700, 'body'); x.fillText(ds.city, 110, 550); }
+  const facts = [[isSmall() ? 'WHEN' : 'DATES', d ? (isSmall() ? fmt(d.start) : `${short(d.start)} – ${short(d.end)}`) : 'TBD'], ['CREW', String(goers.length)], ['STATUS', STAGE_LABEL[st].toUpperCase()]];
+  facts.forEach(([k, v], i) => { const fx = 110 + i * 300; x.fillStyle = '#6B7194'; x.font = CF(600, 26, 'mono'); x.fillText(k, fx, 650); x.fillStyle = '#151A33'; cfit(x, v, 280, 40, 700, 'body'); x.fillText(v, fx, 700); });
+  x.fillStyle = '#151A33'; cfit(x, goers.map(m => m.nick || 'Someone').join(' · '), W - 240, 34, 600, 'body'); x.fillText(goers.map(m => m.nick || 'Someone').join(' · '), 110, 790);
+  x.strokeStyle = '#D5D8E6'; x.lineWidth = 4; x.setLineDash([16, 14]); x.beginPath(); x.moveTo(110, 850); x.lineTo(W - 110, 850); x.stroke(); x.setLineDash([]);
+  MILESTONES.forEach(([k, l], i) => {
+    const cx = 200 + (i % 3) * 340, cy = 960 + Math.floor(i / 3) * 190, on = now[k];
+    x.save(); x.translate(cx, cy); x.rotate(([-8, 5, -4, 7, -6, 4][i]) * Math.PI / 180);
+    x.strokeStyle = on ? pc : '#D5D8E6'; x.lineWidth = 6; x.beginPath(); x.roundRect(-140, -55, 280, 110, 18); x.stroke();
+    x.fillStyle = on ? pc : '#B8BCCD'; x.textAlign = 'center'; cfit(x, l.toUpperCase(), 250, 30, 900); x.fillText(l.toUpperCase(), 0, 12); x.restore(); x.textAlign = 'left';
+  });
+  if (cd && st !== 'memories' && st !== 'happening') { x.fillStyle = '#fff'; x.font = CF(600, 30, 'mono'); x.fillText(`${cd.n} DAYS TO GO`, 110, H - 20); }
+  setImg('passport', c, slug(t.name) + '-passport.png');
+}
+
+/* ---------- the aftermath ---------- */
+// The best night is what the crew voted for; if nobody voted, it's the day with the
+// most going on (check-ins, posts and photos). Every number says where it came from.
+const localDay = at => { const d = new Date(at); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+function nightStats() {
+  const d = dates(); if (!d) return [];
+  return span(d.start, d.end).map(day => {
+    const checkins = S.members.reduce((n, m) => n + (m.checkins || []).filter(c => localDay(c.at) === day || (localDay(c.at) === add(day, 1) && new Date(c.at).getHours() < 6)).length, 0);
+    const posts = S.feed.filter(f => f.by !== 'ai' && f.at && localDay(f.at) === day).length;
+    const photos = S.photos.filter(p => p.at && localDay(p.at) === day).length;
+    const hang = Object.values((S.trip.hangover || {})[add(day, 1)] || {}), hangAvg = hang.length ? hang.reduce((a, b) => a + b, 0) / hang.length : 0;
+    return { day, checkins, posts, photos, hangAvg, score: checkins + posts + photos * 2 + hangAvg * 2 };
+  });
+}
+function bestNight() {
+  const votes = Object.values(S.trip.nightVotes || {}).filter(Boolean), stats = nightStats();
+  if (votes.length) {
+    const c = {}; for (const v of votes) c[v] = (c[v] || 0) + 1;
+    const [day, n] = Object.entries(c).sort((a, b) => b[1] - a[1])[0];
+    return { day, why: `Voted by ${n} of ${active().length}`, st: stats.find(s => s.day === day) };
+  }
+  const top = [...stats].sort((a, b) => b.score - a.score)[0];
+  if (!top || !top.score) return null;
+  return { day: top.day, why: 'The busiest day by check-ins, posts and photos', st: top };
+}
+function nightVoteCard() {
+  const d = dates(); if (!d || isSmall()) return '';
+  const mine = (S.trip.nightVotes || {})[S.uid], days = span(d.start, d.end), c = {};
+  for (const v of Object.values(S.trip.nightVotes || {})) if (v) c[v] = (c[v] || 0) + 1;
+  return `<section class="card stack"><div class="row" style="justify-content:space-between"><h3>Best night</h3><span class="small muted">Goes in the Wrapped</span></div>
+    <div class="row" style="gap:6px">${days.map(day => `<button class="chip ${mine === day ? 'on' : ''}" data-nightvote="${day}">${fmt(day, { weekday: 'short', month: 'short', day: 'numeric' })}${c[day] ? ` · ${c[day]}` : ''}</button>`).join('')}</div></section>`;
+}
 
 /* ---------- invites ---------- */
 const SHARE_BASE = window.OUTTA_SHARE_BASE || (location.origin + '/');
@@ -2782,16 +2901,22 @@ function planStatus(t) {
   if (t.lockedDates) return isSmall(t) ? 'Picking the plan' : 'Picking where';
   return isSmall(t) ? 'Picking the plan and the day' : 'Picking where and when';
 }
+// Split-flap letters, one tile per character, flipping in left to right.
+const flap = text => String(text || '').split(' ').map((w, wi, all) => `<span class="fw">${[...w].map((ch, k) => `<i style="--i:${Math.min(24, all.slice(0, wi).join(' ').length + wi + k)}">${esc(ch)}</i>`).join('')}</span>`).join(' ');
+const BOARD = { draft: 'Standby', gathering: 'Voting', decided: 'Scheduled', organizing: 'Check-in', confirmed: 'On time', happening: 'Now', memories: 'Landed' };
 function planRow(t, opts = {}) {
   const sz = SIZES[sizeOf(t)], crew = S.crews.find(c => c.id === t.crewId), name = (t.destinations || []).find(d => d.id === t.lockedDest)?.city;
-  const daysTo = t.lockedDates ? Math.round((D(t.lockedDates.start) - D(TODAY)) / 864e5) : null;
-  return `<div class="card plan-row" style="--pc:${sz.color}">
-    <div class="pr-date">${t.lockedDates ? `<b>${D(t.lockedDates.start).getUTCDate()}</b><span>${fmt(t.lockedDates.start, { month: 'short' })}</span>` : '<b>?</b><span>TBD</span>'}</div>
-    <div class="stack" style="gap:2px;min-width:0;flex:1">
-      <div class="row pr-top"><span class="label" style="color:var(--pc)">${esc(sz.label)}${crew && !opts.noCrew ? ' · ' + esc(crew.name) : ''}</span>${stagePill(t)}</div>
-      <h3>${esc(t.name)}</h3>
-      <span class="small muted">${t.lockedDates ? esc(planWhen(t)) + (name && name !== t.name ? ' · ' + esc(name) : '') : moveLine(t)}${daysTo !== null && daysTo >= 0 ? ` · <b style="color:var(--pc)">${daysTo === 0 ? 'Today' : daysTo === 1 ? 'Tomorrow' : 'in ' + daysTo + ' days'}</b>` : ''}</span>
+  const daysTo = t.lockedDates ? Math.round((D(t.lockedDates.start) - D(TODAY)) / 864e5) : null, st = stageOf(t), p = t.pulse || {};
+  const mine = (p.who || []).includes(S.uid) && p.mine && st !== 'memories';
+  const d = t.lockedDates, n = Object.values(t.people || {}).filter(Boolean).length;
+  return `<div class="card plan-row dep-row st-${st} ${mine ? 'needs-me' : ''}" style="--pc:${sz.color}">
+    <div class="pr-date">${d ? `<span>${fmt(d.start, { month: 'short' })}</span><b>${D(d.start).getUTCDate()}</b><span>${t.time ? t12(t.time) : fmt(d.start, { weekday: 'short' })}</span>` : '<span>Date</span><b>TBD</b><span>&nbsp;</span>'}</div>
+    <div class="pr-mid">
+      <span class="pr-kind"><i style="background:var(--pc)"></i>${esc(sz.label)}${crew && !opts.noCrew ? ' · ' + esc(crew.name) : ''}${n ? ` · ${n} in` : ''}</span>
+      <h3><span class="sr-only">${esc(t.name)}</span><span class="flap" aria-hidden="true">${flap(t.name)}</span></h3>
+      <span class="small muted pr-line">${t.lockedDates ? (name && name !== t.name ? '→ ' + esc(name) + ' · ' : '') + moveLine(t) : moveLine(t)}${daysTo !== null && daysTo > 0 && daysTo <= 30 ? ` · <b style="color:var(--pc)">${daysTo === 1 ? 'Tomorrow' : 'in ' + daysTo + ' days'}</b>` : ''}</span>
     </div>
+    <div class="pr-status"><span class="board-st">${BOARD[st]}</span>${mine ? '<span class="your-flag">Your move</span>' : ''}</div>
     <div class="pr-acts">${S.confirmHome === t.id
       ? `<span class="small pr-ask">Delete for everyone?</span><button class="btn sm ghost" data-act="homeCancel">Cancel</button><button class="btn sm danger-fill" data-homedo="${esc(t.id)}">Delete</button>`
       : `${canDelete(t) ? `<button class="btn sm ghost icon pr-del" data-homedel="${esc(t.id)}" aria-label="Delete ${esc(t.name)}" title="Delete"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg></button>` : ''}<button class="btn sm" data-share="${esc(t.id)}" aria-label="Share ${esc(t.name)}">Share</button><button class="btn sm primary" data-open="${esc(t.id)}">Open</button>`}</div>
@@ -2825,13 +2950,13 @@ function homeView() {
   ${inboxCard()}
   <div class="home-bar"><span class="small muted">${[live.length && live.length + ' happening now', upcoming.length && upcoming.length + ' coming up', deciding.length && deciding.length + ' deciding'].filter(Boolean).join(' · ') || 'No plans yet'}</span>${viewSwitch()}</div>
   ${homeMode === 'cal' ? calView(plans, deciding) : `
-  ${live.length ? `<section class="stack"><h2><i class="live-dot" aria-hidden="true"></i> Happening now</h2>${live.map(t => planRow(t)).join('')}</section>` : ''}
-  <section class="stack"><div class="row" style="justify-content:space-between"><h2>Coming up</h2><span class="small muted">${upcoming.length} locked in</span></div>
+  ${live.length ? `<section class="stack"><h2 class="board-h"><i class="live-dot" aria-hidden="true"></i> Happening now</h2>${live.map(t => planRow(t)).join('')}</section>` : ''}
+  <section class="stack"><div class="row" style="justify-content:space-between"><h2 class="board-h">Departures</h2><span class="small muted mono">${upcoming.length} locked in · <span data-clock>${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span></span></div>
     ${upcoming.length ? upcoming.map(t => planRow(t)).join('') : `<div class="empty"><span>Nothing locked yet. When a plan has a place and a day, it shows up here like a calendar.</span></div>`}</section>
-  ${deciding.length ? `<section class="stack"><h2>Still deciding</h2>${deciding.map(t => planRow(t, { del: true })).join('')}</section>` : ''}`}
+  ${deciding.length ? `<section class="stack"><div class="row" style="justify-content:space-between"><h2 class="board-h">On standby</h2><span class="small muted">Still deciding</span></div>${deciding.map(t => planRow(t, { del: true })).join('')}</section>` : ''}`}
   <section class="stack"><div class="row" style="justify-content:space-between"><h2>Your crews</h2><button class="btn sm" data-act="newCrew">New crew</button></div>
     ${crews.length ? `<div class="crew-grid">${crews.map(c => crewCard(c, plans)).join('')}</div>` : `<div class="empty"><span>Crews are the groups you make plans with. Make one, share its invite link, and every plan after that starts with everyone already in.</span><button class="btn sm primary" data-act="newCrew">Make a crew</button></div>`}</section>
-  ${past.length && homeMode !== 'cal' ? `<details class="card past"><summary><b>Past plans</b> <span class="small muted">${past.length}</span></summary><div class="stack" style="margin-top:10px">${past.map(t => planRow(t, { del: true })).join('')}</div></details>` : ''}`}`;
+  ${past.length && homeMode !== 'cal' ? `<details class="card past"><summary><b>Landed</b> <span class="small muted">Past plans ·</span> <span class="small muted">${past.length}</span></summary><div class="stack" style="margin-top:10px">${past.map(t => planRow(t, { del: true })).join('')}</div></details>` : ''}`}`;
 }
 /* ---------- home: calendar view ---------- */
 const ICON_LIST = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>';
@@ -2914,7 +3039,7 @@ function crewPage(cid) {
     <p class="small muted">${IN_CLAUDE ? 'First share this page with them (Share menu, as an Editor). Then send this link.' : 'Send this link. They type their name and join the crew.'}</p>
     <span class="invite-link mono">${esc(crewLink(cid))}</span>
     <div><button class="btn primary" data-act="copyCrewInvite" data-cid="${esc(cid)}">Send invite</button></div></section>
-  ${past.length ? `<details class="card past"><summary><b>Past plans</b> <span class="small muted">${past.length}</span></summary><div class="stack" style="margin-top:10px">${past.map(t => planRow(t, { noCrew: true })).join('')}</div></details>` : ''}
+  ${past.length ? `<details class="card past"><summary><b>Landed</b> <span class="small muted">Past plans ·</span> <span class="small muted">${past.length}</span></summary><div class="stack" style="margin-top:10px">${past.map(t => planRow(t, { noCrew: true })).join('')}</div></details>` : ''}
   ${c.by === S.uid || S.isOwner ? `<div><button class="btn sm ghost danger" data-delcrew="${esc(cid)}">Delete crew</button></div>` : ''}`;
 }
 async function createCrew(name) {
@@ -3048,7 +3173,8 @@ function inbox() {
     else if (prefs.decision && p.k === 'decide' && (t.createdBy === S.uid || (t.orgs || {})[S.uid])) out.push({ k: 'decision', t, text: p.text, w: 2 });
     if (prefs.deadline && t.rsvpBy && t.rsvpBy >= TODAY && t.rsvpBy <= add(TODAY, 2) && (p.und || []).includes(S.uid)) out.push({ k: 'deadline', t, text: `Answer by ${t.rsvpBy === TODAY ? 'today' : fmt(t.rsvpBy)}`, w: 4 });
     if (prefs.soon && d && d.start === add(TODAY, 1)) out.push({ k: 'soon', t, text: `Tomorrow${t.time ? ' at ' + t12(t.time) : ''}`, w: 1 });
-    if (prefs.change) for (const c of changesOf(t)) out.push({ k: 'change', t, text: c, w: 0 });
+    const ch = prefs.change ? changesOf(t) : [];
+    if (ch.length) out.push({ k: 'change', t, text: ch.length === 1 ? ch[0] : `${ch[0]} · ${ch.length - 1} more change${ch.length === 2 ? '' : 's'}`, w: 0 });
   }
   return out.sort((a, b) => b.w - a.w);
 }
@@ -3238,6 +3364,10 @@ app.addEventListener('click', e => {
   const t = e.target.closest('button,[data-open],[data-pin],[data-act]'); if (!t) return;
   const ds = t.dataset;
   if (ds.act === 'home') return goHome();
+  if (ds.act === 'remindOpen') { S.remindOpen = !S.remindOpen; return render(); }
+  if (ds.remind) { const p = remindPrefs(); p[ds.remind] = !p[ds.remind]; lsSet('outta_remind', p); return render(); }
+  if (ds.act === 'notifyAsk') { try { Notification.requestPermission().then(render); } catch {} return; }
+  if (ds.act === 'theme') { const day = document.documentElement.dataset.theme !== 'light'; document.documentElement.dataset.theme = day ? 'light' : 'dark'; try { localStorage.setItem('outta_theme', day ? 'light' : 'dark'); } catch {} return render(); }
   if (ds.act === 'demo') return openDemo();
   if (ds.open) return openTrip(ds.open);
   if (ds.homedel) { S.confirmHome = ds.homedel; return render(); }
@@ -3299,15 +3429,15 @@ app.addEventListener('click', e => {
   if (ds.act === 'recoverRemove') { const id = S.recoverItem; S.recover = null; S.recoverItem = null; flash('Dropped from the plan.'); return saveTrip({ itinerary: (S.trip.itinerary || []).filter(i => i.id !== id) }); }
   if (ds.swapin !== undefined) { const o = S.alts?.options?.[+ds.swapin]; if (o) swapItem(o.title); return; }
   if (ds.act === 'recoverDates') { S.recover = null; saveTrip({ lockedDates: null }); S.tab = 'dates'; render(); window.scrollTo({ top: 0 }); flash('Dates reopened. Everyone’s free days are still here.'); return; }
-  if (ds.act === 'remindOpen') { S.remindOpen = !S.remindOpen; return render(); }
-  if (ds.remind) { const p = remindPrefs(); p[ds.remind] = !p[ds.remind]; lsSet('outta_remind', p); return render(); }
-  if (ds.act === 'notifyAsk') { try { Notification.requestPermission().then(render); } catch {} return; }
   if (ds.act === 'linkReset') { saveTrip({ inviteKey: rid(6), invitesOff: false }); flash('New link made. Old invite links stop working for people who haven’t joined.'); return; }
   if (ds.act === 'linkToggle') { const off = !S.trip.invitesOff; saveTrip({ invitesOff: off }); flash(off ? 'Invites are off. Nobody new can join.' : 'Invites are back on.'); return; }
   if (ds.rmmember) { S.confirmRm = ds.rmmember; return render(); }
   if (ds.act === 'rmCancel') { S.confirmRm = null; return render(); }
   if (ds.rmdo) return removeMember(ds.rmdo);
   if (ds.mkorg) { const on = !(S.trip.orgs || {})[ds.mkorg]; saveTrip({ orgs: { [ds.mkorg]: on || null } }); flash(on ? 'Now an organizer.' : 'No longer an organizer.'); return; }
+  if (ds.act === 'passportImg') return makePassportImg();
+  if (ds.nightvote) { const cur = (S.trip.nightVotes || {})[S.uid]; return saveTrip({ nightVotes: { [S.uid]: cur === ds.nightvote ? null : ds.nightvote } }); }
+  if (ds.act === 'nextPlan') return S.trip.crewId ? startNewPlan(S.trip.crewId) : (goHome(), startNewPlan());
   if (ds.act === 'wiAdd') { S.whatif = [...(S.whatif || [{}]), {}]; return render(); }
   if (ds.wirm !== undefined) { const l = (S.whatif || [{}]).filter((_, j) => j !== +ds.wirm); S.whatif = l.length ? l : [{}]; return render(); }
   if (ds.wiapply !== undefined) return whatifApply(+ds.wiapply);

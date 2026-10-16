@@ -21,11 +21,11 @@ function planRow(t, opts = {}) {
   const daysTo = t.lockedDates ? Math.round((D(t.lockedDates.start) - D(TODAY)) / 864e5) : null, st = stageOf(t), p = t.pulse || {};
   const mine = (p.who || []).includes(S.uid) && p.mine && st !== 'memories';
   const d = t.lockedDates, n = Object.values(t.people || {}).filter(Boolean).length;
-  return `<div class="card plan-row board-row st-${st} ${mine ? 'needs-me' : ''}" style="--pc:${sz.color}">
+  return `<div class="card plan-row dep-row st-${st} ${mine ? 'needs-me' : ''}" style="--pc:${sz.color}">
     <div class="pr-date">${d ? `<span>${fmt(d.start, { month: 'short' })}</span><b>${D(d.start).getUTCDate()}</b><span>${t.time ? t12(t.time) : fmt(d.start, { weekday: 'short' })}</span>` : '<span>Date</span><b>TBD</b><span>&nbsp;</span>'}</div>
     <div class="pr-mid">
       <span class="pr-kind"><i style="background:var(--pc)"></i>${esc(sz.label)}${crew && !opts.noCrew ? ' · ' + esc(crew.name) : ''}${n ? ` · ${n} in` : ''}</span>
-      <h3 class="flap">${flap(t.name)}</h3>
+      <h3><span class="sr-only">${esc(t.name)}</span><span class="flap" aria-hidden="true">${flap(t.name)}</span></h3>
       <span class="small muted pr-line">${t.lockedDates ? (name && name !== t.name ? '→ ' + esc(name) + ' · ' : '') + moveLine(t) : moveLine(t)}${daysTo !== null && daysTo > 0 && daysTo <= 30 ? ` · <b style="color:var(--pc)">${daysTo === 1 ? 'Tomorrow' : 'in ' + daysTo + ' days'}</b>` : ''}</span>
     </div>
     <div class="pr-status"><span class="board-st">${BOARD[st]}</span>${mine ? '<span class="your-flag">Your move</span>' : ''}</div>
