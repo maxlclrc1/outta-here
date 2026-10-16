@@ -1,4 +1,5 @@
-// Run with the app running (npm run dev): npm run test:server
+// Part of npm test / npm run test:server (runs against a throwaway server). To run alone against
+// your own running app instead (writes to its data/): BASE=http://localhost:3000 node <this file>
 // Server-side access rules: each line should print the expected result.
 const BASE = process.env.BASE || 'http://localhost:3000';
 const call = (u, op, path, data, invite) => fetch(BASE + '/api/db', { method: 'POST', headers: { 'content-type': 'application/json', 'x-outta-user': u, ...(invite ? { 'x-outta-invite': invite } : {}) }, body: JSON.stringify({ op, path, data }) }).then(async r => ({ status: r.status, ...(await r.json()) }));

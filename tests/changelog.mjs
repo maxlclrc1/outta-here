@@ -1,4 +1,5 @@
-// Run with the app running (npm run dev): npm run test:server
+// Part of npm test / npm run test:server (runs against a throwaway server). To run alone:
+// BASE=http://localhost:3000 node --experimental-strip-types tests/changelog.mjs
 // (uses node --experimental-strip-types to load lib/changelog.ts for the legacy-plan checks)
 // The change log stays bounded without breaking recent undo or losing plan data (finding #11).
 import { boundLog, LOG_LIMITS } from '../lib/changelog.ts';

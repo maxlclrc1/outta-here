@@ -62,12 +62,36 @@ The server checks every request (`lib/access.ts`), not just the app:
 - Joining adds only yourself, only while invites are on, only with the current link if the organizer made a new one, and never after being removed.
 - Only people in a plan can change it or read its expenses, photos, packing list and so on. Only organizers can delete it or change who can invite and lock.
 - The change log can't grow until a plan stops saving (`lib/changelog.ts`): it keeps the newest 100 entries within 64 KB, older entries lose their undo copy first, and undo always stays available for the 10 newest changes that can be undone. Older plans are trimmed the next time they're saved. If a plan's own data is still over the 256 KB limit, the save is refused with a clear message and nothing is dropped.
-- Two people saving at once don't undo each other (`lib/merge.ts`): lists like the itinerary are merged with anyone else's edits instead of replaced, and saving your own details only sends what you changed, so it can't undo an organizer counting you out. `tests/ui-concurrency.mjs` reproduces both in real browsers (needs Playwright: `PLAYWRIGHT=… CHROMIUM=… node tests/ui-concurrency.mjs`).
+- Two people saving at once don't undo each other (`lib/merge.ts`): lists like the itinerary are merged with anyone else's edits instead of replaced, and saving your own details only sends what you changed, so it can't undo an organizer counting you out. `npm run test:ui:concurrency` reproduces both in real browsers.
 - The plan's decision rules are checked by the server on every lock (`lib/decide.ts`): "organizers only" locking, the decision style, and hard limits that a vote can't override without that person agreeing. Votes and agreeing are your own: nobody can swipe, vote or agree for someone else, or change someone else's days or limits.
 - Private parts of a plan are removed by the server before anything is sent (`lib/privacy.ts`): needs shared "Only organizers" (the AI still plans around them, unnamed), where someone checked in if they chose to hide it (an SOS is always shared), and surprise stops and planners-only chat for the guest of honor.
 - Budgets stay with their owner. Other members only learn whether you've set one. Budget fit ("fits 4/5 budgets", hard limits) is worked out on the server (`lib/budget.ts`) and comes back as counts, naming only people who chose to be named. The crew-wide figure is a band ("€300–400"), never the lowest budget itself. Pitch checks use the pitch's price from the plan; any other price is snapped to a ~10% grid, and each person gets a limited number of distinct prices per plan per hour.
 
-`npm run test:server` checks these rules against the running app. Until real accounts exist these rules rely on each browser's id, so they keep a plan private from everyone except someone who copies another person's browser data.
+`npm test` checks these rules (see Tests below). Until real accounts exist these rules rely on each browser's id, so they keep a plan private from everyone except someone who copies another person's browser data.
+
+## Tests
+
+Every test command starts its own copy of the app on a free port with a throwaway database and build folder, so it never touches your `data/` folder and can run while `npm run dev` is up. Everything is deleted afterwards. Each suite runs even if an earlier one fails, and the command exits with 1 if any suite failed.
+
+| Command | What it runs | Needs |
+|---|---|---|
+| `npm test` | The core suite: TypeScript check, app build, then every server suite below | Nothing extra |
+| `npm run test:server` | The server suites only: `access`, `budget-privacy`, `privacy`, `decisions`, `concurrency`, `changelog` (in `tests/`) | Nothing extra |
+| `npm run test:ui` | Browser tests in `tests/ui/`: setup, joining, crews, decisions, personal needs and the change log, budget, itinerary, pitches, recovery and undo, reliability, keyboard, journey, own picks, stays, and a broad feature walk | Playwright |
+| `npm run test:ui:concurrency` | `tests/ui-concurrency.mjs`: two real browsers saving at once | Playwright |
+
+Add `--only=<name>` to run one suite, e.g. `npm test -- --only=privacy` or `npm run test:ui -- --only=decide`.
+
+**Playwright** isn't a project dependency. Point the browser tests at an install with environment variables:
+
+- `PLAYWRIGHT`: path to Playwright's `index.mjs`, e.g. from `npm i -g playwright`. If unset, the tests try `import('playwright')`.
+- `CHROMIUM`: path to a Chromium binary, only needed if Playwright has no browser of its own installed (`npx playwright install chromium`).
+
+```bash
+PLAYWRIGHT=$(npm root -g)/playwright/index.mjs npm run test:ui
+```
+
+Without Playwright these two commands stop straight away with a message saying so (exit code 2). The browser suites fail on a crash, any `FAIL` line, or errors on the page. Some of them only check that a flow runs through without errors rather than checking exact results.
 
 ## What's where
 

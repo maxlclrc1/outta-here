@@ -11,7 +11,8 @@ export type Json = Record<string, unknown>;
 type Doc = { data: Json; version: number; updatedAt: number };
 type State = { docs: Map<string, Doc>; bus: EventEmitter; timer: NodeJS.Timeout | null };
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+// OUTTA_DATA_DIR lets the test runner use a throwaway database (scripts/test.mjs)
+const DATA_DIR = process.env.OUTTA_DATA_DIR || path.join(process.cwd(), 'data');
 const FILE = path.join(DATA_DIR, 'db.json');
 const SEGMENT = /^(?!\.\.?$)[A-Za-z0-9_\-.~:@+]{1,200}$/;
 

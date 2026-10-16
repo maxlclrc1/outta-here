@@ -1,5 +1,6 @@
-// Run with the app running (npm run dev). Needs Playwright:
-//   PLAYWRIGHT=/path/to/playwright/index.mjs CHROMIUM=/path/to/chromium node tests/ui-concurrency.mjs
+// Real browsers reproducing audit findings #9 and #10. Run with: npm run test:ui:concurrency
+// (needs Playwright, see README › Tests)
+
 // Real browsers reproducing audit findings #9 and #10 through the app itself.
 const { chromium } = await import(process.env.PLAYWRIGHT || 'playwright');
 const BASE = process.env.BASE || 'http://localhost:3000';

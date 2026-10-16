@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
-const DIR = path.join(process.cwd(), 'data', 'uploads');
+const DIR = path.join(process.env.OUTTA_DATA_DIR || path.join(process.cwd(), 'data'), 'uploads');
 export const MAX_BYTES = 20 * 1024 * 1024;
 const TYPES = /^(image\/(png|jpeg|gif|webp|heic|heif|avif)|application\/pdf)$/;
 
