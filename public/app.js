@@ -2283,7 +2283,7 @@ async function applyChange(ch, picks = {}, opts = {}) {
     if (Object.keys(patch).length) await saveTrip(patch);
     S.recover = null; S.rc = null; S.alts = null; render();
     const top = fxs.find(f => f.from !== '') || fxs[0];
-    if (!opts.quiet) flash(`${changeText(ch)}. ${top ? (top.from !== '' ? `${top.area}: ${top.from} → ${top.to}.` : top.text + '.') : 'Nothing else moves.'}`);
+    if (!opts.quiet) flash(`${changeText(ch)}. ${top ? (top.from !== '' ? `${top.area}: ${top.from} → ${top.to}.` : top.text.replace(/\.$/, '') + '.') : 'Nothing else moves.'}`);
   } catch (e) { flash(writeErr(e)); }
 }
 // when someone drops out some other way, still work out what it changed and log it
