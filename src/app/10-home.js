@@ -21,12 +21,16 @@ function planRow(t, opts = {}) {
   const daysTo = t.lockedDates ? Math.round((D(t.lockedDates.start) - D(TODAY)) / 864e5) : null, st = stageOf(t), p = t.pulse || {};
   const mine = (p.who || []).includes(S.uid) && p.mine && st !== 'memories';
   const d = t.lockedDates, n = Object.values(t.people || {}).filter(Boolean).length;
+  // lead with where it's happening; the plan's own name and the crew go underneath
+  const trip = sizeOf(t) === 'trip', main = name || (trip ? 'TBD' : t.name);
+  const sub = [main !== t.name && esc(t.name), crew && !opts.noCrew && esc(crew.name)].filter(Boolean).join(' · ');
   return `<div class="card plan-row dep-row st-${st} ${mine ? 'needs-me' : ''}" style="--pc:${sz.color}">
     <div class="pr-date">${d ? `<span>${fmt(d.start, { month: 'short' })}</span><b>${D(d.start).getUTCDate()}</b><span>${t.time ? t12(t.time) : fmt(d.start, { weekday: 'short' })}</span>` : '<span>Date</span><b>TBD</b><span>&nbsp;</span>'}</div>
     <div class="pr-mid">
-      <span class="pr-kind"><i style="background:var(--pc)"></i>${esc(sz.label)}${crew && !opts.noCrew ? ' · ' + esc(crew.name) : ''}${n ? ` · ${n} in` : ''}</span>
-      ${sizeOf(t) === 'trip' ? `<h3><span class="sr-only">${esc(t.name)}</span><span class="flap" aria-hidden="true">${flap(t.name)}</span></h3>` : `<h3 class="pr-name">${esc(t.name)}</h3>`}
-      <span class="small muted pr-line">${t.lockedDates ? (name && name !== t.name ? '→ ' + esc(name) + ' · ' : '') + moveLine(t) : moveLine(t)}${daysTo !== null && daysTo > 0 && daysTo <= 30 ? ` · <b style="color:var(--pc)">${daysTo === 1 ? 'Tomorrow' : 'in ' + daysTo + ' days'}</b>` : ''}</span>
+      <span class="pr-kind"><i style="background:var(--pc)"></i>${esc(sz.label)}${n ? ` · ${n} in` : ''}</span>
+      ${trip ? `<h3><span class="sr-only">${esc(main)}</span><span class="flap" aria-hidden="true">${flap(main)}</span></h3>` : `<h3 class="pr-name">${esc(main)}</h3>`}
+      ${sub ? `<span class="pr-sub">${sub}</span>` : ''}
+      <span class="small muted pr-line">${moveLine(t)}${daysTo !== null && daysTo > 0 && daysTo <= 30 ? ` · <b style="color:var(--pc)">${daysTo === 1 ? 'Tomorrow' : 'in ' + daysTo + ' days'}</b>` : ''}</span>
     </div>
     <div class="pr-status"><span class="board-st">${BOARD[st]}</span>${mine ? '<span class="your-flag">Your move</span>' : ''}</div>
     <div class="pr-acts">${S.confirmHome === t.id
@@ -146,7 +150,6 @@ function crewPage(cid) {
     <div class="row"><button class="btn primary big" data-startcrew="${esc(cid)}">+ Plan something</button></div>
   </section>
   <section class="stack"><h2>Plans</h2>${upcoming.length ? upcoming.map(t => planRow(t, { noCrew: true })).join('') : `<div class="empty"><span>No plans yet. Start one and everyone in the crew is added automatically.</span></div>`}</section>
-  ${playlistCard({ crew: c })}
   <section class="card stack"><h3>Invite to the crew</h3>
     <p class="small muted">${IN_CLAUDE ? 'First share this page with them (Share menu, as an Editor). Then send this link.' : 'Send this link. They type their name and join the crew.'}</p>
     <span class="invite-link mono">${esc(crewLink(cid))}</span>
@@ -170,7 +173,7 @@ async function joinCrew(cid) {
 }
 function openCrew(cid) {
   stop(); S.tid = null; resetTrip(); S.crewView = cid; S.creating = null; setHash('c-' + cid);
-  subscribeSongs(`crews/${cid}/songs`); render(); window.scrollTo({ top: 0 });
+  render(); window.scrollTo({ top: 0 });
 }
 
 /* new-plan flow: crew → size → (type) → basics */

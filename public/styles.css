@@ -450,13 +450,6 @@ body{transition:background-color .6s ease}
 .past[open] summary::before{transform:rotate(90deg)}
 .sizes{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
 .ev-title{font:900 clamp(30px,8vw,46px) var(--f-display);font-variation-settings:"wdth" 70;line-height:1.02;color:var(--accent);overflow-wrap:anywhere}
-.songs{list-style:none;margin:0;padding:0}
-.song{display:flex;gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--line)}
-.song:first-child{border-top:0}
-.song-n{width:22px;text-align:right;color:var(--muted);font-size:13px;flex:0 0 auto}
-.sotn{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border-radius:12px;background:linear-gradient(135deg,color-mix(in oklab,var(--accent) 18%,var(--surface)),var(--surface));border:1px solid color-mix(in oklab,var(--accent) 40%,var(--line))}
-.sotn b{font:800 20px var(--f-display);font-variation-settings:"wdth" 85}
-.chip.sotn-on{background:var(--gold);border-color:var(--gold);color:#1A1405}
 /* fields stacked in a column shouldn't stretch to their row-layout basis */
 .stack > .field{flex:none}
 
@@ -829,3 +822,4 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 .dep-row .pr-name{font:800 19px var(--f-display);font-variation-settings:"wdth" 85;line-height:1.15;overflow-wrap:anywhere}
 .own-stay-cta{justify-content:space-between;align-items:center;gap:12px}
 .own-stay .stay-top{background:linear-gradient(135deg,#3D4458,#232838)}
+.pr-sub{font:700 13px var(--f-body);color:var(--ink);opacity:.8;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

@@ -6,7 +6,7 @@ function resetTrip() {
   S.cardUrl = null; S.cardBlob = null; S.copyText = ''; S.split = null; S.confirm = null; S.tkFile = null; S.feed = []; S.bucket = []; S.photos = []; S.pot = []; S.mySpend = []; S.lostOpen = false; S.pinSel = null; S.hangPlan = null; S.wrapI = 0; S.img = null; S.show = null; clearInterval(showTimer);
   for (const k of Object.keys(DRAFT)) delete DRAFT[k];
 }
-function goHome() { stop(); if (S.meDirty) flushMe(); S.tid = null; S.creating = null; S.crewView = null; subscribeSongs(null); S.demo = false; resetTrip(); setHash(''); render(); }
+function goHome() { stop(); if (S.meDirty) flushMe(); S.tid = null; S.creating = null; S.crewView = null; S.demo = false; resetTrip(); setHash(''); render(); }
 
 function openTrip(id, tab) {
   if (!S.db) { flash(IN_CLAUDE ? 'Open this page in Claude to load trips.' : 'Can’t reach the local server. Is npm run dev still running?'); return; }
@@ -14,7 +14,7 @@ function openTrip(id, tab) {
   app.innerHTML = `${topBar()}<p class="muted">Loading trip…</p>`;
   S.unsub.push(S.db.doc('trips/' + id).onSnapshot(snap => {
     if (!snap.exists) { flash('That trip doesn’t exist anymore.'); goHome(); return; }
-    const first = !S.trip; S.trip = { ...snap.data() }; subscribeSongs(S.trip.crewId ? `crews/${S.trip.crewId}/songs` : `trips/${id}/songs`); if (first && !S.tabPicked && isLive()) S.tab = 'live'; render();
+    const first = !S.trip; S.trip = { ...snap.data() }; if (first && !S.tabPicked && isLive()) S.tab = 'live'; render();
   }, () => flash('Lost the connection to this trip. Reload to reconnect.')));
   S.unsub.push(S.db.collection(`trips/${id}/members`).onSnapshot(snap => {
     const local = meDoc();
@@ -35,7 +35,7 @@ function openTrip(id, tab) {
 }
 
 function openDemo() {
-  stop(); resetTrip(); S.crewView = null; subscribeSongs(null); S.demo = true; S.tid = 'demo'; S.tab = 'overview'; S.secTab = {}; S.tabPicked = true; S.creating = null; setHash('');
+  stop(); resetTrip(); S.crewView = null; S.demo = true; S.tid = 'demo'; S.tab = 'overview'; S.secTab = {}; S.tabPicked = true; S.creating = null; setHash('');
   S.uid = S.uid || 'you';
   const start = add(TODAY, -1), end = add(TODAY, 2), y = start, t0 = Date.now(), H = 36e5;
   const at = (day, hm) => new Date(day + 'T' + hm + ':00').getTime();
@@ -127,13 +127,6 @@ function openDemo() {
     { id: 'b2', text: 'Talk our way into VIP', points: 3, doneBy: [], at: 2 },
     { id: 'b3', text: 'Order the 3am sandwich', points: 1, doneBy: [m1.id, m2.id, m4.id], at: 3 },
   ];
-  S.songs = [
-    { id: 'sg1', title: 'Dancing Queen', artist: 'ABBA', by: m2.id, at: 1, votes: { d2: 1, d4: 1, d1: 1, [S.uid]: 1 } },
-    { id: 'sg2', title: 'Tití Me Preguntó', artist: 'Bad Bunny', by: m1.id, at: 2, votes: { d1: 1, d2: 1, d3: 1 } },
-    { id: 'sg3', title: 'Mr. Brightside', artist: 'The Killers', by: S.uid, at: 3, votes: { [S.uid]: 1, d5: 1 } },
-    { id: 'sg4', title: 'Espresso', artist: 'Sabrina Carpenter', by: m4.id, at: 4, votes: { d4: 1 } },
-  ];
-  S.trip.songVotes = { d1: 'sg2', d2: 'sg1', d4: 'sg1', d3: 'sg2', d5: 'sg1' };
   S.trip.superVotes = { s0: { d1: 'd2', d4: 'd2', d3: 'd2' }, s1: { d2: 'd3' }, s2: { d2: 'd1', d4: 'd1' }, s5: { d2: 'd1', d3: 'd1' } };
   render(); window.scrollTo({ top: 0 });
 }

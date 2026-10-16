@@ -98,10 +98,6 @@ app.addEventListener('click', e => {
   if (ds.act === 'genPitches') return genPitches();
   if (ds.act === 'growPlan') return growPlan();
   if (ds.setsize) { const k = ds.setsize, small = ['hangout', 'day'].includes(k), n = small ? 0 : (isSmall() ? SIZES[k].nights : nightsSet(S.trip)); return saveTrip({ size: k, nights: n, ...(n !== nightsSet(S.trip) ? { lockedDates: null } : {}), ...(S.trip.winEnd < add(TODAY, SIZES[k].win) ? { winEnd: add(TODAY, SIZES[k].win) } : {}) }); }
-  if (ds.songvote) return voteSong(ds.songvote);
-  if (ds.sotn) { const cur = (S.trip.songVotes || {})[S.uid]; return saveTrip({ songVotes: { [S.uid]: cur === ds.sotn ? '' : ds.sotn } }); }
-  if (ds.delsong) return delSong(ds.delsong);
-  if (ds.act === 'copySongs') return copy([...S.songs].sort((a, b) => songVotes(b) - songVotes(a)).map((s, i) => `${i + 1}. ${s.title}${s.artist ? ' – ' + s.artist : ''}`).join('\n'));
   if (ds.act === 'copyInvite') return sendInvite(inviteText(S.trip), inviteLink(), S.trip.name);
   if (ds.setnights) return saveTrip({ nights: +ds.setnights, lockedDates: null });
   if (ds.act === 'ciJump') return jumpTo('#ci-text');
@@ -259,7 +255,6 @@ app.addEventListener('submit', async e => {
   clearDrafts(f);
   if (f.id === 'newTrip') return createTrip();
   if (f.id === 'newCrewForm') { const n = $('#nc-name').value.trim(); if (n) return createCrew(n); return; }
-  if (f.id === 'songForm') { const title = $('#sg-title').value.trim(); if (!title) return; return addSong(title, $('#sg-artist').value.trim(), $('#sg-link').value.trim()); }
   if (f.id === 'tkForm') return sendTicket();
   if (f.id === 'swapForm') return swapItem($('#swap-title').value);
   if (f.id === 'ownStayForm') return addOwnStay(e.submitter?.dataset.how === 'lock');

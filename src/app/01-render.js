@@ -6,7 +6,7 @@ const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 // Rows carry their item's id on their buttons (data-delexp="…", data-open="…"), so a row
 // whose buttons all point at one id is keyed by it. That way adding or deleting an item
 // animates that item instead of shuffling the content of every row below it.
-const ID_ATTRS = ['data-open', 'data-crew', 'data-pickcrew', 'data-share', 'data-homedel', 'data-pack', 'data-claim', 'data-lockpitch', 'data-found', 'data-reveal', 'data-delfeed', 'data-delpack', 'data-delspend', 'data-delsong', 'data-delpot', 'data-delphoto', 'data-delitem', 'data-delexp', 'data-deldest', 'data-delbk'];
+const ID_ATTRS = ['data-open', 'data-crew', 'data-pickcrew', 'data-share', 'data-homedel', 'data-pack', 'data-claim', 'data-lockpitch', 'data-found', 'data-reveal', 'data-delfeed', 'data-delpack', 'data-delspend', 'data-delpot', 'data-delphoto', 'data-delitem', 'data-delexp', 'data-deldest', 'data-delbk'];
 const ID_SEL = ID_ATTRS.map(a => `[${a}]`).join(',');
 function keyOf(n) {
   if (n.nodeType !== 1) return '';

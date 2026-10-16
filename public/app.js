@@ -422,7 +422,7 @@ const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 // Rows carry their item's id on their buttons (data-delexp="…", data-open="…"), so a row
 // whose buttons all point at one id is keyed by it. That way adding or deleting an item
 // animates that item instead of shuffling the content of every row below it.
-const ID_ATTRS = ['data-open', 'data-crew', 'data-pickcrew', 'data-share', 'data-homedel', 'data-pack', 'data-claim', 'data-lockpitch', 'data-found', 'data-reveal', 'data-delfeed', 'data-delpack', 'data-delspend', 'data-delsong', 'data-delpot', 'data-delphoto', 'data-delitem', 'data-delexp', 'data-deldest', 'data-delbk'];
+const ID_ATTRS = ['data-open', 'data-crew', 'data-pickcrew', 'data-share', 'data-homedel', 'data-pack', 'data-claim', 'data-lockpitch', 'data-found', 'data-reveal', 'data-delfeed', 'data-delpack', 'data-delspend', 'data-delpot', 'data-delphoto', 'data-delitem', 'data-delexp', 'data-deldest', 'data-delbk'];
 const ID_SEL = ID_ATTRS.map(a => `[${a}]`).join(',');
 function keyOf(n) {
   if (n.nodeType !== 1) return '';
@@ -1506,14 +1506,14 @@ function sections() {
     { k: 'book', label: 'Book', tabs: [['flights', 'Flights'], ['stays', 'Stays'], ['tickets', 'Boarding passes'], ['pack', 'Packing']] },
     { k: 'live', label: 'Live', tabs: [['live', 'Today'], ['map', 'Map'], ['bucket', 'Bucket list'], ['hype', 'Hype']] },
     { k: 'money', label: 'Money', tabs: [['cost', 'All-in cost'], ['meter', 'My spend'], ['pot', 'Group pot'], ['money', 'Expenses']] },
-    { k: 'memories', label: 'Memories', tabs: [['wrapped', isSmall() ? 'Recap' : 'Wrapped'], ['recap', 'Photos'], ['playlist', 'Playlist'], ['awards', 'Awards']] },
+    { k: 'memories', label: 'Memories', tabs: [['wrapped', isSmall() ? 'Recap' : 'Wrapped'], ['recap', 'Photos'], ['awards', 'Awards']] },
   ].map(s => ({ ...s, tabs: s.tabs.filter(([k]) => !HIDE_TABS[size()].includes(k)) })).filter(s => s.tabs.length);
 }
 const TAB_ALIAS = { deals: 'flights', where: 'match' };
 const secOf = tab => sections().find(s => s.tabs.some(t => t[0] === tab)) || sections()[0];
 const TABFN = () => ({ overview: overviewTab, crew: crewTab, tasks: tasksTab, cost: costTab, whatif: whatifTab, settings: settingsTab, match: matchTab, dates: datesTab, where: whereTab, spots: spotsTab, plan: planTab,
   flights: flightsTab, stays: staysTab, tickets: ticketsTab, pack: packTab, live: liveTab, map: mapTab, bucket: bucketSection, hype: hypeTab,
-  meter: meterTab, pot: potTab, money: moneyTab, wrapped: wrappedTab, recap: photosTab, awards: awardsTab, playlist: playlistTab });
+  meter: meterTab, pot: potTab, money: moneyTab, wrapped: wrappedTab, recap: photosTab, awards: awardsTab });
 function tripView() {
   if (S.membersIn && accessState() !== 'ok') return blockedView(accessState());
   if (S.setup && S.membersIn && meDoc()) return setupView();
@@ -2763,9 +2763,8 @@ function wrappedTab() {
     w.wrecked && { c: ['#5C6A7A', '#151A33'], k: 'Most wrecked', h: esc(nameOf(w.wrecked[0])), s: `average hangover score ${w.wrecked[1].toFixed(1)}/5`, src: 'From the morning hangover check-ins' },
     w.hyper && { c: ['#E64980', '#7048E8'], k: 'Hype machine', h: esc(nameOf(w.hyper[0])), s: `${w.hyper[1]} messages in the hype feed`, src: 'From the hype feed' },
     w.awards.length && { c: ['#FFC94D', '#E8590C'], k: 'The awards', h: '', list: w.awards.map(r => [r.c, r.winners.map(nameOf).join(' & ')]), src: 'Voted by the crew' },
-    songOfPlan()?.song && { c: ['#12B5A6', '#7048E8'], k: `Song of the ${isSmall() ? 'night' : 'trip'}`, h: esc(songOfPlan().song.title), s: `${esc(songOfPlan().song.artist || '')}${songOfPlan().song.artist ? ' · ' : ''}${songOfPlan().n} vote${songOfPlan().n === 1 ? '' : 's'}`, src: 'Voted on the crew playlist' },
     w.b && { c: ['#D41C78', '#151A33'], k: 'You were', h: esc(w.b.persona), s: 'Same time next year?', src: 'From everyone’s vibe quiz answers' },
-    { c: ['#0C0F21', '#3A0B2C'], k: w.over ? 'That’s a wrap' : 'So far', h: esc(S.trip.name), s: [`${span(w.d.start, w.d.end).length} day${span(w.d.start, w.d.end).length === 1 ? '' : 's'}`, `${w.ms.length} ${w.ms.length === 1 ? 'person' : 'people'}`, S.photos.length && `${S.photos.length} photos`, S.songs?.length && `${S.songs.length} songs`, S.feed.length && `${S.feed.filter(f => f.by !== 'ai').length} posts`].filter(Boolean).join(' · '), end: true },
+    { c: ['#0C0F21', '#3A0B2C'], k: w.over ? 'That’s a wrap' : 'So far', h: esc(S.trip.name), s: [`${span(w.d.start, w.d.end).length} day${span(w.d.start, w.d.end).length === 1 ? '' : 's'}`, `${w.ms.length} ${w.ms.length === 1 ? 'person' : 'people'}`, S.photos.length && `${S.photos.length} photos`, S.feed.length && `${S.feed.filter(f => f.by !== 'ai').length} posts`].filter(Boolean).join(' · '), end: true },
   ].filter(Boolean);
   const i = Math.min(S.wrapI || 0, slides.length - 1), sl = slides[i];
   return `<section class="stack" style="align-items:center">
@@ -3147,12 +3146,16 @@ function planRow(t, opts = {}) {
   const daysTo = t.lockedDates ? Math.round((D(t.lockedDates.start) - D(TODAY)) / 864e5) : null, st = stageOf(t), p = t.pulse || {};
   const mine = (p.who || []).includes(S.uid) && p.mine && st !== 'memories';
   const d = t.lockedDates, n = Object.values(t.people || {}).filter(Boolean).length;
+  // lead with where it's happening; the plan's own name and the crew go underneath
+  const trip = sizeOf(t) === 'trip', main = name || (trip ? 'TBD' : t.name);
+  const sub = [main !== t.name && esc(t.name), crew && !opts.noCrew && esc(crew.name)].filter(Boolean).join(' · ');
   return `<div class="card plan-row dep-row st-${st} ${mine ? 'needs-me' : ''}" style="--pc:${sz.color}">
     <div class="pr-date">${d ? `<span>${fmt(d.start, { month: 'short' })}</span><b>${D(d.start).getUTCDate()}</b><span>${t.time ? t12(t.time) : fmt(d.start, { weekday: 'short' })}</span>` : '<span>Date</span><b>TBD</b><span>&nbsp;</span>'}</div>
     <div class="pr-mid">
-      <span class="pr-kind"><i style="background:var(--pc)"></i>${esc(sz.label)}${crew && !opts.noCrew ? ' · ' + esc(crew.name) : ''}${n ? ` · ${n} in` : ''}</span>
-      ${sizeOf(t) === 'trip' ? `<h3><span class="sr-only">${esc(t.name)}</span><span class="flap" aria-hidden="true">${flap(t.name)}</span></h3>` : `<h3 class="pr-name">${esc(t.name)}</h3>`}
-      <span class="small muted pr-line">${t.lockedDates ? (name && name !== t.name ? '→ ' + esc(name) + ' · ' : '') + moveLine(t) : moveLine(t)}${daysTo !== null && daysTo > 0 && daysTo <= 30 ? ` · <b style="color:var(--pc)">${daysTo === 1 ? 'Tomorrow' : 'in ' + daysTo + ' days'}</b>` : ''}</span>
+      <span class="pr-kind"><i style="background:var(--pc)"></i>${esc(sz.label)}${n ? ` · ${n} in` : ''}</span>
+      ${trip ? `<h3><span class="sr-only">${esc(main)}</span><span class="flap" aria-hidden="true">${flap(main)}</span></h3>` : `<h3 class="pr-name">${esc(main)}</h3>`}
+      ${sub ? `<span class="pr-sub">${sub}</span>` : ''}
+      <span class="small muted pr-line">${moveLine(t)}${daysTo !== null && daysTo > 0 && daysTo <= 30 ? ` · <b style="color:var(--pc)">${daysTo === 1 ? 'Tomorrow' : 'in ' + daysTo + ' days'}</b>` : ''}</span>
     </div>
     <div class="pr-status"><span class="board-st">${BOARD[st]}</span>${mine ? '<span class="your-flag">Your move</span>' : ''}</div>
     <div class="pr-acts">${S.confirmHome === t.id
@@ -3272,7 +3275,6 @@ function crewPage(cid) {
     <div class="row"><button class="btn primary big" data-startcrew="${esc(cid)}">+ Plan something</button></div>
   </section>
   <section class="stack"><h2>Plans</h2>${upcoming.length ? upcoming.map(t => planRow(t, { noCrew: true })).join('') : `<div class="empty"><span>No plans yet. Start one and everyone in the crew is added automatically.</span></div>`}</section>
-  ${playlistCard({ crew: c })}
   <section class="card stack"><h3>Invite to the crew</h3>
     <p class="small muted">${IN_CLAUDE ? 'First share this page with them (Share menu, as an Editor). Then send this link.' : 'Send this link. They type their name and join the crew.'}</p>
     <span class="invite-link mono">${esc(crewLink(cid))}</span>
@@ -3296,7 +3298,7 @@ async function joinCrew(cid) {
 }
 function openCrew(cid) {
   stop(); S.tid = null; resetTrip(); S.crewView = cid; S.creating = null; setHash('c-' + cid);
-  subscribeSongs(`crews/${cid}/songs`); render(); window.scrollTo({ top: 0 });
+  render(); window.scrollTo({ top: 0 });
 }
 
 /* new-plan flow: crew → size → (type) → basics */
@@ -3449,71 +3451,6 @@ function notifyNew(trips) {
     try { new Notification(t.name, { body: p.mine, tag: 'outta-' + t.id }); } catch {}
   }
   lsSet('outta_told', Object.fromEntries(Object.entries(told).filter(([, at]) => Date.now() - at < 30 * 864e5)));
-}
-
-/* ---------- playlist ----------
-   One playlist per crew that grows with every plan (or per plan when there's no crew).
-   Each plan also votes on its own "song of the trip", which shows up in the recap. */
-function subscribeSongs(path) {
-  if (S.songPath === path) return;
-  try { S.songUnsub?.(); } catch {}
-  S.songPath = path; S.songs = []; S.songUnsub = null;
-  if (S.demo || !S.db || !path) return;
-  S.songUnsub = S.db.collection(path).orderBy('at').limit(300).onSnapshot(snap => { S.songs = snap.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, () => {});
-}
-const songVotes = s => Object.values(s.votes || {}).filter(v => v > 0).length;
-const songQ = s => encodeURIComponent(`${s.title} ${s.artist || ''}`.trim());
-function songOfPlan() {
-  const v = S.trip?.songVotes || {}, cnt = {};
-  for (const id of Object.values(v)) if (id) cnt[id] = (cnt[id] || 0) + 1;
-  const best = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0];
-  return best ? { song: S.songs.find(s => s.id === best[0]), n: best[1] } : null;
-}
-function playlistCard(ctx = {}) {
-  const crew = ctx.crew || S.crews.find(c => c.id === S.trip?.crewId), inPlan = !!S.trip && !ctx.crew;
-  const songs = [...S.songs].sort((a, b) => songVotes(b) - songVotes(a) || (a.at || 0) - (b.at || 0));
-  const mySotn = inPlan ? (S.trip.songVotes || {})[S.uid] : null, sotn = inPlan ? songOfPlan() : null;
-  const who = id => crew ? crewNick(crew, id) : nameOf(id);
-  return `<section class="card stack playlist">
-    <div class="row" style="justify-content:space-between"><h2>${crew ? esc(crew.name) + ' playlist' : 'Playlist'}</h2><span class="small muted">${songs.length} song${songs.length === 1 ? '' : 's'}</span></div>
-    <p class="small muted">${crew ? 'One playlist for the crew. It grows with every plan.' : 'Everyone adds songs.'} Upvote the ones that hit${inPlan ? ', and pick your song of the ' + (isSmall() ? 'night' : 'trip') + ' for the recap' : ''}.</p>
-    ${sotn?.song ? `<div class="sotn"><span class="label">Song of the ${isSmall() ? 'night' : 'trip'} so far</span><b>${esc(sotn.song.title)}</b><span class="small">${sotn.song.artist ? esc(sotn.song.artist) + ' · ' : ''}${sotn.n} vote${sotn.n === 1 ? '' : 's'}</span></div>` : ''}
-    <form id="songForm" class="row" style="gap:6px;align-items:flex-end">
-      <label class="field" style="flex:2 1 150px"><span class="label">Song</span><input id="sg-title" maxlength="80" required placeholder="Dancing Queen"></label>
-      <label class="field" style="flex:1 1 120px"><span class="label">Artist</span><input id="sg-artist" maxlength="60" placeholder="ABBA"></label>
-      <label class="field" style="flex:2 1 160px"><span class="label">Link (optional)</span><input id="sg-link" maxlength="300" type="url" placeholder="Spotify or Apple Music link"></label>
-      <button class="btn primary" type="submit">Add</button></form>
-    ${songs.length ? `<ol class="songs">${songs.map((s, i) => { const v = songVotes(s), mine = (s.votes || {})[S.uid] > 0; return `<li class="song">
-      <span class="song-n mono">${i + 1}</span>
-      <div style="min-width:0;flex:1"><b>${esc(s.title)}</b>${s.artist ? ` <span class="muted">· ${esc(s.artist)}</span>` : ''}
-        <div class="small muted">Added by ${esc(who(s.by))} · <a href="${s.link || 'https://open.spotify.com/search/' + songQ(s)}" target="_blank" rel="noopener">${s.link ? 'Listen' : 'Spotify'}</a>${s.link ? '' : ` · <a href="https://music.apple.com/us/search?term=${songQ(s)}" target="_blank" rel="noopener">Apple Music</a> · <a href="https://www.youtube.com/results?search_query=${songQ(s)}" target="_blank" rel="noopener">YouTube</a>`}</div></div>
-      <div class="row" style="gap:4px;flex-wrap:nowrap">
-        <button class="chip ${mine ? 'on' : ''}" data-songvote="${esc(s.id)}" aria-label="Upvote ${esc(s.title)}">▲ ${v}</button>
-        ${inPlan ? `<button class="chip ${mySotn === s.id ? 'sotn-on' : ''}" data-sotn="${esc(s.id)}" title="My song of the ${isSmall() ? 'night' : 'trip'}">♫</button>` : ''}
-        ${s.by === S.uid ? `<button class="x" data-delsong="${esc(s.id)}" aria-label="Remove ${esc(s.title)}">×</button>` : ''}</div></li>`; }).join('')}</ol>
-      <div class="row" style="gap:6px"><button class="btn sm" data-act="copySongs">Copy the list</button><span class="small muted">Paste it into a Spotify or Apple Music playlist.</span></div>`
-    : `<div class="empty"><span>No songs yet. Add the one that has to play ${inPlan ? 'at this ' + planWord() : 'this year'}.</span></div>`}
-  </section>`;
-}
-const playlistTab = () => playlistCard();
-async function addSong(title, artist, link) {
-  const s = { title: title.slice(0, 80), artist: artist.slice(0, 60), link: /^https:\/\/\S+$/.test(link) ? link.slice(0, 300) : '', by: S.uid, at: Date.now(), votes: { [S.uid]: 1 } };
-  const id = rid(8);
-  if (S.demo || !S.db) { S.songs = [...S.songs, { id, ...s }]; render(); return; }
-  S.songs = [...S.songs, { id, ...s }]; render();
-  try { await S.db.doc(`${S.songPath}/${id}`).set(s); } catch (e) { flash(writeErr(e)); }
-}
-async function voteSong(id) {
-  const s = S.songs.find(x => x.id === id); if (!s) return;
-  const v = (s.votes || {})[S.uid] > 0 ? 0 : 1;
-  s.votes = { ...(s.votes || {}), [S.uid]: v }; render();
-  if (S.demo || !S.db) return;
-  try { await S.db.doc(`${S.songPath}/${id}`).update({ votes: { [S.uid]: v } }); } catch (e) { flash(writeErr(e)); }
-}
-async function delSong(id) {
-  S.songs = S.songs.filter(x => x.id !== id); render();
-  if (S.demo || !S.db) return;
-  try { await S.db.doc(`${S.songPath}/${id}`).delete(); } catch (e) { flash(writeErr(e)); }
 }
 
 /* ---------- per-size wording ---------- */
@@ -3699,10 +3636,6 @@ app.addEventListener('click', e => {
   if (ds.act === 'genPitches') return genPitches();
   if (ds.act === 'growPlan') return growPlan();
   if (ds.setsize) { const k = ds.setsize, small = ['hangout', 'day'].includes(k), n = small ? 0 : (isSmall() ? SIZES[k].nights : nightsSet(S.trip)); return saveTrip({ size: k, nights: n, ...(n !== nightsSet(S.trip) ? { lockedDates: null } : {}), ...(S.trip.winEnd < add(TODAY, SIZES[k].win) ? { winEnd: add(TODAY, SIZES[k].win) } : {}) }); }
-  if (ds.songvote) return voteSong(ds.songvote);
-  if (ds.sotn) { const cur = (S.trip.songVotes || {})[S.uid]; return saveTrip({ songVotes: { [S.uid]: cur === ds.sotn ? '' : ds.sotn } }); }
-  if (ds.delsong) return delSong(ds.delsong);
-  if (ds.act === 'copySongs') return copy([...S.songs].sort((a, b) => songVotes(b) - songVotes(a)).map((s, i) => `${i + 1}. ${s.title}${s.artist ? ' – ' + s.artist : ''}`).join('\n'));
   if (ds.act === 'copyInvite') return sendInvite(inviteText(S.trip), inviteLink(), S.trip.name);
   if (ds.setnights) return saveTrip({ nights: +ds.setnights, lockedDates: null });
   if (ds.act === 'ciJump') return jumpTo('#ci-text');
@@ -3860,7 +3793,6 @@ app.addEventListener('submit', async e => {
   clearDrafts(f);
   if (f.id === 'newTrip') return createTrip();
   if (f.id === 'newCrewForm') { const n = $('#nc-name').value.trim(); if (n) return createCrew(n); return; }
-  if (f.id === 'songForm') { const title = $('#sg-title').value.trim(); if (!title) return; return addSong(title, $('#sg-artist').value.trim(), $('#sg-link').value.trim()); }
   if (f.id === 'tkForm') return sendTicket();
   if (f.id === 'swapForm') return swapItem($('#swap-title').value);
   if (f.id === 'ownStayForm') return addOwnStay(e.submitter?.dataset.how === 'lock');
@@ -3916,7 +3848,7 @@ function resetTrip() {
   S.cardUrl = null; S.cardBlob = null; S.copyText = ''; S.split = null; S.confirm = null; S.tkFile = null; S.feed = []; S.bucket = []; S.photos = []; S.pot = []; S.mySpend = []; S.lostOpen = false; S.pinSel = null; S.hangPlan = null; S.wrapI = 0; S.img = null; S.show = null; clearInterval(showTimer);
   for (const k of Object.keys(DRAFT)) delete DRAFT[k];
 }
-function goHome() { stop(); if (S.meDirty) flushMe(); S.tid = null; S.creating = null; S.crewView = null; subscribeSongs(null); S.demo = false; resetTrip(); setHash(''); render(); }
+function goHome() { stop(); if (S.meDirty) flushMe(); S.tid = null; S.creating = null; S.crewView = null; S.demo = false; resetTrip(); setHash(''); render(); }
 
 function openTrip(id, tab) {
   if (!S.db) { flash(IN_CLAUDE ? 'Open this page in Claude to load trips.' : 'Can’t reach the local server. Is npm run dev still running?'); return; }
@@ -3924,7 +3856,7 @@ function openTrip(id, tab) {
   app.innerHTML = `${topBar()}<p class="muted">Loading trip…</p>`;
   S.unsub.push(S.db.doc('trips/' + id).onSnapshot(snap => {
     if (!snap.exists) { flash('That trip doesn’t exist anymore.'); goHome(); return; }
-    const first = !S.trip; S.trip = { ...snap.data() }; subscribeSongs(S.trip.crewId ? `crews/${S.trip.crewId}/songs` : `trips/${id}/songs`); if (first && !S.tabPicked && isLive()) S.tab = 'live'; render();
+    const first = !S.trip; S.trip = { ...snap.data() }; if (first && !S.tabPicked && isLive()) S.tab = 'live'; render();
   }, () => flash('Lost the connection to this trip. Reload to reconnect.')));
   S.unsub.push(S.db.collection(`trips/${id}/members`).onSnapshot(snap => {
     const local = meDoc();
@@ -3945,7 +3877,7 @@ function openTrip(id, tab) {
 }
 
 function openDemo() {
-  stop(); resetTrip(); S.crewView = null; subscribeSongs(null); S.demo = true; S.tid = 'demo'; S.tab = 'overview'; S.secTab = {}; S.tabPicked = true; S.creating = null; setHash('');
+  stop(); resetTrip(); S.crewView = null; S.demo = true; S.tid = 'demo'; S.tab = 'overview'; S.secTab = {}; S.tabPicked = true; S.creating = null; setHash('');
   S.uid = S.uid || 'you';
   const start = add(TODAY, -1), end = add(TODAY, 2), y = start, t0 = Date.now(), H = 36e5;
   const at = (day, hm) => new Date(day + 'T' + hm + ':00').getTime();
@@ -4037,13 +3969,6 @@ function openDemo() {
     { id: 'b2', text: 'Talk our way into VIP', points: 3, doneBy: [], at: 2 },
     { id: 'b3', text: 'Order the 3am sandwich', points: 1, doneBy: [m1.id, m2.id, m4.id], at: 3 },
   ];
-  S.songs = [
-    { id: 'sg1', title: 'Dancing Queen', artist: 'ABBA', by: m2.id, at: 1, votes: { d2: 1, d4: 1, d1: 1, [S.uid]: 1 } },
-    { id: 'sg2', title: 'Tití Me Preguntó', artist: 'Bad Bunny', by: m1.id, at: 2, votes: { d1: 1, d2: 1, d3: 1 } },
-    { id: 'sg3', title: 'Mr. Brightside', artist: 'The Killers', by: S.uid, at: 3, votes: { [S.uid]: 1, d5: 1 } },
-    { id: 'sg4', title: 'Espresso', artist: 'Sabrina Carpenter', by: m4.id, at: 4, votes: { d4: 1 } },
-  ];
-  S.trip.songVotes = { d1: 'sg2', d2: 'sg1', d4: 'sg1', d3: 'sg2', d5: 'sg1' };
   S.trip.superVotes = { s0: { d1: 'd2', d4: 'd2', d3: 'd2' }, s1: { d2: 'd3' }, s2: { d2: 'd1', d4: 'd1' }, s5: { d2: 'd1', d3: 'd1' } };
   render(); window.scrollTo({ top: 0 });
 }
