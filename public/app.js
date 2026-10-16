@@ -14,8 +14,12 @@ const add = (s, n) => { const d = D(s); d.setUTCDate(d.getUTCDate() + n); return
 const isDay = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(D(s)) && iso(D(s)) === s;
 // A plan saved before dates were checked may hold a value that isn't a date. It's treated as
 // not set (only in this copy; nothing is saved), so the plan still opens and can be fixed.
-const cleanDates = t => { for (const k of ['winStart', 'winEnd', 'rsvpBy']) if (t[k] != null && t[k] !== '' && !isDay(t[k])) delete t[k]; if (t.decide && t.decide.by && !isDay(t.decide.by)) t.decide = { ...t.decide, by: '' }; return t; };
-const span = (a, b) => { const o = []; if (!a || !b) return o; for (let s = a; s <= b && o.length < 92; s = add(s, 1)) o.push(s); return o; };
+const cleanDates = t => { for (const k of ['winStart', 'winEnd', 'rsvpBy']) if (t[k] != null && t[k] !== '' && !isDay(t[k])) delete t[k]; if (t.decide && t.decide.by && !isDay(t.decide.by)) t.decide = { ...t.decide, by: '' };
+  const L = t.lockedDates; if (L != null && !(isDay(L.start) && isDay(L.end) && L.end >= L.start)) delete t.lockedDates;
+  const badDay = v => v != null && !isDay(v), items = t.pitches && Array.isArray(t.pitches.items) ? t.pitches.items : null;
+  if (items && items.some(x => x && (badDay(x.start) || badDay(x.end)))) t.pitches = { ...t.pitches, items: items.map(x => { if (!x || !(badDay(x.start) || badDay(x.end))) return x; const { start, end, ...rest } = x; return rest; }) };
+  return t; };
+const span = (a, b) => { const o = []; if (!isDay(a) || !isDay(b)) return o; for (let s = a; s <= b && o.length < 92; s = add(s, 1)) o.push(s); return o; };
 // Date labels are formatted constantly while drawing; formatters are reused and results kept.
 const DTF = {}, FMT = new Map(), FMT_DEF = { weekday: 'short', month: 'short', day: 'numeric' };
 const fmt = (s, o = FMT_DEF) => {
@@ -5117,7 +5121,7 @@ render();
   S.loading = false;
   if (db) {
     db.collection('trips').orderBy('createdAt', 'desc').limit(50).onSnapshot(snap => {
-      S.trips = snap.docs.map(d => ({ id: d.id, ...d.data() })); S.tripsLoaded = true; notifyNew(myPlans()); if (!S.tid) render();
+      S.trips = snap.docs.map(d => cleanDates({ id: d.id, ...d.data() })); S.tripsLoaded = true; notifyNew(myPlans()); if (!S.tid) render();
     }, () => { S.tripsLoaded = true; if (!S.tid) render(); });
     db.collection('crews').orderBy('at', 'desc').limit(50).onSnapshot(snap => {
       S.crews = snap.docs.map(d => ({ id: d.id, ...d.data() })); if (!S.tid) render();

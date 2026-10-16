@@ -150,7 +150,7 @@ render();
   S.loading = false;
   if (db) {
     db.collection('trips').orderBy('createdAt', 'desc').limit(50).onSnapshot(snap => {
-      S.trips = snap.docs.map(d => ({ id: d.id, ...d.data() })); S.tripsLoaded = true; notifyNew(myPlans()); if (!S.tid) render();
+      S.trips = snap.docs.map(d => cleanDates({ id: d.id, ...d.data() })); S.tripsLoaded = true; notifyNew(myPlans()); if (!S.tid) render();
     }, () => { S.tripsLoaded = true; if (!S.tid) render(); });
     db.collection('crews').orderBy('at', 'desc').limit(50).onSnapshot(snap => {
       S.crews = snap.docs.map(d => ({ id: d.id, ...d.data() })); if (!S.tid) render();
