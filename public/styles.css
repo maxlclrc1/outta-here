@@ -8,6 +8,8 @@ img{max-width:100%}
 /* First-visit "join with your name" screen (public/shim.js) */
 .join-screen{position:fixed;inset:0;z-index:50;background:var(--bg);display:grid;place-items:center;padding:24px max(16px,env(safe-area-inset-right,0px)) 24px max(16px,env(safe-area-inset-left,0px))}
 .join-card{width:100%;max-width:420px;display:flex;flex-direction:column;gap:14px}
+.join-invite{margin:0;font-size:16px;color:var(--muted)}
+.join-invite b{color:var(--ink)}
 .join-card h1{font-size:clamp(32px,8vw,44px)}
 /* Layout: one app column; every trip opens on a boarding-pass header, then tabs that walk from "who's in" to "where we're drinking". */
 :root{
@@ -529,3 +531,29 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
   .mc-ev.s{margin-left:2px}.mc-ev.e{margin-right:2px}
   .mc-n{font-size:11px;min-width:20px;height:20px;margin-left:3px}
 }
+
+/* invites */
+.welcome{display:flex;flex-direction:column;gap:12px;padding:22px;border:1.5px solid var(--pc);background:color-mix(in oklab,var(--pc) 7%,var(--surface))}
+.welcome .label{color:var(--pc)}
+.welcome h1{font-size:clamp(30px,8vw,44px);line-height:1.02}
+.welcome p{margin:0}
+.welcome-acts{display:flex;gap:8px;flex-wrap:wrap}
+.welcome-acts .btn{flex:1 1 auto;justify-content:center}
+.welcome-acts .btn.primary{flex:2 1 160px}
+/* plan match: steer, settle, final vote */
+.steer{display:flex;flex-direction:column;gap:4px;border-top:1px solid var(--line);padding-top:12px}
+.steer .field{flex:none}
+.settle{border-left:4px solid var(--gold)}
+.runoff{border:1.5px solid var(--accent)}
+.ro-opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.ro-opt{all:unset;box-sizing:border-box;display:flex;flex-direction:column;gap:4px;padding:14px;border-radius:14px;border:1.5px solid var(--line);background:var(--surface);cursor:pointer;transition:border-color .18s var(--ease),background-color .18s var(--ease),transform .22s var(--spring)}
+.ro-opt b{font:800 20px var(--f-display);font-variation-settings:"wdth" 85}
+.ro-opt:hover:not([disabled]){border-color:var(--accent)}
+.ro-opt:active:not([disabled]){transform:scale(.97)}
+.ro-opt:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ro-opt.on{border-color:var(--accent);background:color-mix(in oklab,var(--accent) 10%,var(--surface))}
+.ro-opt.win{border-color:var(--good);background:color-mix(in oklab,var(--good) 12%,var(--surface))}
+.ro-opt[disabled]{cursor:default}
+.ro-count{font:700 11px var(--f-mono);text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.ro-opt.on .ro-count{color:var(--accent)}
+.ro-opt.win .ro-count{color:var(--good)}

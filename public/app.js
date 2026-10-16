@@ -806,6 +806,130 @@ async function delTicket() {
   saveTrip({ tickets: { [S.uid]: null } });
 }
 
+/* ---------- invites ---------- */
+// Phones get the native share sheet (Messages, WhatsApp, Instagram…). Desktop, or a
+// browser that blocks sharing, copies the message instead.
+async function sendInvite(text, url, title) {
+  const phone = matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints > 0 && innerWidth < 820);
+  if (navigator.share && phone) {
+    try { await navigator.share({ title, text, url }); return; }
+    catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  return copy(`${text}\n${url}`);
+}
+const noSignup = () => IN_CLAUDE ? '' : ' No app, no sign-up.';
+function inviteText(t) {
+  const w = SIZES[sizeOf(t)].label.toLowerCase(), when = t.lockedDates ? planWhen(t) : '';
+  return `Join our ${w}: ${t.name}${when ? ` (${when})` : ''}. Tap the link and say if you’re in.${noSignup()}`;
+}
+const crewInviteText = c => `Join ${c?.name || 'our crew'} on Outta Here. It’s where we plan everything, from Friday dinners to trips.${noSignup()}`;
+async function joinCrewQuiet(cid) {
+  const c = S.crews.find(x => x.id === cid);
+  if (!S.db || S.demo || !cid || (c && crewMembers(c).includes(S.uid))) return;
+  try { await S.db.doc('crews/' + cid).update({ people: { [S.uid]: true }, profiles: { [S.uid]: { nick: S.myName || 'Someone' } } }); } catch {}
+}
+// First thing someone sees when they open an invite: what it is, who's in, and one tap to answer.
+function welcomeCard() {
+  const t = S.trip, host = S.members.find(m => m.id === t.createdBy), ins = S.members.filter(m => m.status === 'in');
+  const crew = S.crews.find(c => c.id === t.crewId), ds = dest(), sz = SIZES[size()];
+  const when = t.lockedDates ? planWhen(t) : `Picking ${isSmall() ? 'a day' : 'dates'} together`;
+  return `<section class="card welcome" style="--pc:${sz.color}">
+    <span class="label">${host ? `${esc(host.nick || 'A friend')} invited you` : 'You’re invited'}</span>
+    <h1>${esc(t.name)}</h1>
+    <p class="muted">${esc(sz.label)}${crew ? ' with ' + esc(crew.name) : ''} · ${esc(when)}${ds ? ' · ' + esc(ds.city) : ''}</p>
+    ${ins.length ? `<div class="row" style="gap:8px;align-items:center"><div class="avs">${ins.slice(0, 7).map(m => `<span class="av-sm" style="background:${colorFor(m.id)}" title="${esc(m.nick || 'Someone')}">${esc((m.nick || '?')[0].toUpperCase())}</span>`).join('')}</div><span class="small muted">${ins.length} in so far</span></div>` : ''}
+    <div class="welcome-acts"><button class="btn primary big" data-join="in">I’m in</button><button class="btn big" data-join="maybe">Maybe</button><button class="btn ghost big" data-join="out">Can’t make it</button></div>
+    ${t.crewId ? `<span class="small muted">Saying you’re in also adds you to ${crew ? esc(crew.name) : 'the crew'}, so you’re part of their next plans too.</span>` : ''}
+  </section>`;
+}
+function joinPlan(status) {
+  saveMe({ status }, true);
+  if (status !== 'out') joinCrewQuiet(S.trip.crewId);
+  flash(status === 'in' ? 'You’re in. Next, tap the days you’re free.' : status === 'maybe' ? 'Marked as maybe. You can change it any time.' : 'Got it. The crew will see you can’t make it.');
+}
+
+/* ---------- plan match: learning and settling disagreements ---------- */
+const pName = p => p.small ? p.title : p.city;
+const yesOf = p => active().filter(m => swipeOf(p.id, m.id) === 1).length;
+function swipeSummary() {
+  const vs = active();
+  return (S.trip.pitches?.items || []).map(p => ({ n: pName(p), y: yesOf(p), x: vs.filter(m => swipeOf(p.id, m.id) === -1).length })).filter(h => h.y || h.x);
+}
+const nextHistory = () => [...swipeSummary(), ...(S.trip.pitchHistory || [])].slice(0, 16);
+// What the AI should learn before pitching again: the crew's own request, how they swiped, what they've done before.
+function pitchMemory() {
+  const t = S.trip, hist = nextHistory(), lines = [];
+  const past = S.trips.filter(x => x.id !== S.tid && t.crewId && x.crewId === t.crewId && x.lockedDest).map(x => (x.destinations || []).find(d => d.id === x.lockedDest)?.city || x.name).slice(0, 8);
+  if (t.pitchNote) lines.push(`The crew asked for: "${t.pitchNote}". Treat this as a requirement.`);
+  if (hist.length) lines.push(`How the crew (${active().length} people) swiped on earlier pitches. Lean toward what got yeses, steer away from what most people passed on, and don't repeat any of these:\n${hist.map(h => `- ${h.n}: ${h.y} yes, ${h.x} pass`).join('\n')}`);
+  if (past.length) lines.push(`Plans this crew already locked before: ${past.join(', ')}. Don't repeat them; use them as a hint about their taste.`);
+  return lines.join('\n');
+}
+function takeNote() {
+  const el = $('#pitch-note'); if (!el) return;
+  const note = el.value.trim().slice(0, 120);
+  if (note !== (S.trip.pitchNote || '')) saveTrip({ pitchNote: note });
+}
+function steerField() {
+  if (S.sample === null || S.readOnly) return '';
+  const hist = nextHistory().length;
+  return `<div class="steer"><label class="field"><span class="label">Steer the pitches (optional)</span><input id="pitch-note" maxlength="120" value="${esc(S.trip.pitchNote || '')}" placeholder="${isSmall() ? 'Cheap, near the L train, no karaoke' : 'Somewhere warm, no red-eyes, under $800'}"></label>
+    ${hist ? `<span class="small muted">New pitches learn from how you swiped on the last ${hist === 1 ? 'one' : hist}.</span>` : ''}</div>`;
+}
+function runoffState() {
+  const r = S.trip.runoff; if (!r || !r.key) return null;
+  const items = S.trip.pitches?.items || [], ps = (r.ids || []).map(id => items.find(x => x.id === id)).filter(Boolean);
+  if (ps.length < 2) return null;
+  const vs = active(), votes = (S.trip.roVotes || {})[r.key] || {};
+  const count = id => vs.filter(m => votes[m.id] === id).length, waiting = vs.filter(m => !votes[m.id]);
+  const ranked = [...ps].sort((a, b) => count(b.id) - count(a.id) || yesOf(b) - yesOf(a) || (b.vibeMatch || 0) - (a.vibeMatch || 0));
+  const winner = !waiting.length || count(ranked[0].id) > vs.length / 2 ? ranked[0] : null;
+  return { key: r.key, ps, count, waiting, winner, mine: votes[S.uid] };
+}
+const lockedOn = p => S.trip.lockedDest && dest()?.city === p.city && S.trip.lockedDates?.start === p.start;
+function runoffCard() {
+  const ro = runoffState(); if (!ro) return '';
+  const other = ro.winner && ro.ps.find(p => p !== ro.winner);
+  return `<section class="card runoff stack">
+    <div class="row" style="justify-content:space-between"><span class="label" style="color:var(--accent)">Final vote</span>${S.readOnly ? '' : '<button class="linkbtn small muted" data-act="endRunoff">Cancel</button>'}</div>
+    <h2>${ro.winner ? `${esc(pName(ro.winner))} wins` : 'Pick one'}</h2>
+    <p class="small muted">${ro.winner ? `${ro.count(ro.winner.id)} to ${ro.count(other.id)}.` : 'Nothing got a yes from everyone, so the top two go head to head. Most votes wins.'}</p>
+    <div class="ro-opts">${ro.ps.map(p => `<button class="ro-opt ${ro.mine === p.id ? 'on' : ''} ${ro.winner === p ? 'win' : ''}" data-runoff="${esc(p.id)}" aria-pressed="${ro.mine === p.id}" ${ro.winner || S.readOnly ? 'disabled' : ''}>
+      <b>${esc(pName(p))}</b><span class="small">${p.start === p.end ? fmt(p.start) + (p.time ? ' · ' + t12(p.time) : '') : short(p.start) + ' – ' + short(p.end)} · ${esc(p.perPerson || '?')}</span>
+      <span class="ro-count">${ro.count(p.id)} vote${ro.count(p.id) === 1 ? '' : 's'}${ro.mine === p.id ? ' · yours' : ''}</span></button>`).join('')}</div>
+    ${ro.winner ? (lockedOn(ro.winner) ? '<span class="pill in" style="align-self:flex-start">Locked in</span>' : `<div><button class="btn primary" data-lockpitch="${esc(ro.winner.id)}">Lock in ${esc(pName(ro.winner))}</button></div>`)
+      : `<span class="small muted">${ro.mine ? 'Waiting on ' + ro.waiting.map(m => esc(m.nick || 'Someone')).join(', ') : 'Tap the one you’d rather do.'}</span>`}
+  </section>`;
+}
+// Everyone has swiped and nothing got a yes from all of them: show the closest pick and ways out.
+function settleCard(items) {
+  const vs = active(), n = vs.length;
+  const waiting = vs.filter(m => items.some(p => !swipeOf(p.id, m.id)));
+  if (waiting.length) return `<div class="empty"><b>You’ve swiped them all.</b><span>Waiting on ${waiting.map(m => esc(m.nick || 'Someone')).join(', ')}. Results are below.</span>${S.readOnly ? '' : '<button class="btn sm" data-act="nudgeSwipe">Nudge them</button>'}</div>`;
+  if (runoffState()) return '';
+  const ranked = [...items].sort((a, b) => yesOf(b) - yesOf(a) || (b.vibeMatch || 0) - (a.vibeMatch || 0)), top = ranked[0], y = yesOf(top);
+  const second = ranked[1] && yesOf(ranked[1]) ? ranked[1] : null;
+  if (!y) return `<section class="card settle stack"><h2>Nobody loved these</h2><p class="small muted">Every pitch got passed. Say what you want in “Steer the pitches” and get a new round. It learns from what you passed on.</p>
+    ${S.sample ? `<div><button class="btn primary" data-act="genPitches">Pitch a new round</button></div>` : ''}</section>`;
+  const passers = vs.filter(m => swipeOf(top.id, m.id) === -1);
+  return `<section class="card settle stack">
+    <span class="label">No perfect match</span>
+    <h2>Closest: ${esc(pName(top))}</h2>
+    <p class="small muted">${y} of ${n} said yes${passers.length ? `. ${passers.map(m => esc(m.nick || 'Someone')).join(', ')} passed` : ''}.${second ? ` Runner-up: ${esc(pName(second))} with ${yesOf(second)}.` : ''}</p>
+    <div class="row" style="gap:6px">
+      ${y > n / 2 ? `<button class="btn primary" data-lockpitch="${esc(top.id)}">Go with ${esc(pName(top))} (majority)</button>` : ''}
+      ${second ? `<button class="btn ${y > n / 2 ? '' : 'primary'}" data-act="startRunoff">Final vote: top two</button>` : ''}
+      ${S.sample ? '<button class="btn ghost" data-act="genPitches">Pitch a new round</button>' : ''}
+    </div>
+  </section>`;
+}
+function startRunoff() {
+  const items = S.trip.pitches?.items || [], ranked = [...items].sort((a, b) => yesOf(b) - yesOf(a) || (b.vibeMatch || 0) - (a.vibeMatch || 0));
+  if (ranked.length < 2) return;
+  saveTrip({ runoff: { key: rid(6), ids: [ranked[0].id, ranked[1].id], by: S.uid, at: Date.now() } });
+  flash('Final vote started. Everyone picks one of the top two.');
+}
+
 /* ---------- trip match (swipe) ---------- */
 const GRADS = [['#FF4FA3', '#7048E8'], ['#FF8A3D', '#D41C78'], ['#12B5A6', '#3B5BDB'], ['#F2B32B', '#E8590C'], ['#7048E8', '#1098AD'], ['#E5484D', '#7A1FA2']];
 const hashStr = s => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
@@ -827,6 +951,7 @@ function dateOptions() {
   return picked;
 }
 function genPitches() {
+  takeNote();
   if (isSmall()) return genPlanPitches();
   const opts = dateOptions(); if (!opts.length) { flash('Set a date window first.'); return; }
   const b = budgetCap();
@@ -837,10 +962,11 @@ Per-person budget cap (all-in, flights included): ${b ? money(b.cap) : 'not set,
 Trip length: ${nightsSet(S.trip)} nights.
 ${blend() ? 'Crew vibe quiz:\n' + blendText() : 'Vibe: fun, social, nightlife'}
 Destinations already suggested by the crew: ${(S.trip.destinations || []).map(d => d.city).join(', ') || 'none'}
+${pitchMemory()}
 Date options (each pitch must use one of these exactly):
 ${opts.map((o, i) => `${i + 1}) ${o.start} to ${o.end} (${o.ok}/${active().length} free)`).join('\n')}
 
-Give 6 pitches with 6 different destinations: include the crew's suggestions that fit, plus fresh ideas that fit the budget from those home cities. Prefer the date options most people can make. Be realistic about prices.
+Give 6 pitches with 6 different destinations: include the crew's suggestions that fit, plus fresh ideas that fit the budget from those home cities. Every pitch must work for the lowest budget in the crew. Make them genuinely different from each other so the swipes tell us something. Prefer the date options most people can make. Be realistic about prices.
 Reply with only JSON: {"pitches":[{"city":"","code":"IATA airport code","start":"YYYY-MM-DD","end":"YYYY-MM-DD","tagline":"punchy, 4-9 words","why":"1-2 sentences on why THIS crew would love it","perPerson":"$650–800 all-in","vibeMatch":87,"highlights":["3 short, specific highlights"],"weather":"short"}]}`;
   askAI('pitch', prompt, data => {
     const valid = new Map(opts.map(o => [o.start, o]));
@@ -851,7 +977,7 @@ Reply with only JSON: {"pitches":[{"city":"","code":"IATA airport code","start":
         vibeMatch: Math.max(0, Math.min(100, Math.round(+p.vibeMatch || 0))), highlights: (p.highlights || []).slice(0, 3).map(h => String(h).slice(0, 80)), weather: String(p.weather || '').slice(0, 60) };
     });
     if (!items.length) { flash('No pitches came back. Try again.'); return; }
-    return saveTrip({ pitches: { items, at: Date.now() } });
+    return saveTrip({ pitches: { items, at: Date.now() }, pitchHistory: nextHistory(), runoff: null });
   });
 }
 async function swipe(pid, v) {
@@ -889,7 +1015,9 @@ function matchTab() {
   return `<section class="card stack">
     <div class="row" style="justify-content:space-between"><div class="stack" style="gap:2px"><h2>${isSmall() ? 'Plan Match' : 'Trip Match'}</h2><span class="small muted">The AI pitches ${isSmall() ? 'whole plans' : 'complete trips'} that fit everyone’s budget, free days and vibe. Everyone swipes. If you all say yes to the same one, it’s a match.</span></div>
       ${S.sample !== null ? `<button class="btn ${items.length ? '' : 'primary'}" data-act="genPitches" ${S.busy.pitch ? 'disabled' : ''}>${S.busy.pitch ? '<i class="spin"></i>Pitching…' : items.length ? 'New pitches' : isSmall() ? 'Pitch us some plans' : 'Pitch us some trips'}</button>` : ''}</div>
+    ${steerField()}
   </section>
+  ${runoffCard()}
   ${m ? `<section class="match"><span class="label" style="color:rgba(255,255,255,.85)">Everyone swiped yes</span><h1 style="color:#fff">It’s a match!</h1>
       <p style="font-size:17px">${esc(m.city)} · ${dayRange(m.start, m.end)}${m.time ? ' · ' + t12(m.time) : ''} · ${esc(m.perPerson)}</p>
       <div>${S.trip.lockedDest && dest()?.city === m.city && S.trip.lockedDates?.start === m.start ? `<span class="on-pill" style="background:#fff;color:#151A33">Locked in</span>` : `<button class="btn" data-lockpitch="${esc(m.id)}">Lock it in</button>`}</div></section>` : ''}
@@ -898,7 +1026,7 @@ function matchTab() {
   : next ? `<section class="stack" style="align-items:center">${pitchCard(next)}
       <div class="row" style="justify-content:center;gap:22px"><button class="swipe-btn no" data-swipe="${esc(next.id)}|-1" aria-label="Pass">✕</button><button class="swipe-btn yes" data-swipe="${esc(next.id)}|1" aria-label="I'd go">♥</button></div>
       <span class="small muted">Drag the card or tap the buttons</span></section>`
-  : `<div class="empty"><b>You’ve swiped them all.</b><span>Waiting on the crew. Results are below.</span></div>`}
+  : !m && active().length >= 2 ? settleCard(items) : `<div class="empty"><b>You’ve swiped them all.</b><span>Results are below.</span></div>`}
   ${items.length ? `<section class="card"><h3 style="margin-bottom:6px">Scoreboard</h3>
     ${[...items].sort((a, b) => vs.filter(x => swipeOf(b.id, x.id) === 1).length - vs.filter(x => swipeOf(a.id, x.id) === 1).length).map(p => {
       const yes = vs.filter(x => swipeOf(p.id, x.id) === 1), waiting = vs.filter(x => !swipeOf(p.id, x.id)), mine = swipeOf(p.id, S.uid);
@@ -1247,12 +1375,13 @@ function overviewTab() {
   const today = live ? visItems().filter(i => i.date === TODAY).sort(byTime) : [];
   const nowT = new Date().toTimeString().slice(0, 5), upNext = today.find(i => timeKey(i.time) >= timeKey(nowT));
   const fl = S.trip.deals?.data?.flights || [];
-  return `${honoreeMode() && !t.honoree ? `<section class="card row" style="justify-content:space-between"><span><b>Who’s the ${esc(mode().honoree)}?</b> <span class="small muted">${t.honoreeName ? esc(t.honoreeName) + ' · ' : ''}Their share is covered and surprises stay hidden from them.</span></span>
+  return `${S.membersIn && !meDoc() && !S.demo && !S.readOnly ? welcomeCard() : ''}${honoreeMode() && !t.honoree ? `<section class="card row" style="justify-content:space-between"><span><b>Who’s the ${esc(mode().honoree)}?</b> <span class="small muted">${t.honoreeName ? esc(t.honoreeName) + ' · ' : ''}Their share is covered and surprises stay hidden from them.</span></span>
     <select id="set-honoree" style="width:auto"><option value="">Pick someone</option>${S.members.map(m => `<option value="${esc(m.id)}">${esc(m.nick || 'Someone')}</option>`).join('')}</select></section>` : ''}
   ${live ? `<section class="hero-card live-card"><div class="row" style="gap:8px"><i class="live-dot" aria-hidden="true"></i><span class="label" style="color:inherit">${isSmall() ? 'Happening today' : 'Trip is live · Day ' + (span(d.start, d.end).indexOf(TODAY) + 1)}</span></div>
       <h2>${upNext ? `Up next: ${esc(upNext.title)}` : 'Nothing else planned today'}</h2>${upNext ? `<span>${esc(tShow(upNext.time) || '')}</span>` : ''}
       <div class="row" style="gap:8px"><button class="btn" data-tab="live">Open today</button><button class="btn ghost-light" data-tab="map">Map</button><button class="btn lost-btn" data-act="lostOpen">I’m lost</button></div></section>`
   : over ? `<section class="hero-card" style="--hc:#7048E8"><span class="label" style="color:inherit">That’s a wrap</span><h2>${isSmall() ? 'Your recap is ready' : `Your ${esc(dest()?.city || 'trip')} Wrapped is ready`}</h2><div><button class="btn" data-tab="wrapped">Watch it</button></div></section>`
+  : !meDoc() && !S.demo ? ''
   : next ? (() => { const g = guide(); return `<section class="hero-card"><span class="label" style="color:inherit">Step ${st.indexOf(next) + 1} of ${st.length} · ${esc(next.label)}</span><h2>${esc(g && !g.wait ? g.label : g ? g.label : next.label)}</h2><p>${esc(next.sub)}</p>${g && !g.wait ? `<div><button class="btn" data-tab="${g.tab}" data-guide="1">Let’s go</button></div>` : ''}</section>`; })()
   : `<section class="hero-card" style="--hc:#14915F"><span class="label" style="color:inherit">All set</span><h2>Everything’s booked. Now you just wait.</h2></section>`}
   ${pass()}
@@ -1778,7 +1907,7 @@ function inviteCard() {
     ${IN_CLAUDE ? `<ol class="small steps-list"><li>Open this page’s <b>Share</b> menu and invite each friend by email as an <b>Editor</b>. Viewers can look but can’t vote or swipe.</li><li>Send them the invite below. It opens this trip directly.</li></ol>`
       : `<p class="small muted">Send this link. Friends type their name and land right in this ${planWord()}.</p>`}
     <span class="invite-link mono">${esc(inviteLink())}</span>
-    <div class="row" style="gap:6px"><button class="btn primary" data-act="copyInvite">Copy invite message</button></div>
+    <div class="row" style="gap:6px"><button class="btn primary" data-act="copyInvite">Send invite</button></div>
   </section>`;
 }
 
@@ -1793,12 +1922,15 @@ function guide() {
   const me = meDoc(), t = S.trip, d = dates();
   if (isLive()) return null; // live mode has its own quick actions
   if (d && TODAY > d.end) return { tab: 'wrapped', sel: '.wslide', label: 'Watch your Trip Wrapped' };
-  if (!me || me.status === 'maybe') return { tab: 'overview', sel: '.pass-stub [data-status="in"]', label: 'Tell the crew if you’re in' };
+  if (!me || me.status === 'maybe') return { tab: 'overview', sel: me ? '.pass-stub [data-status="in"]' : '.welcome [data-join="in"]', label: 'Tell the crew if you’re in' };
   if (me.status === 'out') return null;
   const tk = tickets(), items = t.pitches?.items || [];
   for (const s of steps().filter(x => !x.done)) {
     if (s.go === 'crew') return S.members.length >= 2 ? { tab: 'crew', sel: '[data-act="copyNudge"]', label: 'Nudge the crew to say they’re in' } : { tab: 'crew', sel: '[data-act="copyInvite"]', label: 'Invite your friends' };
     if (s.go === 'match') {
+      const ro = runoffState(); if (ro && !ro.mine && !ro.winner) return { tab: 'match', sel: '.runoff', label: 'Vote in the final round' };
+      if (ro && ro.winner) return { tab: 'match', sel: '.runoff [data-lockpitch]', label: `Lock in ${pName(ro.winner)}` };
+      if (!ro && items.length && active().length >= 2 && !matchedPitch() && active().every(m => items.every(p => swipeOf(p.id, m.id)))) return { tab: 'match', sel: '.settle', label: 'No perfect match. Settle it' };
       if (items.some(x => !swipeOf(x.id, S.uid))) return { tab: 'match', sel: '#pitch', label: 'Swipe on the pitches' };
       if (!items.length && S.sample) return { tab: 'match', sel: '[data-act="genPitches"]', label: isSmall() ? 'Get AI plan pitches' : 'Get AI trip pitches' };
       if (!(t.destinations || []).length) return { tab: 'where', sel: '#ad-city', label: isSmall() ? 'Suggest a plan' : 'Suggest a destination' };
@@ -1917,6 +2049,7 @@ function growPlan() {
 
 /* Plan Match for hangouts and days out: the AI pitches whole evenings, the crew swipes */
 function genPlanPitches() {
+  takeNote();
   const opts = dateOptions().slice(0, 4); if (!opts.length) { flash('Set which days could work first.'); return; }
   const t = S.trip, b = budgetCap(), evening = size() === 'hangout';
   const prompt = `You're pitching plans to a friend group. Each person swipes yes or no, like a dating app, so make every pitch specific, fun and honest.
@@ -1925,6 +2058,7 @@ City: ${t.city || 'unknown, assume a big US city'}.
 Crew: ${active().length} people. Max spend per person: ${b ? money(b.cap) : 'not set, keep it moderate'}.
 ${blend() ? 'Crew vibe quiz:\n' + blendText() : 'Vibe: fun, social'}
 Ideas the crew already suggested: ${(t.destinations || []).map(d => d.city).join(', ') || 'none'}
+${pitchMemory()}
 Day options (use one exactly per pitch):
 ${opts.map((o, i) => `${i + 1}) ${o.start} (${dow(o.start)}, ${o.ok}/${active().length} free)`).join('\n')}
 
@@ -1939,7 +2073,7 @@ Reply with only JSON: {"pitches":[{"title":"the plan in 2-5 words","tagline":"pu
         vibeMatch: Math.max(0, Math.min(100, Math.round(+p.vibeMatch || 0))), highlights: steps.map(s => (s.time ? t12(s.time) + ' · ' : '') + s.title), steps, weather: String(p.weather || '').slice(0, 60) };
     });
     if (!items.length) { flash('No plans came back. Try again.'); return; }
-    return saveTrip({ pitches: { items, at: Date.now() } });
+    return saveTrip({ pitches: { items, at: Date.now() }, pitchHistory: nextHistory(), runoff: null });
   });
 }
 function lockSmallPitch(p) {
@@ -2097,7 +2231,7 @@ function crewPage(cid) {
   <section class="card stack"><h3>Invite to the crew</h3>
     <p class="small muted">${IN_CLAUDE ? 'First share this page with them (Share menu, as an Editor). Then send this link.' : 'Send this link. They type their name and join the crew.'}</p>
     <span class="invite-link mono">${esc(crewLink(cid))}</span>
-    <div><button class="btn" data-act="copyCrewInvite" data-cid="${esc(cid)}">Copy invite message</button></div></section>
+    <div><button class="btn primary" data-act="copyCrewInvite" data-cid="${esc(cid)}">Send invite</button></div></section>
   ${past.length ? `<details class="card past"><summary><b>Past plans</b> <span class="small muted">${past.length}</span></summary><div class="stack" style="margin-top:10px">${past.map(t => planRow(t, { noCrew: true })).join('')}</div></details>` : ''}
   ${c.by === S.uid || S.isOwner ? `<div><button class="btn sm ghost danger" data-delcrew="${esc(cid)}">Delete crew</button></div>` : ''}`;
 }
@@ -2358,7 +2492,7 @@ app.addEventListener('click', e => {
     const t = S.trips.find(x => x.id === ds.share); if (!t) return;
     const w = SIZES[sizeOf(t)].label.toLowerCase();
     S.shareHome = t.id;
-    return copy(`Join our ${w} "${t.name}" on Outta Here: ${SHARE_BASE + '#' + t.id}\nTap “I’m in”, then add when you’re free. Takes 2 minutes.`).then(render);
+    return sendInvite(inviteText(t), SHARE_BASE + '#' + t.id, t.name).then(render);
   }
   if (ds.startcrew) return startNewPlan(ds.startcrew);
   if (ds.act === 'clearCrew') { S.newCrew = null; return render(); }
@@ -2372,7 +2506,7 @@ app.addEventListener('click', e => {
   if (ds.act === 'backCrew') { S.creating = 'crew'; return render(); }
   if (ds.act === 'newCrew') { S.crewView = null; S.creating = 'newCrew'; render(); setTimeout(() => $('#nc-name')?.focus(), 50); return; }
   if (ds.crew) return openCrew(ds.crew);
-  if (ds.act === 'copyCrewInvite') { const c = S.crews.find(x => x.id === ds.cid); return copy(`Join our crew "${c?.name || ''}" on Outta Here: ${crewLink(ds.cid)}\nWe plan everything there, from Friday dinners to trips.`); }
+  if (ds.act === 'copyCrewInvite') { const c = S.crews.find(x => x.id === ds.cid); return sendInvite(crewInviteText(c), crewLink(ds.cid), c?.name || 'Outta Here'); }
   if (ds.mode) { S.newMode = ds.mode; S.creating = 'form'; render(); window.scrollTo({ top: 0 }); return; }
   if (ds.act === 'backModes') { S.creating = 'mode'; return render(); }
   if (ds.act === 'cancelNew') { S.creating = null; S.newCrew = null; S.newSize = null; return render(); }
@@ -2380,6 +2514,11 @@ app.addEventListener('click', e => {
   if (ds.tab) { S.guideJump = !!ds.guide; S.tab = TAB_ALIAS[ds.tab] || ds.tab; S.secTab[secOf(S.tab).k] = S.tab; S.tabPicked = true; if (ds.tab !== 'recap') { S.show = null; clearInterval(showTimer); } render(); window.scrollTo({ top: 0 }); return; }
   if (!S.trip) return;
   if (ds.status) return saveMe({ status: ds.status }, true);
+  if (ds.join) return joinPlan(ds.join);
+  if (ds.runoff) { const ro = runoffState(); if (!ro || ro.winner) return; return saveTrip({ roVotes: { [ro.key]: { [S.uid]: ds.runoff } } }); }
+  if (ds.act === 'startRunoff') return startRunoff();
+  if (ds.act === 'endRunoff') return saveTrip({ runoff: null });
+  if (ds.act === 'nudgeSwipe') return sendInvite(`Swipe on our ${planWord()} options for ${S.trip.name}. We’re waiting on you!`, inviteLink(), S.trip.name);
   if (ds.day) { const set = new Set(meDoc()?.days || []); set.has(ds.day) ? set.delete(ds.day) : set.add(ds.day); return saveMe({ days: [...set].sort() }); }
   if (ds.act === 'allDays') return saveMe({ days: span(S.trip.winStart, S.trip.winEnd) }, true);
   if (ds.act === 'noDays') return saveMe({ days: [] }, true);
@@ -2399,7 +2538,7 @@ app.addEventListener('click', e => {
   if (ds.sotn) { const cur = (S.trip.songVotes || {})[S.uid]; return saveTrip({ songVotes: { [S.uid]: cur === ds.sotn ? '' : ds.sotn } }); }
   if (ds.delsong) return delSong(ds.delsong);
   if (ds.act === 'copySongs') return copy([...S.songs].sort((a, b) => songVotes(b) - songVotes(a)).map((s, i) => `${i + 1}. ${s.title}${s.artist ? ' – ' + s.artist : ''}`).join('\n'));
-  if (ds.act === 'copyInvite') return copy(`Join our ${planWord()} "${S.trip.name}" on Outta Here: ${inviteLink()}\nTap “I’m in”, then add your free days and budget. Takes 2 minutes.`);
+  if (ds.act === 'copyInvite') return sendInvite(inviteText(S.trip), inviteLink(), S.trip.name);
   if (ds.setnights) return saveTrip({ nights: +ds.setnights, lockedDates: null });
   if (ds.act === 'ciJump') return jumpTo('#ci-text');
   if (ds.act === 'meetJump') return jumpTo('#meet-where');
@@ -2585,7 +2724,7 @@ app.addEventListener('submit', async e => {
 function stop() { S.unsub.forEach(u => { try { u(); } catch {} }); S.unsub = []; }
 function setHash(h) { try { history.replaceState(null, '', h ? '#' + h : location.pathname + location.search); } catch {} }
 function resetTrip() {
-  S.trip = null; S.members = []; S.expenses = []; S.packing = []; S.readOnly = false;
+  S.trip = null; S.members = []; S.membersIn = false; S.expenses = []; S.packing = []; S.readOnly = false;
   S.cardUrl = null; S.cardBlob = null; S.copyText = ''; S.split = null; S.confirm = null; S.tkFile = null; S.feed = []; S.bucket = []; S.photos = []; S.pot = []; S.mySpend = []; S.lostOpen = false; S.pinSel = null; S.hangPlan = null; S.wrapI = 0; S.img = null; S.show = null; clearInterval(showTimer);
   for (const k of Object.keys(DRAFT)) delete DRAFT[k];
 }
@@ -2601,7 +2740,7 @@ function openTrip(id, tab) {
   }, () => flash('Lost the connection to this trip. Reload to reconnect.')));
   S.unsub.push(S.db.collection(`trips/${id}/members`).onSnapshot(snap => {
     const local = meDoc();
-    S.members = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    S.members = snap.docs.map(d => ({ id: d.id, ...d.data() })); S.membersIn = true;
     if (S.meDirty && local) { const i = S.members.findIndex(m => m.id === S.uid); i >= 0 ? S.members[i] = local : S.members.push(local); }
     S.members.sort((a, b) => (a.updatedAt || 0) - (b.updatedAt || 0));
     if (S.trip) render();
