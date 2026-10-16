@@ -117,6 +117,7 @@ function pitchMemory() {
   const past = S.trips.filter(x => x.id !== S.tid && t.crewId && x.crewId === t.crewId && x.lockedDest).map(x => (x.destinations || []).find(d => d.id === x.lockedDest)?.city || x.name).slice(0, 8);
   if (t.pitchNote) lines.push(`The crew asked for: "${t.pitchNote}". Treat this as a requirement.`);
   if (hist.length) lines.push(`How the crew (${active().length} people) swiped on earlier pitches. Lean toward what got yeses, steer away from what most people passed on, and don't repeat any of these:\n${hist.map(h => `- ${h.n}: ${h.y} yes, ${h.w || 0} could work, ${h.x} pass`).join('\n')}`);
+  if (t.crewId) { const dna = dnaText(t.crewId); if (dna) lines.push(dna); }
   if (past.length) lines.push(`Plans this crew already locked before: ${past.join(', ')}. Don't repeat them; use them as a hint about their taste.`);
   return lines.join('\n');
 }
@@ -176,8 +177,8 @@ function settleCard(items) {
     <p class="small muted">${y} of ${n} said yes${workableOf(top) ? `, ${workableOf(top)} said it could work` : ''}${passers.length ? `. ${passers.map(m => esc(m.nick || 'Someone')).join(', ')} passed` : ''}.${second ? ` Runner-up: ${esc(pName(second))}.` : ''}</p>
     ${fitChips(top)}
     <div class="row" style="gap:6px">
-      ${y > n / 2 ? `<button class="btn primary" data-lockpitch="${esc(top.id)}">Go with ${esc(pName(top))} (majority)</button>` : ''}
-      ${second ? `<button class="btn ${y > n / 2 ? '' : 'primary'}" data-act="startRunoff">Final vote: top two</button>` : ''}
+      ${y > n / 2 && ruleCheck(optOf('pitch', top.id)).ok ? `<button class="btn primary" data-lockpitch="${esc(top.id)}">Go with ${esc(pName(top))} (majority)</button>` : ''}
+      ${second ? `<button class="btn ${y > n / 2 && ruleCheck(optOf('pitch', top.id)).ok ? '' : 'primary'}" data-act="startRunoff">Final vote: top two</button>` : ''}
       ${S.sample ? '<button class="btn ghost" data-act="genPitches">Pitch a new round</button>' : ''}
     </div>
   </section>`;

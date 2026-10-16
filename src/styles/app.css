@@ -680,7 +680,16 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 /* when plans change */
 .recover-bar{display:flex;flex-direction:column;gap:10px}
 .recover{border-left:4px solid var(--gold)}
-.impact{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px;font-size:14px}
+.impact{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:0;font-size:14px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.impact li{display:grid;grid-template-columns:minmax(92px,auto) 1fr;gap:10px;align-items:baseline;padding:9px 12px;border-left:3px solid transparent}
+.impact li+li{border-top:1px solid var(--line)}
+.impact li .label{margin:0}
+.impact .fx-bad{border-left-color:#D63B3B;background:color-mix(in oklab,#D63B3B 7%,transparent)}
+.impact .fx-warn{border-left-color:var(--gold)}
+.impact .fx-good{border-left-color:var(--good)}
+.changes .change-row{padding-top:8px;border-top:1px solid var(--line)}
+.changes .change-row ul{margin:4px 0 0;padding-left:18px}
+.check .ro-opts{grid-template-columns:repeat(auto-fit,minmax(120px,1fr))}
 
 /* reminders */
 .inbox{border:1.5px solid color-mix(in oklab,var(--accent) 35%,var(--line))}
@@ -812,3 +821,19 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 .last-time{display:block;font-style:italic}
 .own-stay .stay-top{background:linear-gradient(135deg,#3D4458,#232838)}
 .pr-sub{font:700 13px var(--f-body);color:var(--ink);opacity:.8;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* how we decide */
+.rule-line{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:8px 12px;border-radius:10px;background:color-mix(in oklab,var(--muted) 9%,transparent);color:var(--ink)}
+.rule-fit{margin-top:6px}
+.dec-styles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}
+.dec-style{display:flex;flex-direction:column;gap:4px;text-align:left;padding:12px 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;transition:border-color .2s,background .2s,transform .15s}
+.dec-style span{color:var(--muted)}
+.dec-style.on{border-color:var(--accent);background:color-mix(in oklab,var(--accent) 10%,var(--surface))}
+.dec-style:not(:disabled):active{transform:scale(.98)}
+.dec-style:disabled{cursor:default}
+.dec-style:disabled:not(.on){opacity:.6}
+.cond-list{border-top:1px solid var(--line);padding-top:10px}
+/* crew DNA */
+.dna-trait{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px}
+.dna-trait input{flex:1;min-width:0}
+.dna-line{margin-top:2px}
+.dna-mem .fit-c{display:inline-block}

@@ -586,6 +586,7 @@ function crewTab() {
     <p class="small muted">Payment handles are shown to the crew so they can pay you back.</p>
       ${myPrivacy()}
   </section>
+  ${myLimits()}
   <section class="card">
     <div class="row" style="justify-content:space-between;margin-bottom:6px"><h2>The crew</h2><span class="small muted">Invite more with the card above</span></div>
     ${S.members.length ? S.members.filter(x => !x.removed).map(x => `<div class="crew-row">
@@ -630,13 +631,14 @@ function datesTab() {
       </div>
     </div>
     <div class="card stack">
-      <h2>${isSmall() ? 'Best day' : 'Best dates'}</h2>
+      <h2>${isSmall() ? 'Best day' : 'Best dates'}</h2>${S.demo ? '' : ruleLine()}
       ${t.lockedDates ? `<div class="banner"><span><b>Locked:</b> ${dayRange(t.lockedDates.start, t.lockedDates.end)}</span><button class="btn sm" data-act="unlockDates">Unlock</button></div>` : ''}
       ${best.length ? best.map((w, i) => `<div class="stack" style="gap:6px;${i ? 'border-top:1px solid var(--line);padding-top:12px' : ''}">
         <div class="row" style="justify-content:space-between"><b class="mono">${dayRange(w.start, w.end)}</b><span class="small"><b>${w.ok.length}/${ms.length}</b> can go</span></div>
         <div class="bar"><i style="width:${Math.round(w.ok.length / max * 100)}%"></i></div>
         ${w.miss.length ? `<span class="small muted">Missing: ${w.miss.map(m => esc(m.nick || 'Someone')).join(', ')}</span>` : `<span class="small" style="color:var(--good)">Everyone can make it</span>`}
         ${w.late.length || w.early.length || w.pref.length ? `<span class="small muted">${[w.late.length && `${esc(listNames(w.late))} ${w.late.length === 1 ? 'arrives' : 'arrive'} a day late`, w.early.length && `${esc(listNames(w.early))} ${w.early.length === 1 ? 'leaves' : 'leave'} a day early`, w.pref.length && `★ ${w.pref.length === ms.length ? 'everyone prefers' : w.pref.length + ' prefer'} ${isSmall() ? 'this day' : 'these dates'}`].filter(Boolean).join(' · ')}</span>` : ''}
+        ${t.lockedDates && t.lockedDates.start === w.start && t.lockedDates.end === w.end ? '' : ruleChip('dates', w.start + '|' + w.end)}
         <div>${t.lockedDates && t.lockedDates.start === w.start && t.lockedDates.end === w.end ? '<span class="pill in">Locked</span>' : `<button class="btn sm ${i === 0 && !t.lockedDates ? 'primary' : ''}" data-lockdates="${w.start}|${w.end}">${t.lockedDates ? 'Switch to these' : isSmall() ? 'Lock this day' : 'Lock these dates'}</button>`}</div>
       </div>`).join('') : `<div class="empty">${(() => { const f = shorterFit(); return f
         ? `<b>No ${nightsSet(t) ? nightsSet(t) + '-night stretch' : 'day'} works yet</b><span>But a ${f.n}-night trip, ${fmt(f.w.start)} → ${fmt(f.w.end)}, works for ${f.w.ok.length} of ${ms.length}.</span><button class="btn sm primary" data-setnights="${f.n}">Switch to ${f.n} night${f.n === 1 ? '' : 's'}</button>`
@@ -657,7 +659,7 @@ function whereTab() {
         ${S.trip.lockedDest !== d.id ? `<button class="btn sm ghost" data-lockdest="${esc(d.id)}">Lock</button>` : ''}
         <button class="x" data-deldest="${esc(d.id)}" aria-label="Remove ${esc(d.city)}">×</button></div></div>
       <div class="bar"><i style="width:${Math.round(v.length / max * 100)}%"></i></div>
-      <span class="small muted">${v.length} vote${v.length === 1 ? '' : 's'}${v.length ? ': ' + v.map(m => esc(m.nick || 'Someone')).join(', ') : ''}</span>
+      <span class="small muted">${v.length} vote${v.length === 1 ? '' : 's'}${v.length ? ': ' + v.map(m => esc(m.nick || 'Someone')).join(', ') : ''}</span>${S.trip.lockedDest === d.id ? '' : ruleChip('dest', d.id)}
     </div>`; }).join('') : `<div class="empty"><span>No ideas yet. Throw one out.</span></div>`}
     <form id="addDest" class="row" style="border-top:1px solid var(--line);padding-top:14px;align-items:flex-end">
       <label class="field" style="flex:2 1 200px"><span class="label">${isSmall() ? 'Idea' : 'City'}</span><input id="ad-city" maxlength="50" required placeholder="${isSmall() ? 'Tacos + karaoke' : size() === 'weekend' ? 'Catskills' : 'Miami'}"></label>
@@ -1068,8 +1070,8 @@ function settleCard(items) {
     <p class="small muted">${y} of ${n} said yes${workableOf(top) ? `, ${workableOf(top)} said it could work` : ''}${passers.length ? `. ${passers.map(m => esc(m.nick || 'Someone')).join(', ')} passed` : ''}.${second ? ` Runner-up: ${esc(pName(second))}.` : ''}</p>
     ${fitChips(top)}
     <div class="row" style="gap:6px">
-      ${y > n / 2 ? `<button class="btn primary" data-lockpitch="${esc(top.id)}">Go with ${esc(pName(top))} (majority)</button>` : ''}
-      ${second ? `<button class="btn ${y > n / 2 ? '' : 'primary'}" data-act="startRunoff">Final vote: top two</button>` : ''}
+      ${y > n / 2 && ruleCheck(optOf('pitch', top.id)).ok ? `<button class="btn primary" data-lockpitch="${esc(top.id)}">Go with ${esc(pName(top))} (majority)</button>` : ''}
+      ${second ? `<button class="btn ${y > n / 2 && ruleCheck(optOf('pitch', top.id)).ok ? '' : 'primary'}" data-act="startRunoff">Final vote: top two</button>` : ''}
       ${S.sample ? '<button class="btn ghost" data-act="genPitches">Pitch a new round</button>' : ''}
     </div>
   </section>`;
@@ -1194,6 +1196,7 @@ function matchTab() {
     <div class="row" style="justify-content:space-between"><div class="stack" style="gap:2px"><h2>${isSmall() ? 'Plan Match' : 'Trip Match'}</h2><span class="small muted">The AI pitches ${isSmall() ? 'whole plans' : 'complete trips'} that fit everyone’s budget, free days and vibe. Everyone swipes. If you all say yes to the same one, it’s a match. Not feeling them? Add your own picks below.</span></div>
       ${S.sample !== null ? `<button class="btn ${items.length ? '' : 'primary'}" data-act="genPitches" ${S.busy.pitch ? 'disabled' : ''}>${S.busy.pitch ? '<i class="spin"></i>Pitching…' : items.length ? 'New pitches' : isSmall() ? 'Pitch us some plans' : 'Pitch us some trips'}</button>` : ''}</div>
     ${steerField()}
+    ${S.demo ? '' : ruleLine()}
   </section>
   ${runoffCard()}
   ${m ? `<section class="match"><span class="label" style="color:rgba(255,255,255,.85)">Everyone swiped yes</span><h1 style="color:#fff">It’s a match!</h1>
@@ -1209,7 +1212,7 @@ function matchTab() {
     ${[...items].sort((a, b) => fitScore(b) - fitScore(a)).map(p => {
       const yes = vs.filter(x => swipeOf(p.id, x.id) === 1), waiting = vs.filter(x => !swipeOf(p.id, x.id)), mine = swipeOf(p.id, S.uid);
       return `<div class="linkrow"><div style="min-width:0"><b>${esc(p.city)}</b> <span class="small muted">${p.start === p.end ? short(p.start) : short(p.start) + ' – ' + short(p.end)} · ${esc(p.perPerson)}</span>
-        <div class="small muted">${yes.length} yes · ${workableOf(p)} could work${waiting.length ? ` · waiting on ${waiting.map(x => esc(x.nick || 'Someone')).join(', ')}` : ''}</div>${fitChips(p)}</div>
+        <div class="small muted">${yes.length} yes · ${workableOf(p)} could work${waiting.length ? ` · waiting on ${waiting.map(x => esc(x.nick || 'Someone')).join(', ')}` : ''}</div>${fitChips(p)}${lockedOn(p) ? '' : ruleChip('pitch', p.id)}</div>
         <div class="row" style="gap:6px">${mine ? `<button class="chip ${mine === 1 ? 'on' : ''}" data-swipe="${esc(p.id)}|${mine === 1 ? -1 : 1}" title="Tap to change">${mine === 1 ? '♥ Yes' : mine === WORKABLE ? '≈ Could work' : '✕ Pass'}</button>` : ''}<div class="bar" style="width:80px"><i style="width:${yes.length / Math.max(1, vs.length) * 100}%"></i></div>${lockedOn(p) ? '<span class="pill lvl-confirmed">Locked</span>' : S.readOnly ? '' : `<button class="btn sm ${yes.length && !S.trip.lockedDest ? 'primary' : ''}" data-lockpitch="${esc(p.id)}">Lock it in</button>`}</div></div>`; }).join('')}
   </section>` : ''}
   ${S.sample === null ? '' : whereTab()}`;
@@ -1589,6 +1592,7 @@ function settingsTab() {
       <label class="row small" style="gap:8px;flex:1 1 200px"><input type="checkbox" id="set-free" style="width:auto" ${S.trip.honoreeFree !== false ? 'checked' : ''}> The ${esc(m.honoree)} pays nothing (their share is split across everyone else)</label></div>
       <p class="small muted">Surprise plans and the planners-only chat are hidden from the ${esc(m.honoree)} in the app.</p>` : ''}
   </section>`}
+  ${decideCard()}
   ${S.demo ? '' : S.repeat ? repeatDialog() : `<section class="card row repeat-cta"><span><b>Do this again?</b> <span class="small muted">Start a new ${planWord()} with the same to-dos, outline and packing list. Dates, prices and who’s coming start fresh.</span></span><button class="btn" data-act="repeatOpen">Repeat this ${planWord()}</button></section>`}
   ${templateCard()}
   ${SETTINGS_HTML()}`;
@@ -1759,6 +1763,7 @@ function rsvpCard() {
     <div class="row" style="justify-content:space-between"><h2>Who’s coming</h2>${by ? `<span class="pill ${late ? 'out' : 'maybe'}">${late ? 'Answers closed ' + short(by) : 'Answer by ' + short(by)}</span>` : ''}</div>
     <div class="hc">${blocks.map(([k, n]) => `<div class="hc-b lvl-${k} ${n ? '' : 'zero'}"><b>${n}</b><span>${LEVEL_LABEL[k]}</span></div>`).join('')}</div>
     <p class="small muted">${h.firm ? `Plan for <b>${h.firm}</b> ${h.firm === 1 ? 'person' : 'people'}${h.going ? `, up to <b>${h.max}</b> if everyone going confirms` : ''}.` : h.going ? `Nobody has confirmed yet. <b>${h.going}</b> ${h.going === 1 ? 'is' : 'are'} planning to come.` : 'Nobody has said they’re coming yet.'} Stays and costs use this number.</p>
+    ${condLines()}
     ${org ? `<div class="stack" style="gap:10px;border-top:1px solid var(--line);padding-top:12px">
       <div class="row" style="gap:8px;align-items:flex-end"><label class="field" style="flex:0 1 190px"><span class="label">Everyone answers by</span><input id="rsvp-by" type="date" value="${by || ''}" min="${TODAY}"></label>${by ? '<button class="btn sm ghost" data-act="rsvpClear">No deadline</button>' : ''}</div>
       ${und.length ? `<span class="label">Still undecided · ${und.length}</span>
@@ -2344,6 +2349,137 @@ function applyOutline() {
   flash(`Added ${items.length} stop${items.length === 1 ? '' : 's'} from last time. Change anything that doesn’t fit.`);
 }
 
+/* ---------- how we decide ---------- */
+// Each plan picks a decision style everyone can see: everyone gets a say (nothing locks
+// over someone's pass), majority rules (a set share of yeses), or just pick something
+// (votes until a deadline, then an organizer picks). Whatever the style, a vote can't
+// lock something over a person's hard budget limit or firm free days unless that person
+// agrees to that option. People can also say they're in on a condition ("if it stays
+// under €300"); those are shown to the crew and checked against the real cost.
+const STYLES = {
+  all: ['Everyone gets a say', 'Nothing locks while someone has passed on it. If nothing works for all, run a final vote between the top two.'],
+  majority: ['Majority rules', 'Anything with enough yes votes can be locked.'],
+  pick: ['Just pick something', 'Vote until the deadline. After that, an organizer picks.'],
+};
+const decideOf = (t = S.trip) => ({ style: 'all', pct: 50, by: '', ...(t.decide || {}) });
+function ruleText(d = decideOf()) {
+  if (d.style === 'majority') return `Majority rules: ${d.pct}% of the crew saying yes locks it.`;
+  if (d.style === 'pick') return d.by ? `Just pick something: vote until ${fmt(d.by)}${TODAY > d.by ? ' (passed)' : ''}, then an organizer picks.` : 'Just pick something: an organizer picks, using your votes.';
+  return 'Everyone gets a say: nothing locks while someone has passed on it.';
+}
+// One shape for anything that can be locked: a Trip Match pitch, dates, or a place.
+function optOf(kind, id) {
+  const vs = active();
+  if (kind === 'pitch') {
+    const p = (S.trip.pitches?.items || []).find(x => x.id === id); if (!p) return null;
+    const r = moneyRange(p.perPerson);
+    return { kind, key: 'p:' + id, label: pName(p), lo: r ? r[0] : 0, days: span(p.start, p.end), yes: vs.filter(m => swipeOf(id, m.id) === 1), no: vs.filter(m => swipeOf(id, m.id) === -1), winner: runoffState()?.winner?.id === id };
+  }
+  if (kind === 'dates') {
+    const [start, end] = String(id).split('|'), days = span(start, end), picked = vs.filter(m => (m.days || []).length);
+    return { kind, key: 'd:' + start + '|' + end, label: dayRange(start, end), lo: 0, days, yes: picked.filter(m => fitOf(m, days)), no: picked.filter(m => !fitOf(m, days)) };
+  }
+  const d = (S.trip.destinations || []).find(x => x.id === id); if (!d) return null;
+  return { kind, key: 'x:' + id, label: d.city, lo: 0, days: null, yes: votesFor(id), no: [] };
+}
+const agreed = (o, uid) => !!((S.trip.consent || {})[o.key] || {})[uid];
+// people whose hard limit this option breaks (before anyone agreed)
+function hitWhy(o, m) {
+  const h = m.hard || {};
+  if (h.days && (m.days || []).length && o.days && !fitOf(m, o.days)) return 'days';
+  if (h.budget && +m.budget > 0 && o.lo && o.lo > +m.budget) return 'budget';
+  return '';
+}
+const hardHitsAll = o => active().filter(m => hitWhy(o, m));
+const hardHits = o => hardHitsAll(o).filter(m => !agreed(o, m.id));
+const softHits = o => o.lo ? active().filter(m => m.cond && +m.cond.under > 0 && o.lo > +m.cond.under) : [];
+// what the crew's chosen style says about locking this option
+function ruleCheck(o) {
+  const d = decideOf(), n = active().length;
+  if (o.winner) return { ok: true, why: 'Won the final vote' };
+  const allOk = () => o.no.length
+    ? { ok: false, why: `${listNames(o.no)} ${o.kind === 'dates' ? (o.no.length === 1 ? 'can’t make these dates' : 'can’t make these dates') : 'passed on it'}. Everyone gets a say here, so try a final vote or another option.` }
+    : { ok: true, why: 'Nobody objected' };
+  if (d.style === 'majority') {
+    const need = Math.max(1, Math.ceil(n * d.pct / 100 - 1e-9));
+    return o.yes.length >= need ? { ok: true, why: `${o.yes.length} of ${n} yes` } : { ok: false, why: `Majority rules: needs ${need} yes, has ${o.yes.length}.` };
+  }
+  if (d.style === 'pick' && (!d.by || TODAY > d.by)) return isOrganizer() ? { ok: true, why: 'Organizer’s pick' } : { ok: false, why: `${d.by ? 'Voting has closed. ' : ''}An organizer makes the pick now. Your votes help them.` };
+  return allOk();
+}
+function lockGate(kind, id) {
+  if (S.demo) return { ok: true };
+  const o = optOf(kind, id); if (!o) return { ok: true };
+  const r = ruleCheck(o); if (!r.ok) return r;
+  const hits = hardHits(o);
+  if (hits.length) {
+    const me = hits.find(m => m.id === S.uid);
+    return { ok: false, why: me && hits.length === 1 ? 'This breaks your own hard limit. Tap “I’m okay with this one” first.' : `This is over a hard limit for ${limitWho(hits, o)}. They have to agree to it first.` };
+  }
+  return { ok: true };
+}
+// budgets stay private, so budget limits are counted unless someone chose to be named
+function limitWho(ms, o) {
+  const named = ms.filter(m => m.budgetPublic || m.id === S.uid || hitWhy(o, m) === 'days');
+  const rest = ms.length - named.length;
+  return named.length ? listNames(named) + (rest ? ` and ${rest} other${rest === 1 ? '' : 's'}` : '') : rest === 1 ? '1 person' : `${rest} people`;
+}
+// small line under an option: can it be locked right now, and if not, why
+function ruleChip(kind, id) {
+  const o = optOf(kind, id); if (!o || S.demo) return '';
+  const r = ruleCheck(o), hits = hardHits(o), soft = softHits(o), out = [];
+  if (hits.length) out.push(`<span class="fit-c n">✕ Over a hard limit for ${esc(limitWho(hits, o))}</span>`);
+  else out.push(`<span class="fit-c ${r.ok ? 'y' : 'm'}">${r.ok ? '✓ Can lock' : '~ ' + esc(r.why.split('.')[0])}</span>`);
+  if (soft.length) out.push(`<span class="fit-c m">~ ${esc(listNames(soft))} ${soft.length === 1 ? 'is' : 'are'} only in under ${esc(money(Math.min(...soft.map(m => +m.cond.under))))}</span>`);
+  const mine = hardHitsAll(o).find(m => m.id === S.uid);
+  const ask = mine && !S.readOnly ? (agreed(o, S.uid) ? `<span class="small muted">You agreed to this one even though it breaks your limit. <button class="linkbtn small" data-consent="${esc(o.key)}">Take it back</button></span>` : `<span class="small">Over your hard limit. <button class="linkbtn small" data-consent="${esc(o.key)}">I’m okay with this one</button></span>`) : '';
+  return `<div class="fit rule-fit">${out.join('')}</div>${ask}`;
+}
+const cap = x => x.charAt(0).toUpperCase() + x.slice(1);
+function ruleLine() {
+  const d = decideOf();
+  return `<div class="rule-line small"><span><b>${esc(STYLES[d.style][0])}.</b> ${esc(cap(ruleText(d).split(': ').slice(1).join(': ') || STYLES[d.style][1]))} Hard limits can’t be outvoted.</span><button class="linkbtn small" data-tab="settings">Change</button></div>`;
+}
+function decideCard() {
+  const d = decideOf(), org = isOrganizer() && !S.readOnly;
+  return `<section class="card stack decide" id="decide-card">
+    <h3>How we decide</h3>
+    <p class="small muted">Everyone sees these rules next to the votes. ${org ? '' : 'Only organizers can change them.'}</p>
+    <div class="dec-styles">${Object.entries(STYLES).map(([k, [l, h]]) => `<button class="dec-style ${d.style === k ? 'on' : ''}" data-decide="${k}" aria-pressed="${d.style === k}" ${org ? '' : 'disabled'}><b>${esc(l)}</b><span class="small">${esc(h)}</span></button>`).join('')}</div>
+    ${d.style === 'majority' ? `<label class="field" style="flex:none;max-width:240px"><span class="label">Yes votes needed</span><select id="dec-pct" ${org ? '' : 'disabled'}>${[50, 60, 67, 75].map(p => `<option value="${p}" ${d.pct === p ? 'selected' : ''}>${p === 50 ? 'More than half' : p === 67 ? 'Two thirds' : p === 75 ? 'Three quarters' : p + '%'}</option>`).join('')}</select></label>` : ''}
+    ${d.style === 'pick' ? `<label class="field" style="flex:none;max-width:240px"><span class="label">Voting closes</span><input id="dec-by" type="date" value="${d.by || ''}" min="${TODAY}" ${org ? '' : 'disabled'}></label>` : ''}
+    <p class="small"><b>Always:</b> a vote never locks something over someone’s hard budget limit or firm dates. They have to agree to that option first. Set yours in Home › Crew.</p>
+  </section>`;
+}
+// your own limits and conditions, in Home › Crew
+function myLimits() {
+  const m = meDoc(); if (!m || S.demo) return '';
+  const h = m.hard || {}, c = m.cond || {}, sum = costSummary(), unmet = +c.under > 0 && sum.any && sum.low > +c.under;
+  return `<section class="card stack limits">
+    <h2>Your limits</h2>
+    <p class="small muted">Hard limits can’t be outvoted. If the crew wants something that breaks one, you’re asked first.</p>
+    <label class="check-line"><input type="checkbox" id="me-hardBudget" ${h.budget ? 'checked' : ''} ${+m.budget > 0 ? '' : 'disabled'}> My budget${+m.budget > 0 ? ` (${money(m.budget)})` : ''} is a hard limit${+m.budget > 0 ? '' : '. Set a budget above first'}. It stays private.</label>
+    <label class="check-line"><input type="checkbox" id="me-hardDays" ${h.days ? 'checked' : ''}> The days I picked are firm. Don’t lock dates I can’t make.</label>
+    <span class="label" style="margin-top:6px">I’m in if… <span class="muted" style="text-transform:none;letter-spacing:0">(the crew sees this)</span></span>
+    <div class="row" style="gap:8px">
+      <label class="field" style="flex:0 1 180px"><span class="small muted">It stays under (${cur()})</span><input id="me-condUnder" type="number" min="0" inputmode="numeric" value="${+c.under > 0 ? c.under : ''}" placeholder="${niceIn(300)}"></label>
+      <label class="field" style="flex:1 1 220px"><span class="small muted">Or another condition</span><input id="me-condNote" maxlength="80" value="${esc(c.note || '')}" placeholder="we leave Friday evening"></label>
+    </div>
+    ${unmet ? `<span class="cost-flag">Right now the all-in cost starts at ${money(sum.low)}, over your ${money(c.under)}. The crew can see your condition isn’t met.</span>` : ''}
+  </section>`;
+}
+// for the Who's coming card: who's in on a condition, and whether it holds right now
+function condLines() {
+  const sum = costSummary(), ms = active().filter(m => m.cond && (+m.cond.under > 0 || m.cond.note));
+  if (!ms.length) return '';
+  return `<div class="stack cond-list" style="gap:4px"><span class="label">In, if…</span>${ms.map(m => { const u = +m.cond.under, off = u > 0 && sum.any && sum.low > u;
+    return `<span class="small"><b>${esc(m.nick || 'Someone')}</b>: ${[u > 0 && `under ${money(u)}`, m.cond.note && esc(m.cond.note)].filter(Boolean).join(', ')}${off ? ` <span style="color:#D63B3B">· not met (starts at ${money(sum.low)})</span>` : u > 0 && sum.any ? ' <span style="color:var(--good)">· met</span>' : ''}</span>`; }).join('')}</div>`;
+}
+function toggleConsent(key) {
+  const on = !((S.trip.consent || {})[key] || {})[S.uid];
+  saveTrip({ consent: { [key]: { [S.uid]: on || null } } });
+  flash(on ? 'Noted. The crew can lock it now, as far as your limit goes.' : 'Taken back. It’s off the table unless your limit changes.');
+}
 /* ---------- home screen + trip creation ---------- */
 /* ---------- book: flights ---------- */
 function skyscanner(from, d, ds) { const y = s => s.slice(2).replace(/-/g, ''); return `https://www.skyscanner.com/transport/flights/${from.toLowerCase()}/${ds.code.toLowerCase()}/${y(d.start)}/${y(d.end)}/`; }
@@ -3729,6 +3865,9 @@ app.addEventListener('click', e => {
   if (ds.act === 'noDays') return saveMe({ days: [], pref: [] }, true);
   if (ds.act === 'weekends') return saveMe({ days: span(S.trip.winStart, S.trip.winEnd).filter(x => [0, 5, 6].includes(D(x).getUTCDay())) }, true);
   if ((ds.lockdates || ds.lockdest || ds.lockpitch) && !canLock()) { flash('Only organizers can lock this one. Your vote still counts.'); return; }
+  if (ds.lockdates || ds.lockdest || ds.lockpitch) { const g = lockGate(ds.lockpitch ? 'pitch' : ds.lockdest ? 'dest' : 'dates', ds.lockpitch || ds.lockdest || ds.lockdates); if (!g.ok) { flash(g.why); return; } }
+  if (ds.consent) return toggleConsent(ds.consent);
+  if (ds.decide) { if (!isOrganizer()) return; return saveTrip({ decide: { style: ds.decide, ...(ds.decide === 'pick' && !decideOf().by ? { by: add(TODAY, 3) } : {}) } }); }
   if (ds.lockdates) { const [start, end] = ds.lockdates.split('|'); return saveTrip({ lockedDates: { start, end } }); }
   if (ds.act === 'unlockDates') return saveTrip({ lockedDates: null });
   if (ds.vote) { const set = new Set(meDoc()?.votes || []); set.has(ds.vote) ? set.delete(ds.vote) : set.add(ds.vote); return saveMe({ votes: [...set] }, true); }
@@ -3834,6 +3973,11 @@ app.addEventListener('change', e => {
   if (id === 'mute-plan') { lsSet('outta_mute_' + S.tid, e.target.checked); flash(e.target.checked ? 'Muted. It won’t show up in Needs you.' : 'Reminders are back on for this plan.'); }
   if (id === 'perm-invite' || id === 'perm-lock') saveTrip({ perm: { [id.slice(5)]: e.target.value } });
   if (id === 'me-budgetPublic') saveMe({ budgetPublic: e.target.checked }, true, true);
+  if (id === 'dec-pct') saveTrip({ decide: { pct: +e.target.value } });
+  if (id === 'dec-by') saveTrip({ decide: { by: e.target.value || '' } });
+  if (id === 'me-hardBudget') saveMe({ hard: { ...(meDoc()?.hard || {}), budget: e.target.checked } }, true);
+  if (id === 'me-hardDays') saveMe({ hard: { ...(meDoc()?.hard || {}), days: e.target.checked } }, true);
+  if (id === 'me-condUnder' || id === 'me-condNote') { const u = Math.max(0, Math.round(+$('#me-condUnder').value || 0)), note = $('#me-condNote').value.trim().slice(0, 80); saveMe({ cond: u || note ? { under: u, note } : null }, true); }
   if (id === 'me-hideLoc') saveMe({ hideLoc: e.target.checked }, true, true);
   if (id === 'my-flight-price') { const v = Math.round(+e.target.value || 0); if (v > 0) { saveTrip({ tickets: { [S.uid]: { price: v } } }); flash('Got it. Your flight is in the cost now.'); } }
   if (id === 'set-cur' && CUR_CODES.includes(e.target.value)) { saveTrip({ currency: e.target.value }); flash(`Now in ${e.target.value}. Amounts already typed in weren’t converted.`); }

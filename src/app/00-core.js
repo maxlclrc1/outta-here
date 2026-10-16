@@ -341,6 +341,7 @@ function draftPlan() {
   const prompt = `Build a fun, realistic day-by-day itinerary for this group trip.
 ${context()}
 Nightlife picks the group already likes: ${spots || 'none yet — suggest real venues'}
+${S.trip.crewId ? dnaText(S.trip.crewId) : ''}
 
 Arrival and departure days are lighter. Mix food, daytime activities, recovery time, and nights out (use the picks on their best nights). 3–5 items per day.
 Reply with only JSON: {"days":[{"date":"YYYY-MM-DD","items":[{"time":"HH:MM","title":"short title with the place name","kind":"food|activity|nightlife|travel|chill","note":"one short line"}]}]}`;

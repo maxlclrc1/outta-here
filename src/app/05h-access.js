@@ -57,7 +57,7 @@ async function removeMember(uid) {
   const m = S.members.find(x => x.id === uid); if (!m || !isOrganizer() || uid === S.uid) return;
   const tasks = taskList().filter(x => !x.done && x.owner === uid);
   try {
-    if (!S.demo) await S.db.doc(`trips/${S.tid}/members/${uid}`).update({ status: 'out', removed: true });
+    if (!S.demo) { if (going(m)) logDrop(uid); await S.db.doc(`trips/${S.tid}/members/${uid}`).update({ status: 'out', removed: true }); }
     else { m.status = 'out'; m.removed = true; }
     saveTrip({ people: { [uid]: null }, left: { [uid]: true }, orgs: { [uid]: null }, ...(tasks.length ? { tasks: Object.fromEntries(tasks.map(x => [x.id, { owner: '' }])) } : {}) });
     S.confirmRm = null; flash(`${m.nick || 'Someone'} was removed from the ${planWord()}.`);

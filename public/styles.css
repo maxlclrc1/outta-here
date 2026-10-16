@@ -825,3 +825,14 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 .last-time{display:block;font-style:italic}
 .own-stay .stay-top{background:linear-gradient(135deg,#3D4458,#232838)}
 .pr-sub{font:700 13px var(--f-body);color:var(--ink);opacity:.8;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* how we decide */
+.rule-line{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:8px 12px;border-radius:10px;background:color-mix(in oklab,var(--muted) 9%,transparent);color:var(--ink)}
+.rule-fit{margin-top:6px}
+.dec-styles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}
+.dec-style{display:flex;flex-direction:column;gap:4px;text-align:left;padding:12px 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;transition:border-color .2s,background .2s,transform .15s}
+.dec-style span{color:var(--muted)}
+.dec-style.on{border-color:var(--accent);background:color-mix(in oklab,var(--accent) 10%,var(--surface))}
+.dec-style:not(:disabled):active{transform:scale(.98)}
+.dec-style:disabled{cursor:default}
+.dec-style:disabled:not(.on){opacity:.6}
+.cond-list{border-top:1px solid var(--line);padding-top:10px}

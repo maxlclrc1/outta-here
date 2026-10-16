@@ -41,6 +41,13 @@ app.addEventListener('click', e => {
   if (ds.tpluse) { S.repeat = { tpl: ds.tpluse, cid: S.crewView || S.trip?.crewId }; render(); setTimeout(() => $('#repeat-box')?.scrollIntoView({ block: 'nearest', behavior: calm() ? 'auto' : 'smooth' }), 60); return; }
   if (ds.tpldel) { const cid = S.crewView || S.trip?.crewId; if (S.db && cid) S.db.doc('crews/' + cid).update({ templates: { [ds.tpldel]: null } }).then(() => flash('Template deleted.'), e => flash(writeErr(e))); return; }
   if (ds.act === 'repeatClose') { S.repeat = null; return render(); }
+  { const cid = S.crewView || S.trip?.crewId;
+    if (ds.dnaedit) { S.dnaEdit = ds.dnaedit; render(); setTimeout(() => $('#dna-fix-' + ds.dnaedit)?.focus(), 50); return; }
+    if (ds.dnahide) return dnaSave(cid, { hidden: { [ds.dnahide]: true } });
+    if (ds.dnashow) return dnaSave(cid, { hidden: { [ds.dnashow]: null } });
+    if (ds.dnareset) { S.dnaEdit = null; return dnaSave(cid, { fix: { [ds.dnareset]: null } }); }
+    if (ds.dnaforget) { flash('Forgotten. It won’t shape new pitches.'); return dnaSave(cid, { forget: { [ds.dnaforget]: true } }); }
+    if (ds.dnanote) return dnaSave(cid, { notes: { [ds.dnanote]: null } }); }
   if (ds.act === 'repeatGo') return repeatGo();
   if (!S.trip) return;
   if (ds.act === 'repeatOpen') { S.repeat = {}; render(); setTimeout(() => $('#repeat-box')?.scrollIntoView({ block: 'nearest', behavior: calm() ? 'auto' : 'smooth' }), 60); return; }
@@ -70,12 +77,12 @@ app.addEventListener('click', e => {
   if (ds.taketask) return patchTask(ds.taketask, { owner: S.uid });
   if (ds.deltask) return saveTrip({ tasks: { [ds.deltask]: null } });
   if (ds.taskidea) return addTask(ds.taskidea);
-  if (ds.recover !== undefined) { S.recover = ds.recover || null; S.recoverWho = null; S.recoverItem = null; S.alts = null; return render(); }
-  if (ds.act === 'recoverDrop') return recoverDrop();
+  if (ds.recover !== undefined) { S.recover = ds.recover || null; S.rc = null; S.alts = null; render(); if (S.recover) setTimeout(() => $('#recover-box')?.scrollIntoView({ block: 'nearest', behavior: calm() ? 'auto' : 'smooth' }), 60); return; }
+  if (ds.act === 'recoverApply' || ds.act === 'recoverDrop') { const ch = draftChange(); if (ch) applyChange(ch, readRcActs()); return; }
+  if (ds.check) return saveTrip({ check: { votes: { [S.uid]: ds.check } } });
+  if (ds.act === 'checkClose') return saveTrip({ check: null });
   if (ds.act === 'recoverAlts') return recoverAlts();
-  if (ds.act === 'recoverRemove') { const id = S.recoverItem; S.recover = null; S.recoverItem = null; flash('Dropped from the plan.'); return saveTrip({ itinerary: (S.trip.itinerary || []).filter(i => i.id !== id) }); }
   if (ds.swapin !== undefined) { const o = S.alts?.options?.[+ds.swapin]; if (o) swapItem(o.title); return; }
-  if (ds.act === 'recoverDates') { S.recover = null; saveTrip({ lockedDates: null }); S.tab = 'dates'; render(); window.scrollTo({ top: 0 }); flash('Dates reopened. Everyone’s free days are still here.'); return; }
   if (ds.act === 'linkReset') { saveTrip({ inviteKey: rid(6), invitesOff: false }); flash('New link made. Old invite links stop working for people who haven’t joined.'); return; }
   if (ds.act === 'linkToggle') { const off = !S.trip.invitesOff; saveTrip({ invitesOff: off }); flash(off ? 'Invites are off. Nobody new can join.' : 'Invites are back on.'); return; }
   if (ds.rmmember) { S.confirmRm = ds.rmmember; return render(); }
@@ -95,6 +102,9 @@ app.addEventListener('click', e => {
   if (ds.act === 'noDays') return saveMe({ days: [], pref: [] }, true);
   if (ds.act === 'weekends') return saveMe({ days: span(S.trip.winStart, S.trip.winEnd).filter(x => [0, 5, 6].includes(D(x).getUTCDay())) }, true);
   if ((ds.lockdates || ds.lockdest || ds.lockpitch) && !canLock()) { flash('Only organizers can lock this one. Your vote still counts.'); return; }
+  if (ds.lockdates || ds.lockdest || ds.lockpitch) { const g = lockGate(ds.lockpitch ? 'pitch' : ds.lockdest ? 'dest' : 'dates', ds.lockpitch || ds.lockdest || ds.lockdates); if (!g.ok) { flash(g.why); return; } }
+  if (ds.consent) return toggleConsent(ds.consent);
+  if (ds.decide) { if (!isOrganizer()) return; return saveTrip({ decide: { style: ds.decide, ...(ds.decide === 'pick' && !decideOf().by ? { by: add(TODAY, 3) } : {}) } }); }
   if (ds.lockdates) { const [start, end] = ds.lockdates.split('|'); return saveTrip({ lockedDates: { start, end } }); }
   if (ds.act === 'unlockDates') return saveTrip({ lockedDates: null });
   if (ds.vote) { const set = new Set(meDoc()?.votes || []); set.has(ds.vote) ? set.delete(ds.vote) : set.add(ds.vote); return saveMe({ votes: [...set] }, true); }
@@ -195,11 +205,17 @@ app.addEventListener('change', e => {
   if (id === 'me-nick') saveMe({ nick: e.target.value.trim().slice(0, 30) }, true, true);
   if (/^cost-(low|high|src)-/.test(id)) saveCostLine(id.replace(/^cost-(low|high|src)-/, ''));
   { const w = id.match(/^wi-(start|nights|dest|stay)-(\d)$/); if (w) whatifSet(+w[2], { [w[1]]: w[1] === 'nights' ? +e.target.value : e.target.value || undefined }); }
-  if (id === 'recover-who') { S.recoverWho = e.target.value || null; render(); }
-  if (id === 'recover-item') { S.recoverItem = e.target.value || null; S.alts = null; render(); }
+  { const rk = { 'recover-who': 'who', 'recover-item': 'item', 'rc-line': 'line', 'rc-amount': 'amount', 'rc-start': 'start', 'rc-end': 'end', 'rc-reopen': 'reopen' }[id];
+    if (rk) { S.rc = { ...(S.rc || {}), acts: readRcActs(), [rk]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }; if (rk === 'item') S.alts = null; if (rk === 'start' && !S.rc.end && S.trip.lockedDates) { const L = S.trip.lockedDates; S.rc.end = add(e.target.value, span(L.start, L.end).length - 1); } delete DRAFT[id]; render(); } }
+  if (id.startsWith('rc-act-')) S.rc = { ...(S.rc || {}), acts: readRcActs() };
   if (id === 'mute-plan') { lsSet('outta_mute_' + S.tid, e.target.checked); flash(e.target.checked ? 'Muted. It won’t show up in Needs you.' : 'Reminders are back on for this plan.'); }
   if (id === 'perm-invite' || id === 'perm-lock') saveTrip({ perm: { [id.slice(5)]: e.target.value } });
   if (id === 'me-budgetPublic') saveMe({ budgetPublic: e.target.checked }, true, true);
+  if (id === 'dec-pct') saveTrip({ decide: { pct: +e.target.value } });
+  if (id === 'dec-by') saveTrip({ decide: { by: e.target.value || '' } });
+  if (id === 'me-hardBudget') saveMe({ hard: { ...(meDoc()?.hard || {}), budget: e.target.checked } }, true);
+  if (id === 'me-hardDays') saveMe({ hard: { ...(meDoc()?.hard || {}), days: e.target.checked } }, true);
+  if (id === 'me-condUnder' || id === 'me-condNote') { const u = Math.max(0, Math.round(+$('#me-condUnder').value || 0)), note = $('#me-condNote').value.trim().slice(0, 80); saveMe({ cond: u || note ? { under: u, note } : null }, true); }
   if (id === 'me-hideLoc') saveMe({ hideLoc: e.target.checked }, true, true);
   if (id === 'my-flight-price') { const v = Math.round(+e.target.value || 0); if (v > 0) { saveTrip({ tickets: { [S.uid]: { price: v } } }); flash('Got it. Your flight is in the cost now.'); } }
   if (id === 'set-cur' && CUR_CODES.includes(e.target.value)) { saveTrip({ currency: e.target.value }); flash(`Now in ${e.target.value}. Amounts already typed in weren’t converted.`); }
@@ -263,6 +279,8 @@ app.addEventListener('submit', async e => {
   clearDrafts(f);
   if (f.id === 'newTrip') return createTrip();
   if (f.id === 'newCrewForm') { const n = $('#nc-name').value.trim(); if (n) return createCrew(n); return; }
+  if (f.id === 'dnaNote') { const text = $('#dna-note').value.trim().slice(0, 80); if (!text) return; $('#dna-note').value = ''; return dnaSave(S.crewView || S.trip?.crewId, { notes: { [rid(6)]: { text, by: S.uid, at: Date.now() } } }); }
+  if (f.classList.contains('dna-fix')) { const k = f.dataset.k, v = ($('#dna-fix-' + k)?.value || '').trim().slice(0, 50); S.dnaEdit = null; render(); return dnaSave(S.crewView || S.trip?.crewId, { fix: { [k]: v || null } }); }
   if (f.id === 'tkForm') return sendTicket();
   if (f.id === 'swapForm') return swapItem($('#swap-title').value);
   if (f.id === 'ownStayForm') return addOwnStay(e.submitter?.dataset.how === 'lock');

@@ -25,6 +25,7 @@ function rsvpCard() {
     <div class="row" style="justify-content:space-between"><h2>Who’s coming</h2>${by ? `<span class="pill ${late ? 'out' : 'maybe'}">${late ? 'Answers closed ' + short(by) : 'Answer by ' + short(by)}</span>` : ''}</div>
     <div class="hc">${blocks.map(([k, n]) => `<div class="hc-b lvl-${k} ${n ? '' : 'zero'}"><b>${n}</b><span>${LEVEL_LABEL[k]}</span></div>`).join('')}</div>
     <p class="small muted">${h.firm ? `Plan for <b>${h.firm}</b> ${h.firm === 1 ? 'person' : 'people'}${h.going ? `, up to <b>${h.max}</b> if everyone going confirms` : ''}.` : h.going ? `Nobody has confirmed yet. <b>${h.going}</b> ${h.going === 1 ? 'is' : 'are'} planning to come.` : 'Nobody has said they’re coming yet.'} Stays and costs use this number.</p>
+    ${condLines()}
     ${org ? `<div class="stack" style="gap:10px;border-top:1px solid var(--line);padding-top:12px">
       <div class="row" style="gap:8px;align-items:flex-end"><label class="field" style="flex:0 1 190px"><span class="label">Everyone answers by</span><input id="rsvp-by" type="date" value="${by || ''}" min="${TODAY}"></label>${by ? '<button class="btn sm ghost" data-act="rsvpClear">No deadline</button>' : ''}</div>
       ${und.length ? `<span class="label">Still undecided · ${und.length}</span>
@@ -55,6 +56,7 @@ function setStatus(st) {
     S.tab = 'tickets'; render(); window.scrollTo({ top: 0 });
     flash('Send your boarding pass or flight number here. That marks you as booked.'); return;
   }
+  if (st === 'out' && going(m)) logDrop(S.uid);
   saveMe({ status: st, seen: true, countedOut: false }, true);
   if (['in', 'confirmed'].includes(st) && fresh) startSetup();
   else if (st === 'confirmed') flash('Confirmed. The crew is counting on you now.');
