@@ -143,8 +143,8 @@ async function uploadPhotos(files) {
     if (S.tid !== tid) { flash(`Stopped adding photos: you left that plan. ${n} of ${list.length} went in.`); return; }
     S.busy.photos = `${++n}/${list.length}`; render();
     if (f.size > 20 * 1024 * 1024) { flash(`${f.name} is over 20 MB, skipped.`); continue; }
-    try { const r = await S.assets.upload(f); await putSub('photos', rid(10), { asset: r.id, by: S.uid, at: Date.now() }); }
-    catch (e) { flash(e && e.code === 'unsupported_type' ? `${f.name} isn’t a supported image.` : 'An upload failed. Try again.'); }
+    try { const r = await S.assets.upload(f, IN_CLAUDE ? undefined : { tid }); await putSub('photos', rid(10), { asset: r.id, by: S.uid, at: Date.now() }); }
+    catch (e) { flash(e && e.code === 'unsupported_type' ? `${f.name} isn’t a supported image.` : e && ['quota_exceeded', 'rate_limited', 'too_large', 'permission_denied'].includes(e.code) ? e.message : 'An upload failed. Try again.'); if (e && ['quota_exceeded', 'rate_limited', 'permission_denied'].includes(e.code)) break; }
   }
   S.busy.photos = null; render();
 }

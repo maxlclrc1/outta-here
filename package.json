@@ -12,7 +12,10 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test:server": "node tests/access.mjs && node tests/budget-privacy.mjs && node tests/privacy.mjs"
+    "test": "node scripts/test.mjs",
+    "test:server": "node scripts/test.mjs --server",
+    "test:ui": "node scripts/test.mjs --ui",
+    "test:ui:concurrency": "node scripts/test.mjs --concurrency"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.134.0",

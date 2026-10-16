@@ -1,4 +1,5 @@
-import { StoreError, rawDoc, type Json } from '@/lib/store';
+import { StoreError, merge, rawDoc, type Json } from '@/lib/store';
+import { checkDecision } from '@/lib/decide';
 import { feedFor, memberFor, tripFor } from '@/lib/privacy';
 
 // Who may read and write what. The app's own checks only decide what to show; these are
@@ -58,6 +59,7 @@ function hideBudget(d: Json): Json {
 const PUBLIC_MEMBER = ['nick', 'status'];
 const redactMember = (d: Json) => Object.fromEntries(PUBLIC_MEMBER.filter(k => k in d).map(k => [k, d[k]]));
 const onlySelf = (o: unknown, user: string) => !isObj(o) || Object.keys(o).every(k => k === user);
+const OTHERS_MAY = ['status', 'droppedAt', 'countedOut', 'removed', 'updatedAt'];
 // org-only fields on a plan
 const ORG_FIELDS = ['orgs', 'perm', 'inviteKey', 'invitesOff', 'createdBy'];
 
@@ -104,11 +106,12 @@ export function checkWrite(op: 'set' | 'update' | 'delete', p: string, data: Jso
     if (s.length === 2) {
       if (op === 'delete') { if (prev && !isOrg(prev, u)) throw deny('Only organizers can delete this plan.'); return; }
       if (!prev) { if (op === 'set' && data?.createdBy === u) return; throw deny(); }
-      if (op === 'set') { if (!isOrg(prev, u) || data?.createdBy !== prev.createdBy) throw deny(); return; }
+      if (op === 'set') { if (!isOrg(prev, u) || data?.createdBy !== prev.createdBy) throw deny(); checkDecision(tid, prev, data || {}, data || {}, u); return; }
       // update
       if (inTrip(tid, u, prev)) {
         const orgOnly = ORG_FIELDS.filter(k => data && k in data);
         if (orgOnly.length && !isOrg(prev, u)) throw deny('Only organizers can change this.');
+        checkDecision(tid, prev, data || {}, merge(prev, data || {}), u);
         return;
       }
       const keys = Object.keys(data || {});
@@ -129,6 +132,9 @@ export function checkWrite(op: 'set' | 'update' | 'delete', p: string, data: Jso
       if (!inTrip(tid, u, t)) throw deny();
       if (op === 'delete' && !isOrg(t, u)) throw deny();
       if (data && 'removed' in data && !isOrg(t, u)) throw deny('Only organizers can remove people.');
+      // someone else's record: only whether they're coming (drop-outs, counting people out,
+      // removing). Their votes, free days and limits are theirs to change.
+      if (prev && Object.keys(data || {}).some(k => !OTHERS_MAY.includes(k))) throw deny('You can only change your own votes, days and limits.');
       return;
     }
     if (!inTrip(tid, u, t)) throw deny();

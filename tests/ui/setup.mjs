@@ -1,0 +1,42 @@
+// Browser regression test, run with: npm run test:ui (needs Playwright, see README › Tests)
+const { chromium } = await import(process.env.PLAYWRIGHT || 'playwright');
+const b = await chromium.launch(process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {}); const errs = [];
+const S = './su-';
+const settle = p => p.waitForFunction(() => !document.documentElement.dataset.vt).then(() => p.waitForTimeout(450));
+const mk = async (n, link = '') => { const p = await (await b.newContext({ viewport: { width: 390, height: 844 } })).newPage(); p.on('pageerror', e => errs.push(n + ': ' + e.message)); await p.goto((process.env.BASE || 'http://localhost:3000') + '/' + link); await p.fill('#join-name', n); await p.click('.join-card [type=submit]'); await settle(p); return p; };
+const a = await mk('Ali');
+// creator: trip
+await a.click('[data-act=newTrip]'); await settle(a); await a.click('[data-size=trip]'); await settle(a); await a.locator('[data-mode]').first().click(); await settle(a);
+await a.fill('#nt-name', 'Vegas'); await a.click('#newTrip [type=submit]'); await a.waitForSelector('.setup'); await settle(a);
+const step = async p => (await p.locator('.setup-top .label').innerText()) + ' | ' + await p.locator('.setup h1').innerText();
+console.log('creator:', await step(a), '| bottom nav:', await a.locator('.bottomnav').count());
+await a.screenshot({ path: S + '1-days.png', fullPage: true });
+await a.locator('.setup .day').nth(3).click(); await a.locator('.setup .day').nth(4).click(); await a.click('[data-act=weekends]'); await settle(a);
+console.log('days:', await a.locator('.setup-body > .small').innerText());
+await a.click('[data-act=setupNext]'); await settle(a); console.log(await step(a));
+await a.fill('#me-home', 'JFK'); await a.click('[data-act=setupNext]'); await settle(a); console.log(await step(a));
+await a.screenshot({ path: S + '2-budget.png', fullPage: true });
+await a.click('[data-budget="1000"]'); await settle(a); console.log('budget chip on:', await a.locator('.big-chip.on').innerText(), '| input:', await a.inputValue('#me-budget'));
+await a.click('[data-act=setupBack]'); await settle(a); console.log('back to:', await step(a), '| home kept:', await a.inputValue('#me-home'));
+await a.click('[data-act=setupNext]'); await settle(a); await a.click('[data-act=setupNext]'); await settle(a); console.log(await step(a));
+await a.locator('[data-quiz^="night|"]').first().click(); await a.waitForTimeout(300);
+await a.screenshot({ path: S + '3-vibe.png', fullPage: true });
+await a.click('[data-act=setupNext]'); await settle(a);
+console.log('after done → pass:', await a.locator('.pass').count(), '| tab:', await a.locator('.subtab.on').innerText().catch(() => '-'), '| toast:', await a.locator('#toast').innerText());
+await a.click('.subtab[data-tab=crew]'); await settle(a);
+console.log('saved:', { home: await a.inputValue('#me-home'), budget: await a.inputValue('#me-budget') });
+// crew member joining a hangout made from a crew
+await a.click('[data-act=home] >> nth=0'); await settle(a);
+await a.click('[data-act=newCrew] >> nth=0'); await a.fill('#nc-name', 'Taco Crew'); await a.click('#newCrewForm [type=submit]'); await a.waitForSelector('text=Invite to the crew'); await settle(a);
+const crewHash = await a.evaluate(() => location.hash);
+const j = await mk('Jay', crewHash); await j.waitForSelector('text=Invite to the crew'); await settle(j);
+await a.click('[data-startcrew] >> nth=0'); await settle(a); await a.click('[data-size=hangout]'); await settle(a);
+await a.fill('#nt-name', 'Friday tacos'); await a.fill('#nt-city', 'Brooklyn'); await a.click('#newTrip [type=submit]'); await a.waitForSelector('.setup'); await settle(a);
+console.log('hangout steps:', await a.locator('.setup-prog i').count());
+await a.click('[data-act=setupLater]'); await settle(a); console.log('later → pass:', await a.locator('.pass').count(), '| toast:', await a.locator('#toast').innerText());
+await j.click('[data-act=home] >> nth=0'); await settle(j); await j.click('[data-open]'); await j.waitForSelector('.welcome'); await settle(j);
+console.log('Jay (pre-added by crew) sees welcome:', await j.locator('.welcome').count());
+await j.click('[data-join=in]'); await j.waitForSelector('.setup'); await settle(j); console.log('Jay:', await step(j));
+await j.screenshot({ path: S + '4-jay.png', fullPage: true });
+await j.reload(); await j.waitForSelector('.bottomnav'); await settle(j); console.log('Jay after reload welcome:', await j.locator('.welcome').count());
+console.log('errors', errs); await b.close();

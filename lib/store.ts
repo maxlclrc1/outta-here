@@ -11,7 +11,8 @@ export type Json = Record<string, unknown>;
 type Doc = { data: Json; version: number; updatedAt: number };
 type State = { docs: Map<string, Doc>; bus: EventEmitter; timer: NodeJS.Timeout | null };
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+// OUTTA_DATA_DIR lets the test runner use a throwaway database (scripts/test.mjs)
+const DATA_DIR = process.env.OUTTA_DATA_DIR || path.join(process.cwd(), 'data');
 const FILE = path.join(DATA_DIR, 'db.json');
 const SEGMENT = /^(?!\.\.?$)[A-Za-z0-9_\-.~:@+]{1,200}$/;
 
@@ -65,7 +66,7 @@ function visible(p: string, user: string) {
 }
 
 const isObj = (v: unknown): v is Json => !!v && typeof v === 'object' && !Array.isArray(v);
-function merge(target: Json, patch: Json): Json {
+export function merge(target: Json, patch: Json): Json {
   const out: Json = { ...target };
   for (const [k, v] of Object.entries(patch)) out[k] = isObj(v) && isObj(out[k]) ? merge(out[k] as Json, v) : v;
   return out;
@@ -91,7 +92,7 @@ export function setDoc(p: string, data: Json, user: string) {
   segments(p, 'doc');
   if (!visible(p, user)) throw new StoreError('invalid_argument', 'Not your data');
   if (!isObj(data)) throw new StoreError('invalid_argument', 'Document body must be an object');
-  if (JSON.stringify(data).length > 256 * 1024) throw new StoreError('invalid_argument', 'Document is over 256 KiB');
+  if (JSON.stringify(data).length > 256 * 1024) throw new StoreError('invalid_argument', 'Document is over 256 KiB, even after trimming old change history. Nothing was saved.');
   const prev = state().docs.get(p);
   state().docs.set(p, { data, version: (prev?.version || 0) + 1, updatedAt: Date.now() });
   changed(p);

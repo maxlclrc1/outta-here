@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // the test runner builds into its own folder so it can run next to your dev server
+  ...(process.env.OUTTA_DIST_DIR ? { distDir: process.env.OUTTA_DIST_DIR } : {}),
   // The app's files carry a content hash in their URL (see scripts/build.mjs), so they can be
   // cached for a year. The page itself is always re-checked, so a new build shows up at once.
   async headers() {
