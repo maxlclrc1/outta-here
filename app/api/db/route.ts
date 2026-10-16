@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { deleteDoc, getDoc, listCollection, rawDoc, segments, setDoc, StoreError, updateDoc, type Json } from '@/lib/store';
 import { checkWrite, listable, readable } from '@/lib/access';
+import { honoreeItinerary } from '@/lib/privacy';
 import { userOf } from '@/lib/user';
 
 export const runtime = 'nodejs';
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
         segments(path, 'doc');
         checkWrite(op, path, body.data, rawDoc(path), ctx);
         if (op === 'set') setDoc(path, body.data ?? {}, user);
-        else if (op === 'update') updateDoc(path, body.data ?? {}, user);
+        else if (op === 'update') { const prev = /^trips\/[^/]+$/.test(path) ? rawDoc(path) : null; updateDoc(path, prev ? honoreeItinerary(prev, body.data ?? {}, user) : body.data ?? {}, user); }
         else deleteDoc(path, user);
         return NextResponse.json({ ok: true });
       }

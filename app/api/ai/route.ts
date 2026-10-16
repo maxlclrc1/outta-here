@@ -1,6 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { NextResponse } from 'next/server';
 import { aiClient, AI_MODEL, SYSTEM } from '@/lib/ai';
+import { inTrip } from '@/lib/access';
+import { hiddenNeedsText } from '@/lib/privacy';
+import { userOf } from '@/lib/user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -13,9 +16,9 @@ export async function POST(req: Request) {
   const client = aiClient();
   if (!client) return fail('sampling_disabled', 'AI is off. Add ANTHROPIC_API_KEY to .env.local and restart.', 503);
 
-  let input: string | Turn[];
+  let input: string | Turn[], tid: unknown;
   try {
-    ({ input } = (await req.json()) as { input: string | Turn[] });
+    ({ input, tid } = (await req.json()) as { input: string | Turn[]; tid?: unknown });
   } catch {
     return fail('invalid_request', 'Body must be JSON', 400);
   }
@@ -24,6 +27,13 @@ export async function POST(req: Request) {
     return fail('invalid_request', 'input must be a string or a list of user/assistant turns', 400);
   }
   if (JSON.stringify(messages).length > 256 * 1024) return fail('prompt_too_large', 'Prompt is too large', 413);
+  // needs some members shared only with organizers: added here, unnamed, so the AI plans
+  // around them without them ever reaching this person's browser
+  const user = userOf(req);
+  if (typeof tid === 'string' && /^[A-Za-z0-9_\-]{4,40}$/.test(tid) && inTrip(tid, user)) {
+    const extra = hiddenNeedsText(tid, user), last = messages[messages.length - 1];
+    if (extra && last.role === 'user') messages[messages.length - 1] = { ...last, content: last.content + '\n\n' + extra };
+  }
 
   try {
     // Server-side fallbacks retry on another model if this one declines a request.

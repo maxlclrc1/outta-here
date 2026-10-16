@@ -316,7 +316,7 @@ async function askAI(kind, prompt, done) {
   if (S.trip) prompt += `\n\nGive every price in ${cur()} (${curSymbol(cur())}), not in any other currency, and use that symbol in price text.`;
   const tid = S.tid;
   try {
-    const data = await S.sample.json(prompt, { modelTier: 'default' });
+    const data = await S.sample.json(prompt, { modelTier: 'default', ...(IN_CLAUDE ? {} : { tid }) });
     if (S.tid !== tid) { flash('An AI answer came back after you left that plan. Open it and ask again.'); return; }
     await done(data);
   }
@@ -1961,6 +1961,8 @@ function budgetReset() { BQ.cache.clear(); BQ.cap = undefined; }
 function bq(check) {
   if (BQ.tid !== S.tid) { BQ.tid = S.tid; budgetReset(); BQ.queue.clear(); }
   if (budgetsHere()) return budgetLocal(check);
+  // only people in the plan can ask, so wait until joining has actually been saved
+  const me = meDoc(); if (!me || !(me.updatedAt || (S.trip.people || {})[S.uid] || S.trip.createdBy === S.uid)) return { ...NO_FIT, pending: false };
   const k = JSON.stringify(check);
   if (BQ.cache.has(k)) return BQ.cache.get(k);
   if (!BQ.queue.has(k)) { BQ.queue.set(k, check); clearTimeout(BQ.t); BQ.t = setTimeout(budgetFetch, 0); }
