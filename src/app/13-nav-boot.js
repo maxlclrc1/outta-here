@@ -11,7 +11,7 @@ function goHome() { stop(); S.tid = null; S.creating = null; S.crewView = null; 
 function openTrip(id, tab) {
   if (!S.db) { flash(IN_CLAUDE ? 'Open this page in Claude to load trips.' : 'Can’t reach the local server. Is npm run dev still running?'); return; }
   stop(); S.demo = false; S.crewView = null; S.tid = id; S.tab = tab || 'overview'; S.tabPicked = !!tab; S.secTab = {}; resetTrip(); setHash(id);
-  app.innerHTML = `${topBar()}<p class="muted">Loading trip…</p>`;
+  app.innerHTML = `${topBar()}${skel()}`;
   S.unsub.push(S.db.doc('trips/' + id).onSnapshot(snap => {
     if (!snap.exists) { flash('That trip doesn’t exist anymore.'); goHome(); return; }
     const first = !S.trip; S.trip = { ...snap.data() }; if (first && !S.tabPicked && isLive()) S.tab = 'live'; render();

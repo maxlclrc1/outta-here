@@ -40,7 +40,7 @@ function planRow(t, opts = {}) {
   </div>`;
 }
 function homeView() {
-  if (S.loading && parseTripHash(location.hash.slice(1))) return `${topBar()}<p class="muted">Loading…</p>`;
+  if (S.loading && parseTripHash(location.hash.slice(1))) return `${topBar()}${skel()}`;
   if (S.creating === 'crew') return pickCrewStep();
   if (S.creating === 'size') return pickSizeStep();
   if (S.creating === 'mode') return modePicker();
@@ -62,7 +62,7 @@ function homeView() {
   </section>
   ${S.creating === 'newCrew' ? `<section class="card stack"><h2>New crew</h2><p class="small muted">A crew is a group you make plans with. You’ll get an invite link for it next.</p>
     <form id="newCrewForm" class="row" style="gap:6px"><input aria-label="Crew name" id="nc-name" maxlength="40" required placeholder="The Vegas Six" style="flex:1 1 200px"><button class="btn primary" type="submit">Create crew</button><button class="btn ghost" type="button" data-act="cancelNew">Cancel</button></form></section>` : ''}
-  ${!canSave ? '' : !S.tripsLoaded ? '<p class="muted">Loading your plans…</p>' : `
+  ${!canSave ? '' : !S.tripsLoaded ? skel('rows') : `
   ${inboxCard()}
   <div class="home-bar"><span class="small muted">${[live.length && live.length + ' happening now', upcoming.length && upcoming.length + ' coming up', deciding.length && deciding.length + ' deciding'].filter(Boolean).join(' · ') || 'No plans yet'}</span>${viewSwitch()}</div>
   ${homeMode === 'cal' ? calView(plans, deciding) : `
@@ -139,7 +139,7 @@ function crewCard(c, plans) {
 const crewLink = cid => SHARE_BASE + '#c-' + cid;
 function crewPage(cid) {
   const c = S.crews.find(x => x.id === cid);
-  if (!c) return `${topBar()}<p class="muted">Loading crew…</p><button class="btn" data-act="home">Back home</button>`;
+  if (!c) return `${topBar()}${skel('rows')}<button class="btn" data-act="home">Back home</button>`;
   const ids = crewMembers(c), plans = myPlans().filter(t => t.crewId === cid);
   const upcoming = plans.filter(t => !t.lockedDates || t.lockedDates.end >= TODAY).sort((a, b) => (a.lockedDates?.start || '9') < (b.lockedDates?.start || '9') ? -1 : 1);
   const past = plans.filter(t => t.lockedDates && t.lockedDates.end < TODAY);

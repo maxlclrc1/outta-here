@@ -118,6 +118,10 @@ function paintNow() {
   else popIn(born);
 }
 
+// Placeholders shaped like what's coming, so the screen doesn't jump when it arrives.
+const skel = (kind = 'plan') => kind === 'rows'
+  ? `<div class="skel-list" aria-busy="true" aria-label="Loading your plans">${'<div class="skel skel-row"></div>'.repeat(3)}</div>`
+  : `<div class="skel-list" aria-busy="true" aria-label="Loading">${'<div class="skel skel-strip"></div><div class="skel skel-hero"></div><div class="skel skel-card"></div>'}</div>`;
 function topBar() {
   const day = document.documentElement.dataset.theme === 'light';
   return `<div class="top"><button class="logo" data-act="home">Outta<span>/</span>Here</button>
