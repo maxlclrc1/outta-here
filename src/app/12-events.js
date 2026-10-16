@@ -118,8 +118,12 @@ app.addEventListener('click', e => {
   if (ds.act === 'hangCancel') { S.hangPlan = null; return render(); }
   if (ds.act === 'writeRecap') return writeRecap(ds.day);
   if (ds.act === 'findStays') return findStays();
-  if (ds.lockstay !== undefined) { const it = S.trip.stays?.items?.[+ds.lockstay]; if (it) { flash(`Locked ${it.name} as your stay.`); return saveTrip({ stay: { ...it } }); } return; }
+  if (ds.lockstay !== undefined) { if (!canLock()) { flash('Only organizers can lock this one. Your vote still counts.'); return; } const it = S.trip.stays?.items?.[+ds.lockstay]; if (it) { flash(`Locked ${it.name} as your stay.`); return setStay({ ...it }); } return; }
   if (ds.act === 'unlockStay') return saveTrip({ stay: null });
+  if (ds.act === 'addStayOpen') { S.addStay = true; render(); setTimeout(() => $('#os-url')?.focus(), 60); return; }
+  if (ds.act === 'addStayClose') { S.addStay = false; return render(); }
+  if (ds.lockown) { if (!canLock()) { flash('Only organizers can lock this one. Your vote still counts.'); return; } const s = (S.trip.myStays || {})[ds.lockown]; if (s) { flash(`Locked ${s.name} as your stay.`); return setStay(stayFromOwn(ds.lockown, s)); } return; }
+  if (ds.delown) return saveTrip({ myStays: { [ds.delown]: null } });
   if (ds.delspend) return saveMySpend((S.mySpend || []).filter(x => x.id !== ds.delspend));
   if (ds.delpot) return delSub('pot', ds.delpot);
   if (ds.act === 'copyPot') { const ins = S.pot.filter(p => p.kind === 'in'), tin = ins.reduce((a, p) => a + p.amount, 0), bal = tin - S.pot.filter(p => p.kind === 'out').reduce((a, p) => a + p.amount, 0); return copy(`Pot check! Only ${money2(bal)} left in the ${S.trip.name} pot. Chip in about $30 each to ${nameOf(S.trip.potKeeper || S.trip.createdBy)} so the Ubers keep coming.`); }
@@ -258,6 +262,8 @@ app.addEventListener('submit', async e => {
   if (f.id === 'songForm') { const title = $('#sg-title').value.trim(); if (!title) return; return addSong(title, $('#sg-artist').value.trim(), $('#sg-link').value.trim()); }
   if (f.id === 'tkForm') return sendTicket();
   if (f.id === 'swapForm') return swapItem($('#swap-title').value);
+  if (f.id === 'ownStayForm') return addOwnStay(e.submitter?.dataset.how === 'lock');
+  if (f.id === 'stayBookForm') { const v = Math.max(0, Math.round(+($('#sb-total')?.value || 0))); saveTrip({ stay: { booked: true, bookedBy: S.uid, bookedAt: Date.now(), ...(v ? { total: v } : {}) } }); flash('Stay marked as booked.'); return; }
   if (f.id === 'addTask') { addTask($('#task-title').value); $('#task-title').value = ''; return; }
   if (f.id === 'lostForm') return sendLost($('#lost-where').value);
   if (f.id === 'spendForm') { const note = $('#sp-note').value.trim(), amount = Math.round(+$('#sp-amt').value * 100) / 100; if (!note || !(amount > 0)) return; return saveMySpend([...(S.mySpend || []), { id: rid(6), note: note.slice(0, 50), amount, at: Date.now() }]); }

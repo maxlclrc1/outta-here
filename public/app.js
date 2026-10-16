@@ -1894,9 +1894,10 @@ function costHints() {
   const t = S.trip, d = dates(), nights = Math.max(1, nightsOf(d)), out = {};
   const fl = (t.deals?.data?.flights || []).map(f => moneyRange(f.roundTrip)).filter(Boolean);
   if (fl.length && size() === 'trip') out.travel = { low: Math.min(...fl.map(r => r[0])), high: Math.max(...fl.map(r => r[1])), src: 'ai', note: 'From the flight search estimates' };
+  if (t.stay && +t.stay.total && !isSmall()) { const n = planHeads(); out.stay = { low: Math.round(t.stay.total / n), high: Math.round(t.stay.total / n), src: t.stay.booked ? 'booked' : 'quote', note: `${t.stay.name}, ${money(t.stay.total)} total ${n === 1 ? "for 1 person" : `split ${n} ways`}` }; return out; }
   const stays = t.stay ? [t.stay] : (t.stays?.items || []);
   const pn = stays.map(s => moneyRange(s.perNight)).filter(Boolean);
-  if (pn.length && !isSmall()) { const n = planHeads(); out.stay = { low: Math.round(Math.min(...pn.map(r => r[0])) * nights / n), high: Math.round(Math.max(...pn.map(r => r[1])) * nights / n), src: t.stay ? 'quote' : 'ai', note: `${t.stay ? t.stay.name : 'Stay ideas'}, ${nights} night${nights === 1 ? '' : 's'} split ${n} ways` }; }
+  if (pn.length && !isSmall()) { const n = planHeads(); out.stay = { low: Math.round(Math.min(...pn.map(r => r[0])) * nights / n), high: Math.round(Math.max(...pn.map(r => r[1])) * nights / n), src: t.stay ? 'quote' : 'ai', note: `${t.stay ? t.stay.name : 'Stay ideas'}, ${nights} night${nights === 1 ? '' : 's'} ${n === 1 ? "for 1 person" : `split ${n} ways`}` }; }
   return out;
 }
 // who: 'crew' (a typical person's range) or 'me' (your own, using your real numbers)
@@ -2308,7 +2309,11 @@ function staysTab() {
       ${S.sample !== null ? `<div><button class="btn" data-act="findStays" ${S.busy.stays ? 'disabled' : ''}>${S.busy.stays ? '<i class="spin"></i>Finding stays…' : opts.length ? 'Find more options' : 'Find stays for us'}</button></div>` : ''}</section>
   ${st ? `<section class="card stack locked-stay"><div class="row" style="justify-content:space-between"><span class="on-pill">Our stay</span><button class="btn sm ghost" data-act="unlockStay">Change</button></div>
       <h2>${esc(st.name)}</h2><span class="small muted">${esc([st.area, st.sleeps, st.perNight].filter(Boolean).join(' · '))}</span>
-      <div class="row" style="gap:6px">${stayLinks(st, ds, d, n)}<a class="btn sm" href="${maps(st.name, ds.city)}" target="_blank" rel="noopener">Map</a><button class="btn sm ghost" data-tab="map">Crew map</button></div></section>` : ''}
+      ${+st.total ? `<b class="mono">${esc(stayPriceText(st))}</b>` : ''}
+      <div class="row" style="gap:6px">${st.url ? `<a class="btn sm primary" href="${esc(st.url)}" target="_blank" rel="noopener noreferrer">Open listing</a>` : stayLinks(st, ds, d, n)}<a class="btn sm" href="${maps(st.name, ds.city)}" target="_blank" rel="noopener">Map</a><button class="btn sm ghost" data-tab="map">Crew map</button></div>
+      ${stayBookedBox(st)}</section>` : ''}
+  ${ownStays().length ? `<section class="stack"><h3>Found by the crew</h3><div class="grid2">${ownStays().map(s => ownStayCard(s, ds, d, n)).join('')}</div></section>` : ''}
+  ${ownStayForm()}
   ${opts.length ? `<section class="grid2">${ranked.map(({ s, i }) => `<article class="card stay">
       <div class="stay-top" style="--sc:${s.kind === 'rental' ? '#0E9F6E' : s.kind === 'hostel' ? '#E8590C' : '#3B5BDB'}"><span class="label" style="color:#fff">${s.kind === 'rental' ? 'Airbnb-style rental' : s.kind}</span><h3 style="color:#fff">${esc(s.name)}</h3><span style="color:rgba(255,255,255,.85)" class="small">${esc(s.area)}</span></div>
       <div class="stack" style="gap:8px;padding:14px 16px 16px">
@@ -2320,7 +2325,7 @@ function staysTab() {
         <div class="row" style="gap:6px">${stayLinks(s, ds, d, n)}${st?.name !== s.name ? `<button class="btn sm ghost" data-lockstay="${i}">Lock as our stay</button>` : ''}</div>
       </div></article>`).join('')}</section>
     <p class="small muted">AI suggestions with typical prices. Live prices are on the booking sites.</p>`
-  : !st ? `<div class="empty"><b>No options yet.</b><span>Let the AI find hotels and Airbnb-style rentals that fit ${n} people and the group budget, or search yourself below.</span></div>` : ''}
+  : !st && !ownStays().length ? `<div class="empty"><b>No options yet.</b><span>Let the AI find hotels and Airbnb-style rentals that fit ${n} people and the group budget, add a place you found, or search yourself below.</span></div>` : ''}
   <section class="card"><h3 style="margin-bottom:6px">Search everything yourself</h3>
     <div class="linkrow"><div><b>Airbnb for ${n}</b><div class="small muted">${b ? 'Under ' + money(perNightGroup) + '/night for the whole place' : 'Whole place for the group'}</div></div><a class="btn sm" href="${airbnb(ds, d, n, perNightGroup)}" target="_blank" rel="noopener">Search</a></div>
     <div class="linkrow"><div><b>Booking.com</b><div class="small muted">${Math.ceil(n / 2)} rooms, cheapest first</div></div><a class="btn sm" href="${booking(ds, d, n)}" target="_blank" rel="noopener">Search</a></div>
@@ -2429,6 +2434,89 @@ function mapTab() {
     <p class="small muted">Pins are approximate. Use Directions for turn-by-turn.</p>
   </section>
   ${lostAt().length ? `<section class="card stack"><h3>Lost right now</h3>${lostAt().map(m => `<div class="nudge"><b>${esc(m.nick || 'Someone')}</b><span class="small">near ${esc(m.lost.where)} · ${ago(m.lost.at)}</span></div>`).join('')}</section>` : ''}`;
+}
+
+/* ---------- stays the crew found themselves ---------- */
+// Anyone can add a place they found (Airbnb, Booking, VRBO, a friend's cabin) with a
+// link and the real price. It sits next to the AI ideas, gets votes, and can be locked
+// in the same way. A locked stay can be marked booked with what was actually paid.
+const STAY_KIND_LABEL = { rental: 'Home rental', hotel: 'Hotel', hostel: 'Hostel', other: 'Other' };
+const safeUrl = u => { try { const x = new URL(String(u || '').trim()); return /^https?:$/.test(x.protocol) ? x.href : ''; } catch { return ''; } };
+const hostOf = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
+function guessFromUrl(u) {
+  const h = hostOf(u);
+  if (/airbnb\./.test(h)) return { name: 'Airbnb listing', kind: 'rental' };
+  if (/vrbo\.|homeaway\./.test(h)) return { name: 'VRBO listing', kind: 'rental' };
+  if (/booking\.com/.test(h)) return { name: 'Booking.com stay', kind: 'hotel' };
+  if (/hostelworld\./.test(h)) return { name: 'Hostelworld stay', kind: 'hostel' };
+  if (/hotels\.com|expedia\.|marriott\.|hilton\.|hyatt\./.test(h)) return { name: 'Hotel listing', kind: 'hotel' };
+  return h ? { name: h, kind: 'other' } : { name: '', kind: 'other' };
+}
+const ownStays = () => Object.entries(S.trip.myStays || {}).filter(([, s]) => s).map(([id, s]) => ({ id, ...s })).sort((a, b) => (a.at || 0) - (b.at || 0));
+const nightsNow = () => Math.max(1, nightsOf(dates()));
+function stayPriceText(s) {
+  if (!+s.total) return s.perNight || 'No price yet';
+  const n = nightsNow(), heads = planHeads();
+  return `${money(s.total)} total · ${money(s.total / n)}/night · ${money(s.total / heads)} each`;
+}
+function ownStayCard(s, ds, d, n) {
+  const locked = S.trip.stay && S.trip.stay.ownId === s.id;
+  return `<article class="card stay own-stay" data-key="own-${esc(s.id)}">
+    <div class="stay-top" style="--sc:#5C6A7A"><span class="label" style="color:#fff">${esc(STAY_KIND_LABEL[s.kind] || 'Stay')} · found by ${esc(nameOf(s.by))}</span><h3 style="color:#fff">${esc(s.name)}</h3>${s.area ? `<span style="color:rgba(255,255,255,.85)" class="small">${esc(s.area)}</span>` : ''}</div>
+    <div class="stack" style="gap:8px;padding:14px 16px 16px">
+      <b class="mono">${esc(stayPriceText(s))}</b>
+      ${s.sleeps ? `<span class="small muted">Sleeps: ${esc(s.sleeps)}</span>` : ''}
+      ${s.note ? `<p class="small">${esc(s.note)}</p>` : ''}
+      <div class="row" style="gap:6px">${voteBtns(rkey('st' + s.name))}</div>
+      <div class="row" style="gap:6px">${s.url ? `<a class="btn sm primary" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">Open listing</a>` : ''}
+        ${locked ? '<span class="pill lvl-confirmed">Our stay</span>' : S.readOnly ? '' : `<button class="btn sm ${s.url ? 'ghost' : 'primary'}" data-lockown="${esc(s.id)}">Lock as our stay</button>`}
+        ${s.by === S.uid && !locked && !S.readOnly ? `<button class="x" data-delown="${esc(s.id)}" aria-label="Remove ${esc(s.name)}">×</button>` : ''}</div>
+    </div></article>`;
+}
+function ownStayForm() {
+  if (S.readOnly) return '';
+  if (!S.addStay) return `<section class="card row own-stay-cta"><span><b>Found a place yourself?</b> <span class="small muted">Add the Airbnb, hotel or cabin so the crew can vote on it and lock it in.</span></span><button class="btn primary" data-act="addStayOpen">Add a place</button></section>`;
+  return `<form id="ownStayForm" class="card stack">
+    <div class="row" style="justify-content:space-between"><h3>Add a place you found</h3><button type="button" class="btn sm ghost" data-act="addStayClose">Cancel</button></div>
+    <label class="field" style="flex:none"><span class="label">Link</span><input id="os-url" type="url" inputmode="url" placeholder="https://www.airbnb.com/rooms/…" autocomplete="off"></label>
+    <div class="row" style="gap:8px">
+      <label class="field" style="flex:2 1 200px"><span class="label">Name</span><input id="os-name" maxlength="80" placeholder="Cabin with the hot tub"></label>
+      <label class="field" style="flex:1 1 140px"><span class="label">Type</span><select id="os-kind">${Object.entries(STAY_KIND_LABEL).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></label>
+    </div>
+    <div class="row" style="gap:8px">
+      <label class="field" style="flex:1 1 150px"><span class="label">Total for ${nightsNow()} night${nightsNow() === 1 ? '' : 's'} (${cur()})</span><input id="os-total" type="number" min="0" inputmode="decimal" placeholder="With fees, if you know them"></label>
+      <label class="field" style="flex:1 1 120px"><span class="label">Sleeps</span><input id="os-sleeps" maxlength="40" placeholder="6 in 3 rooms"></label>
+      <label class="field" style="flex:1 1 140px"><span class="label">Area</span><input id="os-area" maxlength="60" placeholder="Neighborhood"></label>
+    </div>
+    <label class="field" style="flex:none"><span class="label">Why this one</span><input id="os-note" maxlength="160" placeholder="Walkable to everything, has a pool"></label>
+    <div class="row" style="gap:8px"><button class="btn primary" type="submit" data-how="add">Add it</button><button class="btn" type="submit" data-how="lock">Add and lock it in</button></div>
+  </form>`;
+}
+async function addOwnStay(lock) {
+  const url = safeUrl($('#os-url')?.value), g = url ? guessFromUrl(url) : { name: '', kind: 'other' };
+  const name = ($('#os-name')?.value || '').trim().slice(0, 80) || g.name;
+  if (!name) { flash('Give it a name or paste the link.'); return; }
+  if (($('#os-url')?.value || '').trim() && !url) { flash('That link doesn’t look right. It should start with https://'); return; }
+  const kindSel = $('#os-kind')?.value, kind = kindSel && kindSel !== 'other' ? kindSel : g.kind;
+  const s = { name, url, kind, total: Math.max(0, Math.round(+($('#os-total')?.value || 0))), sleeps: ($('#os-sleeps')?.value || '').trim().slice(0, 40), area: ($('#os-area')?.value || '').trim().slice(0, 60), note: ($('#os-note')?.value || '').trim().slice(0, 160), by: S.uid, at: Date.now() };
+  const id = rid(6);
+  S.addStay = false;
+  await saveTrip({ myStays: { [id]: s } });
+  if (lock) await setStay(stayFromOwn(id, s));
+  flash(lock ? `${name} is locked in as your stay.` : `Added ${name}. The crew can vote on it now.`);
+}
+// Updates merge into what's saved, so a new stay first clears the old one; otherwise
+// its link and price would stick to the new one.
+async function setStay(stay) { if (S.trip.stay) await saveTrip({ stay: null }); return saveTrip({ stay }); }
+function stayFromOwn(id, s) {
+  const n = nightsNow();
+  return { ...s, ownId: id, perNight: s.total ? `${money(s.total / n)}/night` : '', custom: true };
+}
+// once locked: mark it booked with what was paid
+function stayBookedBox(st) {
+  if (S.readOnly) return '';
+  if (st.booked) return `<span class="small" style="color:var(--good)"><b>Booked</b>${+st.total ? ` · ${money(st.total)} total, ${money(st.total / planHeads())} each` : ''}${st.bookedBy ? ` · by ${esc(nameOf(st.bookedBy))}` : ''}</span>`;
+  return `<form id="stayBookForm" class="row" style="gap:6px;align-items:flex-end"><label class="field" style="flex:0 1 200px"><span class="label">Booked it? Total paid (${cur()})</span><input id="sb-total" type="number" min="0" inputmode="decimal" value="${+st.total || ''}" placeholder="${+st.total ? '' : 'Total for all nights'}"></label><button class="btn sm" type="submit">Mark as booked</button></form>`;
 }
 
 /* ---------- I'm lost ---------- */
@@ -3630,8 +3718,12 @@ app.addEventListener('click', e => {
   if (ds.act === 'hangCancel') { S.hangPlan = null; return render(); }
   if (ds.act === 'writeRecap') return writeRecap(ds.day);
   if (ds.act === 'findStays') return findStays();
-  if (ds.lockstay !== undefined) { const it = S.trip.stays?.items?.[+ds.lockstay]; if (it) { flash(`Locked ${it.name} as your stay.`); return saveTrip({ stay: { ...it } }); } return; }
+  if (ds.lockstay !== undefined) { if (!canLock()) { flash('Only organizers can lock this one. Your vote still counts.'); return; } const it = S.trip.stays?.items?.[+ds.lockstay]; if (it) { flash(`Locked ${it.name} as your stay.`); return setStay({ ...it }); } return; }
   if (ds.act === 'unlockStay') return saveTrip({ stay: null });
+  if (ds.act === 'addStayOpen') { S.addStay = true; render(); setTimeout(() => $('#os-url')?.focus(), 60); return; }
+  if (ds.act === 'addStayClose') { S.addStay = false; return render(); }
+  if (ds.lockown) { if (!canLock()) { flash('Only organizers can lock this one. Your vote still counts.'); return; } const s = (S.trip.myStays || {})[ds.lockown]; if (s) { flash(`Locked ${s.name} as your stay.`); return setStay(stayFromOwn(ds.lockown, s)); } return; }
+  if (ds.delown) return saveTrip({ myStays: { [ds.delown]: null } });
   if (ds.delspend) return saveMySpend((S.mySpend || []).filter(x => x.id !== ds.delspend));
   if (ds.delpot) return delSub('pot', ds.delpot);
   if (ds.act === 'copyPot') { const ins = S.pot.filter(p => p.kind === 'in'), tin = ins.reduce((a, p) => a + p.amount, 0), bal = tin - S.pot.filter(p => p.kind === 'out').reduce((a, p) => a + p.amount, 0); return copy(`Pot check! Only ${money2(bal)} left in the ${S.trip.name} pot. Chip in about $30 each to ${nameOf(S.trip.potKeeper || S.trip.createdBy)} so the Ubers keep coming.`); }
@@ -3770,6 +3862,8 @@ app.addEventListener('submit', async e => {
   if (f.id === 'songForm') { const title = $('#sg-title').value.trim(); if (!title) return; return addSong(title, $('#sg-artist').value.trim(), $('#sg-link').value.trim()); }
   if (f.id === 'tkForm') return sendTicket();
   if (f.id === 'swapForm') return swapItem($('#swap-title').value);
+  if (f.id === 'ownStayForm') return addOwnStay(e.submitter?.dataset.how === 'lock');
+  if (f.id === 'stayBookForm') { const v = Math.max(0, Math.round(+($('#sb-total')?.value || 0))); saveTrip({ stay: { booked: true, bookedBy: S.uid, bookedAt: Date.now(), ...(v ? { total: v } : {}) } }); flash('Stay marked as booked.'); return; }
   if (f.id === 'addTask') { addTask($('#task-title').value); $('#task-title').value = ''; return; }
   if (f.id === 'lostForm') return sendLost($('#lost-where').value);
   if (f.id === 'spendForm') { const note = $('#sp-note').value.trim(), amount = Math.round(+$('#sp-amt').value * 100) / 100; if (!note || !(amount > 0)) return; return saveMySpend([...(S.mySpend || []), { id: rid(6), note: note.slice(0, 50), amount, at: Date.now() }]); }
@@ -3817,7 +3911,7 @@ app.addEventListener('submit', async e => {
 function stop() { S.unsub.forEach(u => { try { u(); } catch {} }); S.unsub = []; }
 function setHash(h) { try { history.replaceState(null, '', h ? '#' + h : location.pathname + location.search); } catch {} }
 function resetTrip() {
-  S.trip = null; S.members = []; S.membersIn = false; S.setup = null; S.whatif = null; S.recover = null; S.recoverWho = null; S.recoverItem = null; S.alts = null; S.expenses = []; S.packing = []; S.readOnly = false;
+  S.trip = null; S.members = []; S.membersIn = false; S.setup = null; S.addStay = false; S.whatif = null; S.recover = null; S.recoverWho = null; S.recoverItem = null; S.alts = null; S.expenses = []; S.packing = []; S.readOnly = false;
   S.cardUrl = null; S.cardBlob = null; S.copyText = ''; S.split = null; S.confirm = null; S.tkFile = null; S.feed = []; S.bucket = []; S.photos = []; S.pot = []; S.mySpend = []; S.lostOpen = false; S.pinSel = null; S.hangPlan = null; S.wrapI = 0; S.img = null; S.show = null; clearInterval(showTimer);
   for (const k of Object.keys(DRAFT)) delete DRAFT[k];
 }
