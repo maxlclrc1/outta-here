@@ -116,14 +116,16 @@
       // when you join a plan, everything under it becomes readable: re-read all of it
       const joined = String(path).match(/^(trips\/[^/]+)\/members\/(.+)$/);
       const scope = joined && joined[2] === uid ? joined[1] + '/' : null;
-      for (const s of subs) if (s.matches(path) || (scope && s.under(scope))) s.refresh();
+      // joining or leaving a crew changes which plans you can see
+      const crew = /^crews\/[^/]+$/.test(path);
+      for (const s of subs) if (s.matches(path) || (scope && s.under(scope)) || (crew && s.base === 'trips')) s.refresh();
     };
     es.onerror = () => { for (const s of subs) s.refresh(); }; // catch up after a reconnect
   }
   function subscribe(matches, read, next, error, base = '') {
     let timer = null, alive = true;
     const s = {
-      matches, under: prefix => base.startsWith(prefix) || (base + '/').startsWith(prefix),
+      matches, base, under: prefix => base.startsWith(prefix) || (base + '/').startsWith(prefix),
       refresh() {
         clearTimeout(timer);
         timer = setTimeout(() => { if (alive) read().then(v => alive && next(v), e => alive && error && error(e)); }, 40);
