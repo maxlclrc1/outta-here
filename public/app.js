@@ -413,7 +413,7 @@ function popIn(els) {
   }
 }
 let lastView = '';
-const viewKey = () => S.tid && S.trip ? `t:${S.tid}:${S.tab}` : `h:${S.loading ? 'load' : ''}:${S.creating && S.creating !== 'newCrew' ? S.creating : ''}:${S.crewView || ''}:${homeMode}`;
+const viewKey = () => S.tid && S.trip ? `t:${S.tid}:${S.tab}${S.setup ? ':setup' + S.setup.step : ''}` : `h:${S.loading ? 'load' : ''}:${S.creating && S.creating !== 'newCrew' ? S.creating : ''}:${S.crewView || ''}:${homeMode}`;
 
 function render() {
   // switching menus cross-fades; going into or out of Live fades slower so the dark mode eases in
@@ -806,6 +806,68 @@ async function delTicket() {
   saveTrip({ tickets: { [S.uid]: null } });
 }
 
+/* ---------- your details first ---------- */
+// Creating or joining a plan starts with a short setup, one question per screen,
+// before the full plan with every tab opens up.
+const showWelcome = () => S.membersIn && !S.demo && !S.readOnly && (!meDoc() || (meDoc().status === 'maybe' && !meDoc().seen));
+const setupSteps = () => ['days', ...(isSmall() ? [] : ['home']), 'budget', 'vibe'];
+const BUDGETS = { hangout: [30, 60, 100], day: [50, 100, 200], weekend: [250, 450, 700], trip: [600, 1000, 1600] };
+function dayPicker() {
+  const t = S.trip, days = span(t.winStart, t.winEnd), mine = new Set(meDoc()?.days || []);
+  const pad = d => '<span></span>'.repeat((D(d).getUTCDay() + 6) % 7);
+  const cells = days.map((d, i) => `${i === 0 ? pad(d) : D(d).getUTCDate() === 1 ? `<span class="cal-month">${monthName(d)}</span>${pad(d)}` : ''}<button class="day ${mine.has(d) ? 'mine' : ''} ${d === TODAY ? 'is-today' : ''}" data-day="${d}" aria-pressed="${mine.has(d)}" aria-label="${fmt(d)}">${D(d).getUTCDate()}</button>`);
+  return `<div class="cal">${days.length ? `<span class="cal-month first">${monthName(days[0])}</span>` : ''}${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(x => `<span class="dow">${x}</span>`).join('')}${cells.join('')}</div>`;
+}
+function setupView() {
+  const steps = setupSteps(), i = Math.min(S.setup.step, steps.length - 1), k = steps[i], m = meDoc(), last = i === steps.length - 1;
+  const nDays = (m.days || []).length, mq = m.quiz || {};
+  const step = {
+    days: { h: isSmall() ? 'Which days work for you?' : 'When are you free?',
+      p: `Tap every ${isSmall() ? 'day' : 'day you could be away'} between ${short(S.trip.winStart)} and ${short(S.trip.winEnd)}. The app finds the ${isSmall() ? 'day that works' : 'dates that work'} for the most people.`,
+      c: `<div class="row" style="gap:6px"><button class="btn sm" data-act="allDays">All of them</button><button class="btn sm" data-act="weekends">Fri–Sun</button><button class="btn sm ghost" data-act="noDays">Clear</button></div>
+        ${dayPicker()}<span class="small muted">${nDays ? `${nDays} day${nDays === 1 ? '' : 's'} picked` : 'Nothing picked yet'}</span>` },
+    home: { h: size() === 'trip' ? 'Where are you flying from?' : 'Where are you coming from?',
+      p: size() === 'trip' ? 'Your home airport or city. It’s used for flight prices and to pitch places that are easy for everyone to reach.' : 'Your city or neighborhood, so pitches stay within reach for everyone.',
+      c: `<input id="me-home" class="big-input" maxlength="40" value="${esc(m.home || '')}" placeholder="${size() === 'trip' ? 'JFK or New York' : 'Brooklyn'}" autocomplete="address-level2" enterkeyhint="next">` },
+    budget: { h: 'What’s your max?',
+      p: isSmall() ? 'The most you’d spend on this, all in. Pitches stay under the lowest budget in the crew.' : 'The most you’d spend in total, travel included. Pitches stay under the lowest budget in the crew.',
+      c: `<div class="row" style="gap:6px">${BUDGETS[size()].map(v => `<button class="chip big-chip ${+m.budget === v ? 'on' : ''}" data-budget="${v}">${money(v)}</button>`).join('')}</div>
+        <label class="field"><span class="label">Or type it (USD)</span><input id="me-budget" class="big-input" type="number" min="0" step="${isSmall() ? 5 : 50}" inputmode="numeric" value="${m.budget ? esc(m.budget) : ''}" placeholder="${BUDGETS[size()][1]}" enterkeyhint="next"></label>` },
+    vibe: { h: 'Quick vibe check',
+      p: 'A few taps. It shapes what the AI pitches and the crew’s vibe.',
+      c: QUIZ.map(q => `<div class="q"><span class="small"><b>${esc(q.q)}</b></span><div class="row" style="gap:6px">${q.o.map(o => `<button class="chip ${mq[q.k] === o ? 'on' : ''}" data-quiz="${q.k}|${esc(o)}">${esc(o)}</button>`).join('')}</div></div>`).join('') },
+  }[k];
+  return `${topBar()}
+  <section class="setup">
+    <div class="setup-top"><span class="label">${esc(S.trip.name)} · Step ${i + 1} of ${steps.length}</span><button class="linkbtn small muted" data-act="setupLater">Do this later</button></div>
+    <div class="setup-prog" aria-hidden="true">${steps.map((s, j) => `<i class="${j <= i ? 'on' : ''}"></i>`).join('')}</div>
+    <h1>${step.h}</h1>
+    <p class="muted">${step.p}</p>
+    <div class="stack setup-body">${step.c}</div>
+  </section>
+  <div class="setup-nav"><div class="setup-nav-in">
+    ${i ? '<button class="btn ghost big" data-act="setupBack">Back</button>' : ''}<span style="flex:1"></span>
+    <button class="btn primary big" data-act="setupNext">${last ? 'Done' : 'Next'}</button>
+  </div></div>`;
+}
+function setupSave() {
+  const h = $('#me-home'), b = $('#me-budget');
+  if (h) saveMe({ home: h.value.trim().slice(0, 40) }, true, true);
+  if (b && b.value !== '') saveMe({ budget: Math.max(0, Math.round(+b.value || 0)) }, true, true);
+  delete DRAFT['me-home']; delete DRAFT['me-budget'];
+}
+function setupGo(dir) {
+  setupSave();
+  const n = setupSteps().length, next = S.setup.step + dir;
+  if (next >= n) { S.setup = null; S.tab = 'overview'; flash(`You’re all set. Here’s the ${planWord()}.`); }
+  else S.setup.step = Math.max(0, next);
+  render(); window.scrollTo({ top: 0 });
+}
+function startSetup() {
+  if (S.demo || S.readOnly) return;
+  S.setup = { step: 0 }; render(); window.scrollTo({ top: 0 });
+}
+
 /* ---------- invites ---------- */
 // Phones get the native share sheet (Messages, WhatsApp, Instagram…). Desktop, or a
 // browser that blocks sharing, copies the message instead.
@@ -843,9 +905,9 @@ function welcomeCard() {
   </section>`;
 }
 function joinPlan(status) {
-  saveMe({ status }, true);
-  if (status !== 'out') joinCrewQuiet(S.trip.crewId);
-  flash(status === 'in' ? 'You’re in. Next, tap the days you’re free.' : status === 'maybe' ? 'Marked as maybe. You can change it any time.' : 'Got it. The crew will see you can’t make it.');
+  saveMe({ status, seen: true }, true);
+  if (status !== 'out') { joinCrewQuiet(S.trip.crewId); startSetup(); }
+  flash(status === 'in' ? 'You’re in. A few quick questions first.' : status === 'maybe' ? 'Marked as maybe. A few quick questions so the plan fits you too.' : 'Got it. The crew will see you can’t make it.');
 }
 
 /* ---------- plan match: learning and settling disagreements ---------- */
@@ -1337,6 +1399,7 @@ const TABFN = () => ({ overview: overviewTab, crew: crewTab, settings: settingsT
   flights: flightsTab, stays: staysTab, tickets: ticketsTab, pack: packTab, live: liveTab, map: mapTab, bucket: bucketSection, hype: hypeTab,
   meter: meterTab, pot: potTab, money: moneyTab, wrapped: wrappedTab, recap: photosTab, awards: awardsTab, playlist: playlistTab });
 function tripView() {
+  if (S.setup && S.membersIn && meDoc()) return setupView();
   if (TAB_ALIAS[S.tab]) S.tab = TAB_ALIAS[S.tab];
   const fns = TABFN(); if (!fns[S.tab]) S.tab = 'overview';
   const sec = secOf(S.tab), cd = countdown(), m = mode(), gd = guide(), crumbTab = gd && !gd.wait && gd.tab !== S.tab ? gd.tab : null;
@@ -1375,13 +1438,13 @@ function overviewTab() {
   const today = live ? visItems().filter(i => i.date === TODAY).sort(byTime) : [];
   const nowT = new Date().toTimeString().slice(0, 5), upNext = today.find(i => timeKey(i.time) >= timeKey(nowT));
   const fl = S.trip.deals?.data?.flights || [];
-  return `${S.membersIn && !meDoc() && !S.demo && !S.readOnly ? welcomeCard() : ''}${honoreeMode() && !t.honoree ? `<section class="card row" style="justify-content:space-between"><span><b>Who’s the ${esc(mode().honoree)}?</b> <span class="small muted">${t.honoreeName ? esc(t.honoreeName) + ' · ' : ''}Their share is covered and surprises stay hidden from them.</span></span>
+  return `${showWelcome() ? welcomeCard() : ''}${honoreeMode() && !t.honoree ? `<section class="card row" style="justify-content:space-between"><span><b>Who’s the ${esc(mode().honoree)}?</b> <span class="small muted">${t.honoreeName ? esc(t.honoreeName) + ' · ' : ''}Their share is covered and surprises stay hidden from them.</span></span>
     <select id="set-honoree" style="width:auto"><option value="">Pick someone</option>${S.members.map(m => `<option value="${esc(m.id)}">${esc(m.nick || 'Someone')}</option>`).join('')}</select></section>` : ''}
   ${live ? `<section class="hero-card live-card"><div class="row" style="gap:8px"><i class="live-dot" aria-hidden="true"></i><span class="label" style="color:inherit">${isSmall() ? 'Happening today' : 'Trip is live · Day ' + (span(d.start, d.end).indexOf(TODAY) + 1)}</span></div>
       <h2>${upNext ? `Up next: ${esc(upNext.title)}` : 'Nothing else planned today'}</h2>${upNext ? `<span>${esc(tShow(upNext.time) || '')}</span>` : ''}
       <div class="row" style="gap:8px"><button class="btn" data-tab="live">Open today</button><button class="btn ghost-light" data-tab="map">Map</button><button class="btn lost-btn" data-act="lostOpen">I’m lost</button></div></section>`
   : over ? `<section class="hero-card" style="--hc:#7048E8"><span class="label" style="color:inherit">That’s a wrap</span><h2>${isSmall() ? 'Your recap is ready' : `Your ${esc(dest()?.city || 'trip')} Wrapped is ready`}</h2><div><button class="btn" data-tab="wrapped">Watch it</button></div></section>`
-  : !meDoc() && !S.demo ? ''
+  : showWelcome() ? ''
   : next ? (() => { const g = guide(); return `<section class="hero-card"><span class="label" style="color:inherit">Step ${st.indexOf(next) + 1} of ${st.length} · ${esc(next.label)}</span><h2>${esc(g && !g.wait ? g.label : g ? g.label : next.label)}</h2><p>${esc(next.sub)}</p>${g && !g.wait ? `<div><button class="btn" data-tab="${g.tab}" data-guide="1">Let’s go</button></div>` : ''}</section>`; })()
   : `<section class="hero-card" style="--hc:#14915F"><span class="label" style="color:inherit">All set</span><h2>Everything’s booked. Now you just wait.</h2></section>`}
   ${pass()}
@@ -1922,7 +1985,7 @@ function guide() {
   const me = meDoc(), t = S.trip, d = dates();
   if (isLive()) return null; // live mode has its own quick actions
   if (d && TODAY > d.end) return { tab: 'wrapped', sel: '.wslide', label: 'Watch your Trip Wrapped' };
-  if (!me || me.status === 'maybe') return { tab: 'overview', sel: me ? '.pass-stub [data-status="in"]' : '.welcome [data-join="in"]', label: 'Tell the crew if you’re in' };
+  if (!me || me.status === 'maybe') return { tab: 'overview', sel: showWelcome() ? '.welcome [data-join="in"]' : '.pass-stub [data-status="in"]', label: 'Tell the crew if you’re in' };
   if (me.status === 'out') return null;
   const tk = tickets(), items = t.pitches?.items || [];
   for (const s of steps().filter(x => !x.done)) {
@@ -1960,7 +2023,7 @@ function guide() {
 }
 const DONE_TEXT = { 'Pick the plan': 'Plan locked', 'Pick the day': 'Day locked. It’s on', 'Plan the night': 'Night planned', 'Plan the day': 'Day planned', 'Get the crew in': 'The crew’s in', 'Pick where': 'Destination locked', 'Lock the dates': 'Dates locked', 'Book flights': 'Everyone’s booked. Trip is ON', 'Book the stay': 'Stay locked', 'Plan the days': 'Days planned' };
 function checkMilestones() {
-  if (!S.trip || S.demo) return;
+  if (!S.trip || S.demo || S.setup) return;
   const done = steps().filter(s => s.done).map(s => s.label), key = 'outta_done_' + S.tid;
   let seen = null; try { seen = JSON.parse(localStorage.getItem(key) || 'null'); } catch {}
   try { localStorage.setItem(key, JSON.stringify(done)); } catch {}
@@ -2325,7 +2388,7 @@ async function createTrip() {
       await S.db.doc('trips/' + id).update({ crewId: crew.id, people: Object.fromEntries(ids.map(u => [u, true])) });
     }
     S.newCrew = null; S.creating = null; S.newMode = null; S.newSize = null; S.fromCrewPage = false;
-    openTrip(id, 'overview');
+    openTrip(id, 'overview'); S.setup = { step: 0 };
   } catch (e) { flash(writeErr(e)); }
 }
 
@@ -2513,7 +2576,11 @@ app.addEventListener('click', e => {
   if (ds.sec) { const sec = sections().find(x => x.k === ds.sec); S.tab = S.secTab[ds.sec] || (ds.sec === 'live' && !isLive() && !S.secTab.live ? 'live' : sec.tabs[0][0]); S.tabPicked = true; S.show = null; clearInterval(showTimer); render(); window.scrollTo({ top: 0 }); return; }
   if (ds.tab) { S.guideJump = !!ds.guide; S.tab = TAB_ALIAS[ds.tab] || ds.tab; S.secTab[secOf(S.tab).k] = S.tab; S.tabPicked = true; if (ds.tab !== 'recap') { S.show = null; clearInterval(showTimer); } render(); window.scrollTo({ top: 0 }); return; }
   if (!S.trip) return;
-  if (ds.status) return saveMe({ status: ds.status }, true);
+  if (ds.status) { const m = meDoc(), fresh = !m || (!(m.days || []).length && !m.budget); saveMe({ status: ds.status, seen: true }, true); if (ds.status === 'in' && fresh) startSetup(); return; }
+  if (ds.budget) { saveMe({ budget: +ds.budget }); delete DRAFT['me-budget']; return; }
+  if (ds.act === 'setupNext') return setupGo(1);
+  if (ds.act === 'setupBack') return setupGo(-1);
+  if (ds.act === 'setupLater') { setupSave(); S.setup = null; S.tab = 'overview'; render(); window.scrollTo({ top: 0 }); flash('No problem. Finish it any time in Home › Crew.'); return; }
   if (ds.join) return joinPlan(ds.join);
   if (ds.runoff) { const ro = runoffState(); if (!ro || ro.winner) return; return saveTrip({ roVotes: { [ro.key]: { [S.uid]: ds.runoff } } }); }
   if (ds.act === 'startRunoff') return startRunoff();
@@ -2724,7 +2791,7 @@ app.addEventListener('submit', async e => {
 function stop() { S.unsub.forEach(u => { try { u(); } catch {} }); S.unsub = []; }
 function setHash(h) { try { history.replaceState(null, '', h ? '#' + h : location.pathname + location.search); } catch {} }
 function resetTrip() {
-  S.trip = null; S.members = []; S.membersIn = false; S.expenses = []; S.packing = []; S.readOnly = false;
+  S.trip = null; S.members = []; S.membersIn = false; S.setup = null; S.expenses = []; S.packing = []; S.readOnly = false;
   S.cardUrl = null; S.cardBlob = null; S.copyText = ''; S.split = null; S.confirm = null; S.tkFile = null; S.feed = []; S.bucket = []; S.photos = []; S.pot = []; S.mySpend = []; S.lostOpen = false; S.pinSel = null; S.hangPlan = null; S.wrapI = 0; S.img = null; S.show = null; clearInterval(showTimer);
   for (const k of Object.keys(DRAFT)) delete DRAFT[k];
 }
