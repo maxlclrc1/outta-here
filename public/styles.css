@@ -851,3 +851,28 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 .dna-line{margin-top:2px}
 .dna-mem .fit-c{display:inline-block}
 .dna-trait>.row{flex-direction:column;align-items:flex-end;gap:6px;flex:none}
+/* shared change log */
+.log-list{display:flex;flex-direction:column}
+.log-row{display:flex;flex-direction:column;gap:8px;padding:12px 0;border-top:1px solid var(--line)}
+.log-list .log-row:first-child{border-top:0;padding-top:4px}
+.log-head{display:flex;gap:10px;align-items:flex-start}
+.log-head .av-sm{flex:none;margin-top:2px}
+.log-row.mine{box-shadow:inset 3px 0 0 var(--accent);padding-left:12px}
+.log-row.undone b{text-decoration:line-through;text-decoration-color:color-mix(in oklab,var(--ink) 40%,transparent)}
+.log-row.undone{opacity:.7}
+.log-fx{margin:0;padding-left:52px}
+.live-changes{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-radius:14px;background:color-mix(in oklab,var(--accent) 12%,var(--surface));border:1px solid color-mix(in oklab,var(--accent) 35%,transparent);animation:lcIn .35s cubic-bezier(.2,.8,.2,1)}
+.lc-row{display:flex;align-items:center;gap:10px}
+.lc-row .small{flex:1;min-width:0}
+.lc-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none;animation:lcPulse 1.6s ease-in-out infinite}
+@keyframes lcIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+@keyframes lcPulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.live-changes,.lc-dot{animation:none}}
+.edit-line{display:block;padding:8px 0}
+.subtab .count{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--accent);color:var(--accent-ink);font-size:11px;margin-left:4px}
+/* personal needs */
+.need-sec{gap:8px;border-top:1px solid var(--line);padding-top:12px}
+.need-share select{font-size:13px;padding:4px 8px}
+.need-group{display:flex;flex-direction:column;gap:6px}
+.need-c{font:600 13px var(--f-body);padding:5px 10px;border-radius:999px;background:color-mix(in oklab,var(--good) 13%,transparent);color:var(--ink)}
+.need-notes{margin:0;padding-left:18px}

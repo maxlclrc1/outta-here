@@ -85,7 +85,7 @@ function lockPitch(pid) {
   const ds = [...(S.trip.destinations || [])];
   let d = ds.find(x => x.city.toLowerCase() === p.city.toLowerCase());
   if (!d) { d = { id: rid(6), city: p.city, code: p.code }; ds.push(d); }
-  saveTrip({ destinations: ds, lockedDest: d.id, lockedDates: { start: p.start, end: p.end } });
+  saveTrip(withLog({ destinations: ds, lockedDest: d.id, lockedDates: { start: p.start, end: p.end } }, { area: 'dest', text: `Locked in: ${p.city}, ${dayRange(p.start, p.end)}`, act: 'all', undo: { k: 'set', patch: { lockedDest: S.trip.lockedDest || null, lockedDates: S.trip.lockedDates || null } } }));
   flash(`Locked: ${p.city}, ${short(p.start)} – ${short(p.end)}. Time to book flights.`);
 }
 function matchTab() {

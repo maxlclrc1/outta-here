@@ -69,7 +69,7 @@ async function addOwnStay(lock) {
 }
 // Updates merge into what's saved, so a new stay first clears the old one; otherwise
 // its link and price would stick to the new one.
-async function setStay(stay) { if (S.trip.stay) await saveTrip({ stay: null }); return saveTrip({ stay }); }
+async function setStay(stay) { const old = S.trip.stay; if (old) await saveTrip({ stay: null }); return saveTrip(withLog({ stay }, { area: 'stay', text: `Stay ${old ? 'switched to' : 'locked:'} ${stay.name}`, act: 'all', undo: { k: 'set', patch: { stay: old || null }, clear: ['stay'] } })); }
 function stayFromOwn(id, s) {
   const n = nightsNow();
   return { ...s, ownId: id, perNight: s.total ? `${money(s.total / n)}/night` : '', custom: true };

@@ -256,6 +256,7 @@ async function flushMe() {
 async function askAI(kind, prompt, done) {
   if (!S.sample) { flash(IN_CLAUDE ? 'AI picks need this page opened in Claude.' : 'AI is off. Add your Anthropic API key to .env.local and restart the app.'); return; }
   S.busy[kind] = true; render();
+  if (S.trip) { const nt = needsText(); if (nt) prompt += '\n\n' + nt; }
   if (S.trip) prompt += `\n\nGive every price in ${cur()} (${curSymbol(cur())}), not in any other currency, and use that symbol in price text.`;
   try { const data = await S.sample.json(prompt, { modelTier: 'default' }); await done(data); }
   catch (e) { flash(aiErr(e)); }
@@ -499,6 +500,7 @@ function render() {
   paint();
 }
 function paint() {
+  try { if (S.tid && S.trip) announceChanges(); } catch {}
   const a = document.activeElement, fid = (a && a !== document.body && a.id) || (lastDown && Date.now() - lastDown.at < 800 ? lastDown.id : ''), sel = a && 'selectionStart' in a ? [a.selectionStart, a.selectionEnd] : null;
   const scrollTabs = $('.tabs')?.scrollLeft;
   const vk = viewKey(), fresh = vk !== lastView || !app.firstChild; lastView = vk;
@@ -588,6 +590,7 @@ function crewTab() {
       ${myPrivacy()}
   </section>
   ${myLimits()}
+  ${myNeeds()}
   <section class="card">
     <div class="row" style="justify-content:space-between;margin-bottom:6px"><h2>The crew</h2><span class="small muted">Invite more with the card above</span></div>
     ${S.members.length ? S.members.filter(x => !x.removed).map(x => `<div class="crew-row">
@@ -763,9 +766,10 @@ function planTab() {
     ${S.trip.itinTpl && S.trip.itinTpl.length && !S.readOnly ? `<div class="cost-flag soft row" style="justify-content:space-between;gap:8px"><span><b>Last time’s outline</b> · ${S.trip.itinTpl.length} stop${S.trip.itinTpl.length === 1 ? '' : 's'}${S.trip.repeatOf?.name ? ` from ${esc(S.trip.repeatOf.name)}` : ''}</span><span class="row" style="gap:6px"><button class="btn sm primary" data-act="applyOutline">Put it on these dates</button><button class="btn sm ghost" data-act="dropOutline">Skip it</button></span></div>` : ''}
     ${!d.locked ? `<p class="small muted">Using the best dates so far. ${isSmall() ? 'Lock the day in When so the plan doesn’t shift.' : 'Lock dates in Dates so the plan doesn’t shift.'}</p>` : ''}
   </section>
+  ${needsCard('plan')}
   ${days.map((day, i) => { const list = items.filter(x => x.date === day).sort(byTime); return `<section class="card">
     <div class="row" style="justify-content:space-between;margin-bottom:4px"><h3>${days.length === 1 ? fmt(day) : `Day ${i + 1} · ${fmt(day)}`}</h3>${days.length === 1 ? '' : i === 0 ? `<span class="label">${size() === 'trip' ? 'Arrive' : 'Head out'}</span>` : i === days.length - 1 ? '<span class="label">Head home</span>' : ''}</div>
-    ${list.length ? list.map(x => `<div class="tline"><span class="mono small">${esc(tShow(x.time) || '—')}</span><div style="min-width:0"><span class="kind">${esc(x.kind || '')}</span> <b>${esc(x.title)}</b>${x.secret && !x.hidden ? (x.revealed ? ' <span class="secret-tag">Revealed surprise</span>' : ` <span class="secret-tag">Surprise · hidden from the ${esc(mode().honoree || 'guest')}</span> <button class="linkbtn small" data-reveal="${esc(x.id)}">Reveal</button>`) : ''}${x.note ? `<div class="small muted">${esc(x.note)}</div>` : ''}</div>${x.hidden ? '<span></span>' : `<div class="row" style="gap:4px;flex-wrap:nowrap">${voteBtns(rkey('it' + x.id))}<button class="x" data-delitem="${esc(x.id)}" aria-label="Remove">×</button></div>`}</div>`).join('') : `<p class="small muted">Nothing planned yet.</p>`}
+    ${list.length ? list.map(x => S.editItem === x.id ? editItemForm(x, days) : `<div class="tline"><span class="mono small">${esc(tShow(x.time) || '—')}</span><div style="min-width:0"><span class="kind">${esc(x.kind || '')}</span> <b>${esc(x.title)}</b>${x.secret && !x.hidden ? (x.revealed ? ' <span class="secret-tag">Revealed surprise</span>' : ` <span class="secret-tag">Surprise · hidden from the ${esc(mode().honoree || 'guest')}</span> <button class="linkbtn small" data-reveal="${esc(x.id)}">Reveal</button>`) : ''}${x.note ? `<div class="small muted">${esc(x.note)}</div>` : ''}</div>${x.hidden ? '<span></span>' : `<div class="row" style="gap:4px;flex-wrap:nowrap">${voteBtns(rkey('it' + x.id))}${S.readOnly ? '' : `<button class="x" data-edititem="${esc(x.id)}" aria-label="Move or edit ${esc(x.title)}" title="Move or edit">✎</button>`}<button class="x" data-delitem="${esc(x.id)}" aria-label="Remove">×</button></div>`}</div>`).join('') : `<p class="small muted">Nothing planned yet.</p>`}
     <form class="row addItem" data-date="${day}" style="margin-top:8px;gap:6px">
       <input id="ai-time-${day}" type="time" style="width:auto;flex:0 0 auto" aria-label="Time">
       <input id="ai-title-${day}" maxlength="120" placeholder="Add something" style="flex:1 1 160px" aria-label="What">
@@ -1172,7 +1176,7 @@ function lockPitch(pid) {
   const ds = [...(S.trip.destinations || [])];
   let d = ds.find(x => x.city.toLowerCase() === p.city.toLowerCase());
   if (!d) { d = { id: rid(6), city: p.city, code: p.code }; ds.push(d); }
-  saveTrip({ destinations: ds, lockedDest: d.id, lockedDates: { start: p.start, end: p.end } });
+  saveTrip(withLog({ destinations: ds, lockedDest: d.id, lockedDates: { start: p.start, end: p.end } }, { area: 'dest', text: `Locked in: ${p.city}, ${dayRange(p.start, p.end)}`, act: 'all', undo: { k: 'set', patch: { lockedDest: S.trip.lockedDest || null, lockedDates: S.trip.lockedDates || null } } }));
   flash(`Locked: ${p.city}, ${short(p.start)} – ${short(p.end)}. Time to book flights.`);
 }
 function matchTab() {
@@ -1508,7 +1512,7 @@ const ICONS = {
 const icon = k => `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[k]}</svg>`;
 function sections() {
   return [
-    { k: 'home', label: 'Home', tabs: [['overview', 'Overview'], ['crew', 'Crew'], ['tasks', 'To-dos'], ['settings', 'Settings']] },
+    { k: 'home', label: 'Home', tabs: [['overview', 'Overview'], ['crew', 'Crew'], ['tasks', 'To-dos'], ['log', 'Changes'], ['settings', 'Settings']] },
     { k: 'plan', label: 'Plan', tabs: [['match', isSmall() ? 'Plan Match' : 'Trip Match'], ['dates', isSmall() ? 'When' : 'Dates'], ['whatif', 'What if'], ['spots', isSmall() ? 'Spots' : (mode().nightlife || 'Nightlife')], ['plan', isSmall() ? 'The plan' : 'Itinerary']] },
     { k: 'book', label: 'Book', tabs: [['flights', 'Flights'], ['stays', 'Stays'], ['tickets', 'Boarding passes'], ['pack', 'Packing']] },
     { k: 'live', label: 'Live', tabs: [['live', 'Today'], ['map', 'Map'], ['bucket', 'Bucket list'], ['hype', 'Hype']] },
@@ -1518,7 +1522,7 @@ function sections() {
 }
 const TAB_ALIAS = { deals: 'flights', where: 'match' };
 const secOf = tab => sections().find(s => s.tabs.some(t => t[0] === tab)) || sections()[0];
-const TABFN = () => ({ overview: overviewTab, crew: crewTab, tasks: tasksTab, cost: costTab, whatif: whatifTab, settings: settingsTab, match: matchTab, dates: datesTab, where: whereTab, spots: spotsTab, plan: planTab,
+const TABFN = () => ({ log: logTab, overview: overviewTab, crew: crewTab, tasks: tasksTab, cost: costTab, whatif: whatifTab, settings: settingsTab, match: matchTab, dates: datesTab, where: whereTab, spots: spotsTab, plan: planTab,
   flights: flightsTab, stays: staysTab, tickets: ticketsTab, pack: packTab, live: liveTab, map: mapTab, bucket: bucketSection, hype: hypeTab,
   meter: meterTab, pot: potTab, money: moneyTab, wrapped: wrappedTab, recap: photosTab, awards: awardsTab });
 function tripView() {
@@ -1534,7 +1538,8 @@ function tripView() {
   ${S.readOnly ? `<div class="banner"><span>You can view this plan but not edit it. Ask the owner to share it with you as a Contributor.</span></div>` : ''}
   ${lostBanner()}
   ${head}
-  ${sec.tabs.length > 1 ? `<nav class="subtabs" aria-label="${esc(sec.label)}">${sec.tabs.map(([k, l]) => `<button class="subtab ${S.tab === k ? 'on' : ''}" data-tab="${k}" aria-current="${S.tab === k}">${esc(l)}${crumbTab === k ? '<i class="crumb" aria-hidden="true"></i>' : ''}</button>`).join('')}</nav>` : ''}
+  ${liveBanner()}
+  ${sec.tabs.length > 1 ? `<nav class="subtabs" aria-label="${esc(sec.label)}">${sec.tabs.map(([k, l]) => `<button class="subtab ${S.tab === k ? 'on' : ''}" data-tab="${k}" aria-current="${S.tab === k}">${esc(l)}${crumbTab === k ? '<i class="crumb" aria-hidden="true"></i>' : ''}${k === 'log' && !S.demo && logList().some(x => needsMe(x)) ? ` <span class="count">${logList().filter(x => needsMe(x)).length}</span>` : ''}</button>`).join('')}</nav>` : ''}
   ${fns[S.tab]()}
   ${isLive() && !S.lostOpen && !['live', 'map', 'overview'].includes(S.tab) ? '<button class="fab-lost" data-act="lostOpen" aria-label="I’m lost: send the crew my spot">SOS</button>' : ''}
   ${S.lostOpen ? lostSheet() : ''}
@@ -1852,7 +1857,11 @@ function addTask(title) {
   const id = rid(6);
   saveTrip({ tasks: { [id]: { title, owner: '', due: '', done: false, by: S.uid, at: Date.now() } } });
 }
-const patchTask = (id, patch) => { if ((S.trip.tasks || {})[id]) saveTrip({ tasks: { [id]: patch } }); };
+const patchTask = (id, patch) => {
+  const x = (S.trip.tasks || {})[id]; if (!x) return;
+  const handed = patch.owner && patch.owner !== S.uid && patch.owner !== x.owner;
+  saveTrip(handed ? withLog({ tasks: { [id]: patch } }, { area: 'tasks', text: `${nameOf(patch.owner)} is on “${x.title}”`, act: 'some', who: [patch.owner] }) : { tasks: { [id]: patch } });
+};
 
 /* ---------- all-in cost: the real price of saying yes ---------- */
 // Per person, low–high, line by line, built from the most real number available:
@@ -2279,7 +2288,11 @@ async function applyChange(ch, picks = {}, opts = {}) {
     if (on('ask')) patch.check = { id: rid(6), q: `${changeText(ch)}. What do we do?`, by: S.uid, at: Date.now(), votes: {} };
     // budgets are private, so a budget change isn't logged for the crew
     const fxs = imp.fx.filter(f => !(ch.kind === 'dates' && on('shift') && f.area === 'Itinerary'));
-    if (ch.kind !== 'budget') { const id = rid(6); patch.changes = { [id]: { text: changeText(ch), fx: fxs.filter(f => f.level !== 'info' || f.from !== '').slice(0, 6).map(f => f.from !== '' ? `${f.area}: ${f.from} → ${f.to}` : f.text), by: S.uid, at: Date.now() } }; }
+    const undo = ch.kind === 'drop' ? { k: 'status', uid: ch.who, status: S.members.find(m => m.id === ch.who)?.status || 'in' }
+      : ch.kind === 'price' ? { k: 'set', patch: ch.line === 'stay' && S.trip.stay ? { stay: { total: S.trip.stay.total || 0 } } : { costs: { [ch.line]: (S.trip.costs || {})[ch.line] || null } } }
+      : ch.kind === 'dates' ? { k: 'set', patch: { lockedDates: S.trip.lockedDates || null, ...(patch.itinerary ? { itinerary: S.trip.itinerary || [] } : {}) } }
+      : ch.kind === 'closed' ? { k: 'item', item: (S.trip.itinerary || []).find(i => i.id === ch.item) } : null;
+    if (ch.kind !== 'budget') Object.assign(patch, withLog(patch, { area: ch.kind, text: changeText(ch), fx: fxs.filter(f => f.level !== 'info' || f.from !== '').slice(0, 6).map(f => f.from !== '' ? `${f.area}: ${f.from} → ${f.to}` : f.text), act: ch.kind === 'price' && !fxs.some(f => f.level === 'bad') ? '' : 'all', ...(undo ? { undo } : {}) }));
     if (Object.keys(patch).length) await saveTrip(patch);
     S.recover = null; S.rc = null; S.alts = null; render();
     const top = fxs.find(f => f.from !== '') || fxs[0];
@@ -2291,7 +2304,7 @@ function logDrop(uid) {
   if (S.demo || !S.trip) return;
   const ch = { kind: 'drop', who: uid }, imp = changeImpact(ch), id = rid(6);
   const tasks = taskList().filter(x => !x.done && x.owner === uid);
-  return saveTrip({ changes: { [id]: { text: changeText(ch), fx: [...imp.fx.filter(f => f.from !== '').map(f => `${f.area}: ${f.from} → ${f.to}`), ...imp.fx.filter(f => f.level === 'bad').map(f => f.text), ...(tasks.length ? [`${tasks.length} to-do${tasks.length === 1 ? ' needs' : 's need'} a new owner`] : [])].slice(0, 6), by: S.uid, at: Date.now() } } });
+  return saveTrip({ changes: { [id]: { act: 'all', seen: { [S.uid]: true }, undo: { k: 'status', uid, status: S.members.find(m => m.id === uid)?.status || 'in' }, text: changeText(ch), fx: [...imp.fx.filter(f => f.from !== '').map(f => `${f.area}: ${f.from} → ${f.to}`), ...imp.fx.filter(f => f.level === 'bad').map(f => f.text), ...(tasks.length ? [`${tasks.length} to-do${tasks.length === 1 ? ' needs' : 's need'} a new owner`] : [])].slice(0, 6), by: S.uid, at: Date.now() } } });
 }
 // the last few changes and the crew check-in, on the overview
 function changesCard() {
@@ -2304,7 +2317,7 @@ function changesCard() {
     ${c ? `<div class="stack check" style="gap:8px"><span class="label" style="color:var(--accent)">Crew check-in</span><b>${esc(c.q)}</b>
       <div class="ro-opts">${opts.map(([k, l]) => `<button class="ro-opt ${mine === k ? 'on' : ''}" data-check="${k}" aria-pressed="${mine === k}" ${S.readOnly ? 'disabled' : ''}><b>${l}</b><span class="ro-count">${count(k)} vote${count(k) === 1 ? '' : 's'}${mine === k ? ' · yours' : ''}</span></button>`).join('')}</div>
       <div class="row" style="justify-content:space-between;gap:8px"><span class="small muted">${answered} of ${n} answered · ${esc(STYLES[decideOf().style][0])}</span>${isOrganizer() || c.by === S.uid ? '<button class="linkbtn small" data-act="checkClose">Close it</button>' : ''}</div></div>` : ''}
-    ${list.length ? `<div class="stack" style="gap:8px"><span class="label">What changed</span>${list.map(([id, x]) => `<div class="change-row"><div class="row" style="justify-content:space-between;gap:8px"><b>${esc(x.text)}</b><span class="small muted">${ago(x.at)}</span></div>${(x.fx || []).length ? `<ul class="small muted">${x.fx.map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : ''}</div>`).join('')}</div>` : ''}
+    ${list.length ? `<div class="stack" style="gap:8px"><div class="row" style="justify-content:space-between"><span class="label">What changed</span><button class="linkbtn small" data-tab="log">See all</button></div><div class="log-list">${logList().slice(0, 3).map(x => logRow(x, { short: true })).join('')}</div></div>` : ''}
   </section>`;
 }
 function recoverAlts() {
@@ -2322,7 +2335,7 @@ Reply with only JSON: {"options":[{"title":"place or activity","why":"one senten
 function swapItem(title) {
   title = String(title || '').trim().slice(0, 80); if (!title) return;
   const id = (S.rc || {}).item, old = (S.trip.itinerary || []).find(i => i.id === id); if (!old) return;
-  saveTrip({ itinerary: (S.trip.itinerary || []).map(i => i.id === id ? { ...i, title, note: `Instead of ${old.title}`, ai: false } : i), changes: { [rid(6)]: { text: `${old.title} is off`, fx: [`Replaced with ${title}`], by: S.uid, at: Date.now() } } });
+  saveTrip({ itinerary: (S.trip.itinerary || []).map(i => i.id === id ? { ...i, title, note: `Instead of ${old.title}`, ai: false } : i), ...withLog({}, { area: 'plan', text: `${old.title} swapped for ${title}`, act: 'all', undo: { k: 'item', item: old } }) });
   S.alts = null; S.recover = null; S.rc = null;
   flash(`Swapped in ${title}.`);
 }
@@ -2708,6 +2721,203 @@ function dnaCard(c, compact) {
   </section>`;
 }
 const dnaSave = (cid, patch) => S.db && S.db.doc('crews/' + cid).update({ dna: patch }).catch(e => flash(writeErr(e)));
+/* ---------- shared live change log ---------- */
+// Every important change is written together with a log entry in the same save: what
+// changed, who did it, when, who has to do something about it, and how to put it back.
+// People it affects see it straight away (a toast and a banner until they tap "Got it"),
+// and the author or an organizer can undo it or restore the earlier choice.
+//   entry = { text, area, by, at, act: 'all' | 'some' | '', who: [uids], fx: [lines],
+//             undo: { k: 'set', patch, clear } | { k: 'item', item } | { k: 'status', uid, status },
+//             seen: { uid: true }, undone: { by, at } }
+function withLog(patch, e) {
+  const id = rid(6);
+  return { ...patch, changes: { ...(patch.changes || {}), [id]: { by: S.uid, at: Date.now(), act: '', ...e, seen: { [S.uid]: true } } } };
+}
+const logList = (t = S.trip) => Object.entries(t.changes || {}).filter(([, x]) => x && x.text).map(([id, x]) => ({ id, ...x })).sort((a, b) => b.at - a.at);
+const affects = (x, uid = S.uid) => x.act === 'all' || (x.act === 'some' && (x.who || []).includes(uid));
+const needsMe = (x, uid = S.uid) => !x.undone && x.by !== uid && affects(x, uid) && !(x.seen || {})[uid];
+const canUndo = x => x.undo && !x.undone && !S.readOnly && (x.by === S.uid || isOrganizer());
+const logWho = x => x.by === S.uid ? 'You' : nameOf(x.by);
+function undoChange(id) {
+  const x = (S.trip.changes || {})[id]; if (!x || !canUndo(x)) return;
+  const u = x.undo, done = { changes: { [id]: { undone: { by: S.uid, at: Date.now() } } } };
+  const note = e => withLog(done, { text: `Undone: ${x.text}`, area: x.area, act: x.act, who: x.who || [], ...e });
+  if (u.k === 'set') {
+    const clear = Object.fromEntries((u.clear || []).filter(k => S.trip[k]).map(k => [k, null]));
+    const go = () => saveTrip(note({})).then(() => saveTrip(u.patch));
+    return (Object.keys(clear).length ? saveTrip(clear).then(go) : go()).then(() => flash('Put back the way it was.'));
+  }
+  if (u.k === 'item') {
+    const list = S.trip.itinerary || [], has = list.some(i => i.id === u.item.id);
+    flash(has ? 'Moved back.' : 'Put back in the plan.');
+    return saveTrip({ ...note({ text: has ? `${u.item.title} moved back to ${dow(u.item.date)} ${u.item.time ? t12(u.item.time) : ''}`.trim() : `${u.item.title} is back in the plan` }), itinerary: has ? list.map(i => i.id === u.item.id ? u.item : i) : [...list, u.item] });
+  }
+  if (u.k === 'status') {
+    const m = S.members.find(z => z.id === u.uid); if (!m) return;
+    if (u.uid === S.uid) saveMe({ status: u.status }, true); else if (!S.demo) S.db.doc(`trips/${S.tid}/members/${u.uid}`).update({ status: u.status }).catch(e => flash(writeErr(e)));
+    flash(`${m.nick || 'They'} ${u.uid === S.uid ? 'are' : 'is'} back in.`);
+    return saveTrip(note({ text: `${m.nick || 'Someone'} is back in` }));
+  }
+}
+const ackChange = id => saveTrip({ changes: { [id]: { seen: { [S.uid]: true } } } });
+function logRow(x, opts = {}) {
+  const n = active().length, seen = Object.keys(x.seen || {}).filter(u => u !== x.by && affects(x, u)).length;
+  const aff = x.act === 'all' ? Math.max(0, n - 1) : x.act === 'some' ? (x.who || []).filter(u => u !== x.by).length : 0;
+  const forWho = x.act === 'all' ? 'Everyone should check' : x.act === 'some' ? `For ${listNames(S.members.filter(m => (x.who || []).includes(m.id)))}` : '';
+  return `<div class="log-row ${x.undone ? 'undone' : ''} ${needsMe(x) ? 'mine' : ''}" data-key="log-${esc(x.id)}">
+    <div class="log-head"><span class="av-sm" style="background:${colorFor(x.by)}">${esc((nameOf(x.by) || '?')[0].toUpperCase())}</span>
+      <div class="stack" style="gap:2px;min-width:0;flex:1"><b>${esc(x.text)}</b>
+      <span class="small muted">${esc(logWho(x))} · ${ago(x.at)}${forWho ? ` · ${esc(forWho)}` : ''}${aff && !x.undone ? ` · seen by ${seen} of ${aff}` : ''}${x.undone ? ` · undone by ${esc(x.undone.by === S.uid ? 'you' : nameOf(x.undone.by))}` : ''}</span></div></div>
+    ${(x.fx || []).length && !opts.short ? `<ul class="small muted log-fx">${x.fx.map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : ''}
+    ${needsMe(x) || canUndo(x) ? `<div class="row" style="gap:6px">${needsMe(x) ? `<button class="btn sm primary" data-ack="${esc(x.id)}">Got it</button>` : ''}${canUndo(x) ? `<button class="btn sm ghost" data-undo="${esc(x.id)}">${x.by === S.uid ? 'Undo' : 'Restore the earlier choice'}</button>` : ''}</div>` : ''}
+  </div>`;
+}
+// Home › Changes: the whole log, newest first
+function logTab() {
+  const list = logList(), mine = list.filter(x => needsMe(x));
+  return `<section class="card stack log">
+    <div class="stack" style="gap:2px"><h2>What changed</h2><span class="small muted">Every important change, who made it and when. The people it affects see it right away. The person who made a change, or an organizer, can undo it.</span></div>
+    ${mine.length > 1 ? `<div><button class="btn sm" data-act="ackAll">Mark all ${mine.length} as seen</button></div>` : ''}
+    ${list.length ? `<div class="log-list">${list.slice(0, 60).map(x => logRow(x)).join('')}</div>` : '<div class="empty"><span>Nothing has changed yet. Locks, moves and swaps show up here.</span></div>'}
+  </section>`;
+}
+// top of every tab: changes by someone else that need you, until you tap Got it
+function liveBanner() {
+  if (S.demo || !S.trip) return '';
+  const list = logList().filter(x => needsMe(x)).slice(0, 2), more = logList().filter(x => needsMe(x)).length - list.length;
+  if (!list.length || S.tab === 'log') return '';
+  return `<section class="live-changes" aria-live="polite">${list.map(x => `<div class="lc-row"><span class="lc-dot" aria-hidden="true"></span><span class="small"><b>${esc(x.text)}</b> <span class="muted">· ${esc(nameOf(x.by))}</span>${(x.fx || [])[0] ? ` <span class="muted">· ${esc(x.fx[0])}</span>` : ''}</span><button class="btn sm" data-ack="${esc(x.id)}">Got it</button></div>`).join('')}
+    ${more > 0 ? `<button class="linkbtn small" data-tab="log">${more} more change${more === 1 ? '' : 's'}</button>` : ''}</section>`;
+}
+// a toast the moment someone else's change arrives
+let logKnown = null, logTid = null;
+function announceChanges() {
+  if (!S.trip || S.demo) return;
+  const ids = logList().map(x => x.id);
+  if (logTid !== S.tid || !logKnown) { logTid = S.tid; logKnown = new Set(ids); return; }
+  const fresh = logList().filter(x => !logKnown.has(x.id) && x.by !== S.uid && affects(x));
+  ids.forEach(id => logKnown.add(id));
+  if (fresh.length) flash(fresh.length === 1 ? `${nameOf(fresh[0].by)}: ${fresh[0].text}` : `${fresh.length} new changes. See Home › Changes.`);
+}
+// for the home page's Needs you
+const logNeeds = t => logList(t).filter(x => needsMe(x));
+// move or edit one stop; the crew is told and it can be moved back
+function editItemForm(x, days) {
+  return `<form id="editItemForm" class="tline edit-line" data-id="${esc(x.id)}" data-key="edit-${esc(x.id)}">
+    <div class="row" style="gap:6px;grid-column:1/-1">
+      ${days.length > 1 ? `<select id="ei-date" style="width:auto" aria-label="Day">${days.map((d, i) => `<option value="${d}" ${d === x.date ? 'selected' : ''}>Day ${i + 1} · ${short(d)}</option>`).join('')}</select>` : ''}
+      <input id="ei-time" type="time" value="${esc(x.time || '')}" style="width:auto" aria-label="Time">
+      <input id="ei-title" maxlength="80" value="${esc(x.title)}" style="flex:1 1 160px" aria-label="What">
+      <button class="btn sm primary" type="submit">Save</button><button class="btn sm ghost" type="button" data-act="editItemCancel">Cancel</button>
+    </div></form>`;
+}
+function saveItemEdit(id) {
+  const old = (S.trip.itinerary || []).find(i => i.id === id); S.editItem = null; if (!old) return render();
+  const date = $('#ei-date')?.value || old.date, time = $('#ei-time')?.value || '', title = ($('#ei-title')?.value || '').trim().slice(0, 80) || old.title;
+  if (date === old.date && time === (old.time || '') && title === old.title) return render();
+  const when = (d, t) => `${d !== old.date || d !== date ? dow(d) + ' ' : ''}${t ? t12(t) : 'no set time'}`;
+  const moved = date !== old.date || time !== (old.time || '');
+  const text = moved ? `${old.title} moved to ${when(date, time)}` : `${old.title} is now ${title}`;
+  const fx = [moved ? `Was ${dow(old.date)} ${old.time ? t12(old.time) : 'with no set time'}` : '', title !== old.title && moved ? `Now called ${title}` : ''].filter(Boolean);
+  saveTrip(withLog({ itinerary: (S.trip.itinerary || []).map(i => i.id === id ? { ...i, date, time, title } : i) }, { area: 'plan', text, fx, act: old.secret ? '' : 'all', undo: { k: 'item', item: old } }));
+  flash(`${text}. The crew sees it now.`);
+}
+/* ---------- personal needs ---------- */
+// Food, access and travel needs, so plans work for everyone. Nobody is asked why. Each
+// person picks, per section, who sees it: the crew with their name, the crew without it
+// (the default), or organizers only. The AI always plans around every need, without
+// names. Like budgets, this is kept private by the app, not by the server.
+const DIETS = [['vegetarian', 'Vegetarian'], ['vegan', 'Vegan'], ['pescatarian', 'Pescatarian'], ['glutenfree', 'Gluten-free'], ['dairyfree', 'Dairy-free'], ['nuts', 'Nut allergy'], ['shellfish', 'Shellfish allergy'], ['halal', 'Halal'], ['kosher', 'Kosher'], ['nopork', 'No pork'], ['noalcohol', 'No alcohol']];
+const ACCESS = [['stepfree', 'Step-free access'], ['shortwalks', 'Short walks only'], ['groundfloor', 'Ground-floor room'], ['seating', 'Needs a seat'], ['quiet', 'A quiet space'], ['ownroom', 'Own room'], ['animal', 'Service animal']];
+const NEED_SECTIONS = [['diet', 'Food'], ['access', 'Getting around and rooms'], ['travel', 'Travel']];
+const SHARE_LEVELS = [['anon', 'The crew, without my name'], ['named', 'The crew, with my name'], ['org', 'Only organizers']];
+const needsOf = m => m.needs || {};
+const shareOf = (m, sec) => (needsOf(m).share || {})[sec] || 'anon';
+const tagLabel = (list, k) => (list.find(x => x[0] === k) || [k, k])[1];
+const hasTravel = n => !!(n.depart || n.arrive || n.noRedeye || +n.maxTravel || n.noFly);
+const hasSec = (n, sec) => sec === 'diet' ? !!((n.diet || []).length || n.dietNote) : sec === 'access' ? !!((n.access || []).length || n.accessNote) : hasTravel(n);
+// can the person looking see this section of m's needs, and with m's name?
+function needView(m, sec) {
+  if (m.id === S.uid) return { see: true, named: true };
+  const lv = shareOf(m, sec);
+  if (lv === 'org') return { see: isOrganizer(), named: true };
+  return { see: true, named: lv === 'named' };
+}
+// the crew's needs as this viewer may see them; tags are counted, names only where allowed
+function crewNeeds() {
+  const ms = active(), out = { diet: {}, access: {}, notes: [], travel: [], orgOnly: false };
+  for (const m of ms) {
+    const n = needsOf(m);
+    for (const [sec, list] of [['diet', DIETS], ['access', ACCESS]]) {
+      if (!hasSec(n, sec)) continue;
+      const v = needView(m, sec); if (!v.see) continue;
+      if (shareOf(m, sec) === 'org' && m.id !== S.uid) out.orgOnly = true;
+      for (const k of n[sec] || []) { const e = out[sec][k] = out[sec][k] || { label: tagLabel(list, k), n: 0, names: [] }; e.n++; if (v.named) e.names.push(m.id === S.uid ? 'you' : m.nick || 'Someone'); }
+      const note = n[sec + 'Note']; if (note) out.notes.push({ sec, text: note, name: v.named ? (m.id === S.uid ? 'you' : m.nick || 'Someone') : '' });
+    }
+    if (hasTravel(n)) { const v = needView(m, 'travel'); if (v.see) out.travel.push({ n, name: v.named ? (m.id === S.uid ? 'you' : m.nick || 'Someone') : '' }); }
+  }
+  return out;
+}
+// one set of travel limits that works for everyone
+function travelLimits(list) {
+  const ns = list.map(x => x.n), out = [];
+  const dep = ns.map(n => n.depart).filter(Boolean).sort().pop(), arr = ns.map(n => n.arrive).filter(Boolean).sort()[0];
+  const max = ns.map(n => +n.maxTravel).filter(x => x > 0).sort((a, b) => a - b)[0];
+  if (dep) out.push(`Leave after ${t12(dep)}`);
+  if (arr) out.push(`Arrive by ${t12(arr)}`);
+  if (ns.some(n => n.noRedeye)) out.push('No red-eyes');
+  if (max) out.push(`At most ${max}h of travel each way`);
+  const nf = ns.filter(n => n.noFly).length; if (nf) out.push(`${nf === ns.length && ns.length > 1 ? 'Nobody' : nf === 1 ? '1 person' : nf + ' people'} ${nf === ns.length && ns.length > 1 ? 'wants to fly' : 'would rather not fly'}`);
+  return out;
+}
+function needsCard(where) {
+  if (S.demo) return '';
+  const c = crewNeeds(), d = Object.values(c.diet), a = Object.values(c.access), tr = travelLimits(c.travel);
+  if (!d.length && !a.length && !tr.length && !c.notes.length) return '';
+  const chip = e => `<span class="need-c">${esc(e.label)}${e.n > 1 ? ` ×${e.n}` : ''}${e.names.length ? ` <span class="muted">(${esc(e.names.join(', '))})</span>` : ''}</span>`;
+  const showTravel = where !== 'plan' || !isSmall();
+  return `<section class="card stack needs-sum">
+    <div class="stack" style="gap:2px"><h3>Plan around this</h3><span class="small muted">What the crew needs, shared the way each person chose. ${where === 'stays' ? 'Check rooms and access before you lock a stay.' : 'The AI already plans around it.'}</span></div>
+    ${d.length ? `<div class="need-group"><span class="label">Food</span><div class="row" style="gap:6px">${d.map(chip).join('')}</div></div>` : ''}
+    ${a.length ? `<div class="need-group"><span class="label">Getting around and rooms</span><div class="row" style="gap:6px">${a.map(chip).join('')}</div></div>` : ''}
+    ${tr.length && showTravel ? `<div class="need-group"><span class="label">Travel</span><div class="row" style="gap:6px">${tr.map(x => `<span class="need-c">${esc(x)}</span>`).join('')}</div>${c.travel.some(x => x.name) ? `<span class="small muted">Includes limits from ${esc(listNames(c.travel.filter(x => x.name).map(x => ({ nick: x.name }))))}</span>` : ''}</div>` : ''}
+    ${c.notes.length ? `<ul class="small need-notes">${c.notes.map(n => `<li>${esc(n.text)}${n.name ? ` <span class="muted">· ${esc(n.name)}</span>` : ''}</li>`).join('')}</ul>` : ''}
+    ${c.orgOnly ? '<span class="small muted">Some of this is only shown to organizers.</span>' : ''}
+  </section>`;
+}
+// for the AI: everything, never with names
+function needsText() {
+  const ms = active(), count = (sec, list) => { const m = {}; for (const x of ms) for (const k of needsOf(x)[sec] || []) m[k] = (m[k] || 0) + 1; return Object.entries(m).map(([k, n]) => `${tagLabel(list, k)}${n > 1 ? ' ×' + n : ''}`); };
+  const diet = count('diet', DIETS), acc = count('access', ACCESS), tr = travelLimits(ms.filter(m => hasTravel(needsOf(m))).map(m => ({ n: needsOf(m) })));
+  const notes = ms.flatMap(m => ['dietNote', 'accessNote'].map(k => needsOf(m)[k]).filter(Boolean));
+  if (!diet.length && !acc.length && !tr.length && !notes.length) return '';
+  return `Practical needs in the group (never name anyone or mention these in a way that singles someone out; just make every suggestion work):
+${diet.length ? `- Food: ${diet.join(', ')}. Every food stop must have good options for these.\n` : ''}${acc.length ? `- Access and rooms: ${acc.join(', ')}. Pick places and stays that work for this.\n` : ''}${tr.length ? `- Travel: ${tr.join('; ')}.\n` : ''}${notes.length ? `- Also: ${notes.join('; ')}\n` : ''}`.trim();
+}
+function myNeeds() {
+  const m = meDoc(); if (!m || S.demo) return '';
+  const n = needsOf(m), sh = sec => `<label class="row small need-share" style="gap:6px"><span class="muted">Who sees this</span><select id="nd-share-${sec}" style="width:auto">${SHARE_LEVELS.map(([k, l]) => `<option value="${k}" ${shareOf(m, sec) === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`;
+  const tags = (sec, list) => `<div class="row" style="gap:6px">${list.map(([k, l]) => `<button class="chip ${(n[sec] || []).includes(k) ? 'on' : ''}" data-need="${sec}|${k}" aria-pressed="${(n[sec] || []).includes(k)}">${l}</button>`).join('')}</div>`;
+  return `<section class="card stack my-needs">
+    <h2>Your needs</h2>
+    <p class="small muted">So the plan works for you. No need to say why. You choose who sees each part, and the AI plans around all of it without using your name.</p>
+    <div class="stack need-sec"><div class="row" style="justify-content:space-between;gap:8px"><span class="label">Food</span>${sh('diet')}</div>${tags('diet', DIETS)}
+      <input id="nd-dietNote" maxlength="80" value="${esc(n.dietNote || '')}" placeholder="Anything else? e.g. severe, carry an EpiPen"></div>
+    <div class="stack need-sec"><div class="row" style="justify-content:space-between;gap:8px"><span class="label">Getting around and rooms</span>${sh('access')}</div>${tags('access', ACCESS)}
+      <input id="nd-accessNote" maxlength="80" value="${esc(n.accessNote || '')}" placeholder="Anything else the planner should know"></div>
+    ${isSmall() ? '' : `<div class="stack need-sec"><div class="row" style="justify-content:space-between;gap:8px"><span class="label">Travel</span>${sh('travel')}</div>
+      <div class="row" style="gap:8px">
+        <label class="field" style="flex:1 1 130px"><span class="small muted">Leave no earlier than</span><input id="nd-depart" type="time" value="${esc(n.depart || '')}"></label>
+        <label class="field" style="flex:1 1 130px"><span class="small muted">Arrive no later than</span><input id="nd-arrive" type="time" value="${esc(n.arrive || '')}"></label>
+        <label class="field" style="flex:1 1 130px"><span class="small muted">Max travel each way</span><select id="nd-maxTravel"><option value="0">No limit</option>${[1, 2, 3, 4, 5, 6, 8, 10, 12].map(h => `<option value="${h}" ${+n.maxTravel === h ? 'selected' : ''}>${h} hour${h === 1 ? '' : 's'}</option>`).join('')}</select></label>
+      </div>
+      <label class="check-line"><input type="checkbox" id="nd-noRedeye" ${n.noRedeye ? 'checked' : ''}> No overnight flights</label>
+      <label class="check-line"><input type="checkbox" id="nd-noFly" ${n.noFly ? 'checked' : ''}> I’d rather not fly</label></div>`}
+  </section>`;
+}
+function setNeed(patch) { const n = { ...needsOf(meDoc() || {}), ...patch }; saveMe({ needs: n }, true); }
+function toggleNeed(sec, k) { const cur = new Set(needsOf(meDoc() || {})[sec] || []); cur.has(k) ? cur.delete(k) : cur.add(k); setNeed({ [sec]: [...cur] }); }
 /* ---------- home screen + trip creation ---------- */
 /* ---------- book: flights ---------- */
 function skyscanner(from, d, ds) { const y = s => s.slice(2).replace(/-/g, ''); return `https://www.skyscanner.com/transport/flights/${from.toLowerCase()}/${ds.code.toLowerCase()}/${y(d.start)}/${y(d.end)}/`; }
@@ -2773,6 +2983,7 @@ function staysTab() {
   return `<section class="book-hero" style="--hc1:#0E9F6E;--hc2:#1098AD"><span class="label" style="color:inherit">Stay</span><h1>${st ? esc(st.name) : 'Where we’re sleeping'}</h1>
       <div class="facts" style="color:inherit"><div><span class="label" style="color:inherit;opacity:.8">Group</span><b>${n} people</b></div><div><span class="label" style="color:inherit;opacity:.8">Nights</span><b>${nights}</b></div>${b ? `<div><span class="label" style="color:inherit;opacity:.8">Budget / night</span><b>~${money(perNightGroup)} total</b></div>` : ''}</div>
       ${S.sample !== null ? `<div><button class="btn" data-act="findStays" ${S.busy.stays ? 'disabled' : ''}>${S.busy.stays ? '<i class="spin"></i>Finding stays…' : opts.length ? 'Find more options' : 'Find stays for us'}</button></div>` : ''}</section>
+  ${needsCard('stays')}
   ${st ? `<section class="card stack locked-stay"><div class="row" style="justify-content:space-between"><span class="on-pill">Our stay</span><button class="btn sm ghost" data-act="unlockStay">Change</button></div>
       <h2>${esc(st.name)}</h2><span class="small muted">${esc([st.area, st.sleeps, st.perNight].filter(Boolean).join(' · '))}</span>
       ${+st.total ? `<b class="mono">${esc(stayPriceText(st))}</b>` : ''}
@@ -2973,7 +3184,7 @@ async function addOwnStay(lock) {
 }
 // Updates merge into what's saved, so a new stay first clears the old one; otherwise
 // its link and price would stick to the new one.
-async function setStay(stay) { if (S.trip.stay) await saveTrip({ stay: null }); return saveTrip({ stay }); }
+async function setStay(stay) { const old = S.trip.stay; if (old) await saveTrip({ stay: null }); return saveTrip(withLog({ stay }, { area: 'stay', text: `Stay ${old ? 'switched to' : 'locked:'} ${stay.name}`, act: 'all', undo: { k: 'set', patch: { stay: old || null }, clear: ['stay'] } })); }
 function stayFromOwn(id, s) {
   const n = nightsNow();
   return { ...s, ownId: id, perNight: s.total ? `${money(s.total / n)}/night` : '', custom: true };
@@ -3584,7 +3795,7 @@ function lockSmallPitch(p) {
   if (!d) { d = { id: rid(6), city: p.title, code: '' }; ds.push(d); }
   const patch = { destinations: ds, lockedDest: d.id, lockedDates: { start: p.start, end: p.start }, time: p.time || '', venue: p.where || '' };
   if (!(S.trip.itinerary || []).length && p.steps?.length) patch.itinerary = p.steps.map(s => ({ id: rid(6), date: p.start, time: s.time, title: s.title, kind: 'plan', note: '', ai: true }));
-  saveTrip(patch);
+  saveTrip(withLog(patch, { area: 'dest', text: `Locked in: ${p.title}, ${fmt(p.start)}${p.time ? ' at ' + t12(p.time) : ''}`, act: 'all', undo: { k: 'set', patch: { lockedDest: S.trip.lockedDest || null, lockedDates: S.trip.lockedDates || null, time: S.trip.time || '', venue: S.trip.venue || '' } } }));
   flash(`Locked: ${p.title}, ${fmt(p.start)}${p.time ? ' at ' + t12(p.time) : ''}.`);
 }
 
@@ -3876,7 +4087,9 @@ function inbox() {
     else if (prefs.decision && p.k === 'decide' && (t.createdBy === S.uid || (t.orgs || {})[S.uid])) out.push({ k: 'decision', t, text: p.text, w: 2 });
     if (prefs.deadline && t.rsvpBy && t.rsvpBy >= TODAY && t.rsvpBy <= add(TODAY, 2) && (p.und || []).includes(S.uid)) out.push({ k: 'deadline', t, text: `Answer by ${t.rsvpBy === TODAY ? 'today' : fmt(t.rsvpBy)}`, w: 4 });
     if (prefs.soon && d && d.start === add(TODAY, 1)) out.push({ k: 'soon', t, text: `Tomorrow${t.time ? ' at ' + t12(t.time) : ''}`, w: 1 });
-    const ch = prefs.change ? changesOf(t) : [];
+    const ln = prefs.change ? logNeeds(t) : [];
+    if (ln.length) out.push({ k: 'change', t, text: ln.length === 1 ? ln[0].text : `${ln[0].text} · ${ln.length - 1} more change${ln.length === 2 ? '' : 's'}`, w: 2 });
+    const ch = prefs.change && !ln.length ? changesOf(t) : [];
     if (ch.length) out.push({ k: 'change', t, text: ch.length === 1 ? ch[0] : `${ch[0]} · ${ch.length - 1} more change${ch.length === 2 ? '' : 's'}`, w: 0 });
   }
   return out.sort((a, b) => b.w - a.w);
@@ -4048,6 +4261,9 @@ app.addEventListener('click', e => {
     if (ds.dnaforget) { flash('Forgotten. It won’t shape new pitches.'); return dnaSave(cid, { forget: { [ds.dnaforget]: true } }); }
     if (ds.dnanote) return dnaSave(cid, { notes: { [ds.dnanote]: null } }); }
   if (ds.act === 'repeatGo') return repeatGo();
+  if (ds.ack) return ackChange(ds.ack);
+  if (ds.undo) return undoChange(ds.undo);
+  if (ds.act === 'ackAll') return saveTrip({ changes: Object.fromEntries(logList().filter(x => needsMe(x)).map(x => [x.id, { seen: { [S.uid]: true } }])) });
   if (!S.trip) return;
   if (ds.act === 'repeatOpen') { S.repeat = {}; render(); setTimeout(() => $('#repeat-box')?.scrollIntoView({ block: 'nearest', behavior: calm() ? 'auto' : 'smooth' }), 60); return; }
   if (ds.act === 'tplSave') return saveTemplate();
@@ -4103,12 +4319,13 @@ app.addEventListener('click', e => {
   if ((ds.lockdates || ds.lockdest || ds.lockpitch) && !canLock()) { flash('Only organizers can lock this one. Your vote still counts.'); return; }
   if (ds.lockdates || ds.lockdest || ds.lockpitch) { const g = lockGate(ds.lockpitch ? 'pitch' : ds.lockdest ? 'dest' : 'dates', ds.lockpitch || ds.lockdest || ds.lockdates); if (!g.ok) { flash(g.why); return; } }
   if (ds.consent) return toggleConsent(ds.consent);
-  if (ds.decide) { if (!isOrganizer()) return; return saveTrip({ decide: { style: ds.decide, ...(ds.decide === 'pick' && !decideOf().by ? { by: add(TODAY, 3) } : {}) } }); }
-  if (ds.lockdates) { const [start, end] = ds.lockdates.split('|'); return saveTrip({ lockedDates: { start, end } }); }
-  if (ds.act === 'unlockDates') return saveTrip({ lockedDates: null });
+  if (ds.need) { const [sec, k] = ds.need.split('|'); return toggleNeed(sec, k); }
+  if (ds.decide) { if (!isOrganizer() || ds.decide === decideOf().style) return; return saveTrip(withLog({ decide: { style: ds.decide, ...(ds.decide === 'pick' && !decideOf().by ? { by: add(TODAY, 3) } : {}) } }, { area: 'rules', text: `How we decide: ${STYLES[ds.decide][0]}`, act: 'all', undo: { k: 'set', patch: { decide: { style: decideOf().style } } } })); }
+  if (ds.lockdates) { const [start, end] = ds.lockdates.split('|'); return saveTrip(withLog({ lockedDates: { start, end } }, { area: 'dates', text: `${start === end ? 'Day' : 'Dates'} locked: ${dayRange(start, end)}`, act: 'all', undo: { k: 'set', patch: { lockedDates: S.trip.lockedDates || null } } })); }
+  if (ds.act === 'unlockDates') return saveTrip(withLog({ lockedDates: null }, { area: 'dates', text: 'Dates unlocked', act: 'all', undo: { k: 'set', patch: { lockedDates: S.trip.lockedDates || null } } }));
   if (ds.vote) { const set = new Set(meDoc()?.votes || []); set.has(ds.vote) ? set.delete(ds.vote) : set.add(ds.vote); return saveMe({ votes: [...set] }, true); }
-  if (ds.lockdest) return saveTrip({ lockedDest: ds.lockdest });
-  if (ds.act === 'unlockDest') return saveTrip({ lockedDest: null });
+  if (ds.lockdest) return saveTrip(withLog({ lockedDest: ds.lockdest }, { area: 'dest', text: `${isSmall() ? 'Plan' : 'Destination'} locked: ${(S.trip.destinations || []).find(x => x.id === ds.lockdest)?.city || ''}`, act: 'all', undo: { k: 'set', patch: { lockedDest: S.trip.lockedDest || null } } }));
+  if (ds.act === 'unlockDest') return saveTrip(withLog({ lockedDest: null }, { area: 'dest', text: `${dest()?.city || 'Destination'} unlocked`, act: 'all', undo: { k: 'set', patch: { lockedDest: S.trip.lockedDest || null } } }));
   if (ds.deldest) return saveTrip({ destinations: (S.trip.destinations || []).filter(x => x.id !== ds.deldest), ...(S.trip.lockedDest === ds.deldest ? { lockedDest: null } : {}) });
   if (ds.vibe) { const set = new Set(S.trip.vibes || []); set.has(ds.vibe) ? set.delete(ds.vibe) : set.add(ds.vibe); return saveTrip({ vibes: [...set] }); }
   if (ds.act === 'card') return makeCard();
@@ -4132,7 +4349,7 @@ app.addEventListener('click', e => {
   if (ds.act === 'writeRecap') return writeRecap(ds.day);
   if (ds.act === 'findStays') return findStays();
   if (ds.lockstay !== undefined) { if (!canLock()) { flash('Only organizers can lock this one. Your vote still counts.'); return; } const it = S.trip.stays?.items?.[+ds.lockstay]; if (it) { flash(`Locked ${it.name} as your stay.`); return setStay({ ...it }); } return; }
-  if (ds.act === 'unlockStay') return saveTrip({ stay: null });
+  if (ds.act === 'unlockStay') return saveTrip(withLog({ stay: null }, { area: 'stay', text: `Stay unlocked: ${S.trip.stay?.name || ''}`, act: 'all', undo: { k: 'set', patch: { stay: S.trip.stay }, clear: ['stay'] } }));
   if (ds.act === 'addStayOpen') { S.addStay = true; render(); setTimeout(() => $('#os-url')?.focus(), 60); return; }
   if (ds.act === 'addStayClose') { S.addStay = false; return render(); }
   if (ds.lockown) { if (!canLock()) { flash('Only organizers can lock this one. Your vote still counts.'); return; } const s = (S.trip.myStays || {})[ds.lockown]; if (s) { flash(`Locked ${s.name} as your stay.`); return setStay(stayFromOwn(ds.lockown, s)); } return; }
@@ -4148,7 +4365,7 @@ app.addEventListener('click', e => {
   if (ds.swipe) { const [pid, v] = ds.swipe.split('|'); return swipe(pid, +v); }
   if (ds.lockpitch) return lockPitch(ds.lockpitch);
   if (ds.checkin) { const c = { text: ds.checkin, at: Date.now() }; return saveMe({ checkin: c, checkins: [...(meDoc()?.checkins || []), c].slice(-40) }, true); }
-  if (ds.act === 'clearMeet') return saveTrip({ meet: null });
+  if (ds.act === 'clearMeet') return saveTrip(withLog({ meet: null }, { area: 'meet', text: 'Meeting point cleared', act: 'all', undo: { k: 'set', patch: { meet: S.trip.meet } } }));
   if (ds.hype) return postFeed(ds.hype);
   if (ds.delfeed) return delSub('feed', ds.delfeed);
   if (ds.bkdone) { const it = S.bucket.find(x => x.id === ds.bkdone); if (!it) return; const s2 = new Set(it.doneBy || []); const da = { ...(it.doneAt || {}) }; if (s2.has(S.uid)) { s2.delete(S.uid); delete da[S.uid]; } else { s2.add(S.uid); da[S.uid] = Date.now(); } return putSub('bucket', it.id, { doneBy: [...s2], doneAt: da }, true); }
@@ -4197,7 +4414,9 @@ app.addEventListener('click', e => {
     flash(`Added ${s.name} to ${fmt(pref)}`);
     return saveTrip({ itinerary: [...(S.trip.itinerary || []), { id: rid(6), date: pref, time: s.type === 'late-night food' ? '01:30' : '22:30', title: s.name, kind: 'nightlife', note: s.why || '' }] });
   }
-  if (ds.delitem) return saveTrip({ itinerary: (S.trip.itinerary || []).filter(i => i.id !== ds.delitem) });
+  if (ds.delitem) { const it = (S.trip.itinerary || []).find(i => i.id === ds.delitem); if (!it) return; return saveTrip(withLog({ itinerary: (S.trip.itinerary || []).filter(i => i.id !== ds.delitem) }, { area: 'plan', text: `${it.title} removed from the plan`, act: it.secret ? '' : 'all', undo: { k: 'item', item: it } })); }
+  if (ds.edititem) { S.editItem = ds.edititem; render(); setTimeout(() => $('#ei-time')?.focus(), 50); return; }
+  if (ds.act === 'editItemCancel') { S.editItem = null; return render(); }
 });
 app.addEventListener('change', e => {
   const id = e.target.id;
@@ -4210,6 +4429,9 @@ app.addEventListener('change', e => {
   if (id === 'mute-plan') { lsSet('outta_mute_' + S.tid, e.target.checked); flash(e.target.checked ? 'Muted. It won’t show up in Needs you.' : 'Reminders are back on for this plan.'); }
   if (id === 'perm-invite' || id === 'perm-lock') saveTrip({ perm: { [id.slice(5)]: e.target.value } });
   if (id === 'me-budgetPublic') saveMe({ budgetPublic: e.target.checked }, true, true);
+  if (id.startsWith('nd-share-')) setNeed({ share: { ...(needsOf(meDoc() || {}).share || {}), [id.slice(9)]: e.target.value } });
+  if (['nd-dietNote', 'nd-accessNote', 'nd-depart', 'nd-arrive', 'nd-maxTravel'].includes(id)) { setNeed({ [id.slice(3)]: id === 'nd-maxTravel' ? +e.target.value : e.target.value.trim().slice(0, 80) }); delete DRAFT[id]; }
+  if (id === 'nd-noRedeye' || id === 'nd-noFly') setNeed({ [id.slice(3)]: e.target.checked });
   if (id === 'dec-pct') saveTrip({ decide: { pct: +e.target.value } });
   if (id === 'dec-by') saveTrip({ decide: { by: e.target.value || '' } });
   if (id === 'me-hardBudget') saveMe({ hard: { ...(meDoc()?.hard || {}), budget: e.target.checked } }, true);
@@ -4217,7 +4439,7 @@ app.addEventListener('change', e => {
   if (id === 'me-condUnder' || id === 'me-condNote') { const u = Math.max(0, Math.round(+$('#me-condUnder').value || 0)), note = $('#me-condNote').value.trim().slice(0, 80); saveMe({ cond: u || note ? { under: u, note } : null }, true); }
   if (id === 'me-hideLoc') saveMe({ hideLoc: e.target.checked }, true, true);
   if (id === 'my-flight-price') { const v = Math.round(+e.target.value || 0); if (v > 0) { saveTrip({ tickets: { [S.uid]: { price: v } } }); flash('Got it. Your flight is in the cost now.'); } }
-  if (id === 'set-cur' && CUR_CODES.includes(e.target.value)) { saveTrip({ currency: e.target.value }); flash(`Now in ${e.target.value}. Amounts already typed in weren’t converted.`); }
+  if (id === 'set-cur' && CUR_CODES.includes(e.target.value)) { saveTrip(withLog({ currency: e.target.value }, { area: 'money', text: `Currency changed to ${e.target.value}`, undo: { k: 'set', patch: { currency: cur() } } })); flash(`Now in ${e.target.value}. Amounts already typed in weren’t converted.`); }
   if (id === 'my-cur' && CUR_CODES.includes(e.target.value)) { try { localStorage.setItem('outta_mycur', e.target.value); } catch {} render(); }
   if (id === 'cost-buffer') saveTrip({ costBuffer: +e.target.value });
   if (id.startsWith('task-owner-')) patchTask(id.slice(11), { owner: e.target.value });
@@ -4294,7 +4516,8 @@ app.addEventListener('submit', async e => {
     if (!arrive) { flash('Add when you land.'); return; }
     return saveMe({ arrive, arrAirport: isCode(apt) ? apt.toUpperCase() : apt.slice(0, 3).toUpperCase(), flight: $('#arr-flight').value.trim().slice(0, 20) }, true);
   }
-  if (f.id === 'meetForm') { const text = $('#meet-where').value.trim(); if (!text) return; return saveTrip({ meet: { text: text.slice(0, 80), time: $('#meet-time').value, by: S.uid, at: Date.now() } }); }
+  if (f.id === 'editItemForm') return saveItemEdit(f.dataset.id);
+  if (f.id === 'meetForm') { const text = $('#meet-where').value.trim(), time = $('#meet-time').value; if (!text) return; const old = S.trip.meet; return saveTrip(withLog({ ...(old ? { meet: null } : {}) }, { area: 'meet', text: `Meet ${old ? 'moved to' : 'at'} ${text.slice(0, 80)}${time ? ', ' + t12(time) : ''}`, act: 'all', undo: { k: 'set', patch: { meet: old || null }, clear: ['meet'] } })).then(() => saveTrip({ meet: { text: text.slice(0, 80), time, by: S.uid, at: Date.now() } })); }
   if (f.id === 'ciForm') { const text = $('#ci-text').value.trim(); if (!text) return; const c = { text: text.slice(0, 60), at: Date.now() }; return saveMe({ checkin: c, checkins: [...(meDoc()?.checkins || []), c].slice(-40) }, true); }
   if (f.id === 'feedForm') return postFeed($('#fd-text').value, $('#fd-secret')?.checked);
   if (f.id === 'bkForm') { const text = $('#bk-text').value.trim(); if (!text) return; return putSub('bucket', rid(8), { text: text.slice(0, 80), points: +$('#bk-pts').value || 1, doneBy: [], by: S.uid, at: Date.now() }); }
@@ -4331,7 +4554,7 @@ app.addEventListener('submit', async e => {
 function stop() { S.unsub.forEach(u => { try { u(); } catch {} }); S.unsub = []; }
 function setHash(h) { try { history.replaceState(null, '', h ? '#' + h : location.pathname + location.search); } catch {} }
 function resetTrip() {
-  S.trip = null; S.members = []; S.membersIn = false; S.setup = null; S.addStay = false; S.whatif = null; S.repeat = null; S.recover = null; S.rc = null; S.alts = null; S.expenses = []; S.packing = []; S.readOnly = false;
+  S.trip = null; S.members = []; S.membersIn = false; S.setup = null; S.addStay = false; S.whatif = null; S.repeat = null; S.recover = null; S.rc = null; S.editItem = null; S.alts = null; S.expenses = []; S.packing = []; S.readOnly = false;
   S.cardUrl = null; S.cardBlob = null; S.copyText = ''; S.split = null; S.confirm = null; S.tkFile = null; S.feed = []; S.bucket = []; S.photos = []; S.pot = []; S.mySpend = []; S.lostOpen = false; S.pinSel = null; S.hangPlan = null; S.wrapI = 0; S.img = null; S.show = null; clearInterval(showTimer);
   for (const k of Object.keys(DRAFT)) delete DRAFT[k];
 }

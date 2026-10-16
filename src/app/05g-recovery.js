@@ -170,7 +170,11 @@ async function applyChange(ch, picks = {}, opts = {}) {
     if (on('ask')) patch.check = { id: rid(6), q: `${changeText(ch)}. What do we do?`, by: S.uid, at: Date.now(), votes: {} };
     // budgets are private, so a budget change isn't logged for the crew
     const fxs = imp.fx.filter(f => !(ch.kind === 'dates' && on('shift') && f.area === 'Itinerary'));
-    if (ch.kind !== 'budget') { const id = rid(6); patch.changes = { [id]: { text: changeText(ch), fx: fxs.filter(f => f.level !== 'info' || f.from !== '').slice(0, 6).map(f => f.from !== '' ? `${f.area}: ${f.from} → ${f.to}` : f.text), by: S.uid, at: Date.now() } }; }
+    const undo = ch.kind === 'drop' ? { k: 'status', uid: ch.who, status: S.members.find(m => m.id === ch.who)?.status || 'in' }
+      : ch.kind === 'price' ? { k: 'set', patch: ch.line === 'stay' && S.trip.stay ? { stay: { total: S.trip.stay.total || 0 } } : { costs: { [ch.line]: (S.trip.costs || {})[ch.line] || null } } }
+      : ch.kind === 'dates' ? { k: 'set', patch: { lockedDates: S.trip.lockedDates || null, ...(patch.itinerary ? { itinerary: S.trip.itinerary || [] } : {}) } }
+      : ch.kind === 'closed' ? { k: 'item', item: (S.trip.itinerary || []).find(i => i.id === ch.item) } : null;
+    if (ch.kind !== 'budget') Object.assign(patch, withLog(patch, { area: ch.kind, text: changeText(ch), fx: fxs.filter(f => f.level !== 'info' || f.from !== '').slice(0, 6).map(f => f.from !== '' ? `${f.area}: ${f.from} → ${f.to}` : f.text), act: ch.kind === 'price' && !fxs.some(f => f.level === 'bad') ? '' : 'all', ...(undo ? { undo } : {}) }));
     if (Object.keys(patch).length) await saveTrip(patch);
     S.recover = null; S.rc = null; S.alts = null; render();
     const top = fxs.find(f => f.from !== '') || fxs[0];
@@ -182,7 +186,7 @@ function logDrop(uid) {
   if (S.demo || !S.trip) return;
   const ch = { kind: 'drop', who: uid }, imp = changeImpact(ch), id = rid(6);
   const tasks = taskList().filter(x => !x.done && x.owner === uid);
-  return saveTrip({ changes: { [id]: { text: changeText(ch), fx: [...imp.fx.filter(f => f.from !== '').map(f => `${f.area}: ${f.from} → ${f.to}`), ...imp.fx.filter(f => f.level === 'bad').map(f => f.text), ...(tasks.length ? [`${tasks.length} to-do${tasks.length === 1 ? ' needs' : 's need'} a new owner`] : [])].slice(0, 6), by: S.uid, at: Date.now() } } });
+  return saveTrip({ changes: { [id]: { act: 'all', seen: { [S.uid]: true }, undo: { k: 'status', uid, status: S.members.find(m => m.id === uid)?.status || 'in' }, text: changeText(ch), fx: [...imp.fx.filter(f => f.from !== '').map(f => `${f.area}: ${f.from} → ${f.to}`), ...imp.fx.filter(f => f.level === 'bad').map(f => f.text), ...(tasks.length ? [`${tasks.length} to-do${tasks.length === 1 ? ' needs' : 's need'} a new owner`] : [])].slice(0, 6), by: S.uid, at: Date.now() } } });
 }
 // the last few changes and the crew check-in, on the overview
 function changesCard() {
@@ -195,7 +199,7 @@ function changesCard() {
     ${c ? `<div class="stack check" style="gap:8px"><span class="label" style="color:var(--accent)">Crew check-in</span><b>${esc(c.q)}</b>
       <div class="ro-opts">${opts.map(([k, l]) => `<button class="ro-opt ${mine === k ? 'on' : ''}" data-check="${k}" aria-pressed="${mine === k}" ${S.readOnly ? 'disabled' : ''}><b>${l}</b><span class="ro-count">${count(k)} vote${count(k) === 1 ? '' : 's'}${mine === k ? ' · yours' : ''}</span></button>`).join('')}</div>
       <div class="row" style="justify-content:space-between;gap:8px"><span class="small muted">${answered} of ${n} answered · ${esc(STYLES[decideOf().style][0])}</span>${isOrganizer() || c.by === S.uid ? '<button class="linkbtn small" data-act="checkClose">Close it</button>' : ''}</div></div>` : ''}
-    ${list.length ? `<div class="stack" style="gap:8px"><span class="label">What changed</span>${list.map(([id, x]) => `<div class="change-row"><div class="row" style="justify-content:space-between;gap:8px"><b>${esc(x.text)}</b><span class="small muted">${ago(x.at)}</span></div>${(x.fx || []).length ? `<ul class="small muted">${x.fx.map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : ''}</div>`).join('')}</div>` : ''}
+    ${list.length ? `<div class="stack" style="gap:8px"><div class="row" style="justify-content:space-between"><span class="label">What changed</span><button class="linkbtn small" data-tab="log">See all</button></div><div class="log-list">${logList().slice(0, 3).map(x => logRow(x, { short: true })).join('')}</div></div>` : ''}
   </section>`;
 }
 function recoverAlts() {
@@ -213,7 +217,7 @@ Reply with only JSON: {"options":[{"title":"place or activity","why":"one senten
 function swapItem(title) {
   title = String(title || '').trim().slice(0, 80); if (!title) return;
   const id = (S.rc || {}).item, old = (S.trip.itinerary || []).find(i => i.id === id); if (!old) return;
-  saveTrip({ itinerary: (S.trip.itinerary || []).map(i => i.id === id ? { ...i, title, note: `Instead of ${old.title}`, ai: false } : i), changes: { [rid(6)]: { text: `${old.title} is off`, fx: [`Replaced with ${title}`], by: S.uid, at: Date.now() } } });
+  saveTrip({ itinerary: (S.trip.itinerary || []).map(i => i.id === id ? { ...i, title, note: `Instead of ${old.title}`, ai: false } : i), ...withLog({}, { area: 'plan', text: `${old.title} swapped for ${title}`, act: 'all', undo: { k: 'item', item: old } }) });
   S.alts = null; S.recover = null; S.rc = null;
   flash(`Swapped in ${title}.`);
 }

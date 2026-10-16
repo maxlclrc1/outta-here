@@ -256,6 +256,7 @@ async function flushMe() {
 async function askAI(kind, prompt, done) {
   if (!S.sample) { flash(IN_CLAUDE ? 'AI picks need this page opened in Claude.' : 'AI is off. Add your Anthropic API key to .env.local and restart the app.'); return; }
   S.busy[kind] = true; render();
+  if (S.trip) { const nt = needsText(); if (nt) prompt += '\n\n' + nt; }
   if (S.trip) prompt += `\n\nGive every price in ${cur()} (${curSymbol(cur())}), not in any other currency, and use that symbol in price text.`;
   try { const data = await S.sample.json(prompt, { modelTier: 'default' }); await done(data); }
   catch (e) { flash(aiErr(e)); }

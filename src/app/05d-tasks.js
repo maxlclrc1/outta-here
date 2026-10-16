@@ -44,5 +44,9 @@ function addTask(title) {
   const id = rid(6);
   saveTrip({ tasks: { [id]: { title, owner: '', due: '', done: false, by: S.uid, at: Date.now() } } });
 }
-const patchTask = (id, patch) => { if ((S.trip.tasks || {})[id]) saveTrip({ tasks: { [id]: patch } }); };
+const patchTask = (id, patch) => {
+  const x = (S.trip.tasks || {})[id]; if (!x) return;
+  const handed = patch.owner && patch.owner !== S.uid && patch.owner !== x.owner;
+  saveTrip(handed ? withLog({ tasks: { [id]: patch } }, { area: 'tasks', text: `${nameOf(patch.owner)} is on “${x.title}”`, act: 'some', who: [patch.owner] }) : { tasks: { [id]: patch } });
+};
 
