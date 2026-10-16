@@ -8,11 +8,12 @@ const okForAll = p => { const vs = active(); return vs.length >= 2 && vs.every(m
 const fitScore = p => yesOf(p) * 2 + workableOf(p);
 function groupFit(p) {
   const vs = active(), out = [], r = moneyRange(p.perPerson);
-  const withB = vs.filter(m => +m.budget > 0);
-  if (r && withB.length) {
-    const over = withB.filter(m => +m.budget < r[0]), stretch = withB.filter(m => +m.budget >= r[0] && +m.budget < r[1]);
-    out.push(over.length ? { ok: false, text: `Over budget for ${budgetWho(over)}` } : stretch.length ? { ok: 'meh', text: `A stretch for ${budgetWho(stretch)}` } : { ok: true, text: withB.length === vs.length ? `Fits ${vs.length}/${vs.length} budgets` : `Fits every budget set (${withB.length} of ${vs.length})` });
-  } else out.push({ ok: 'meh', text: withB.length ? 'No price to check yet' : 'Nobody set a budget yet' });
+  const nB = vs.filter(m => +m.budget > 0 || m.budgetSet).length, f = r && nB ? budgetFit({ low: r[0], high: r[1] }) : null;
+  if (f && f.pending) out.push({ ok: 'meh', text: 'Checking budgets…' });
+  else if (f && f.n) {
+    const { over, stretch } = f;
+    out.push(over.length ? { ok: false, text: `Over budget for ${budgetWho(over)}` } : stretch.length ? { ok: 'meh', text: `A stretch for ${budgetWho(stretch)}` } : { ok: true, text: f.n === vs.length ? `Fits ${vs.length}/${vs.length} budgets` : `Fits every budget set (${f.n} of ${vs.length})` });
+  } else out.push({ ok: 'meh', text: nB ? 'No price to check yet' : 'Nobody set a budget yet' });
   const days = span(p.start, p.end), can = vs.filter(m => fitOf(m, days)), cant = vs.filter(m => !fitOf(m, days)), picked = vs.filter(m => (m.days || []).length);
   if (picked.length) out.push(cant.filter(m => (m.days || []).length).length ? { ok: false, text: `${listNames(cant.filter(m => (m.days || []).length))} can’t make ${p.start === p.end ? 'that day' : 'those dates'}` } : { ok: true, text: `Free: ${can.length}/${vs.length}` });
   const rs = rated(p);

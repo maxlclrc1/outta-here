@@ -138,7 +138,8 @@ function dates() {
   if (S.trip.lockedDates) return { ...S.trip.lockedDates, locked: true };
   const w = bestWindows()[0]; return w ? { start: w.start, end: w.end, locked: false } : null;
 }
-function budgetCap() { const b = active().map(m => +m.budget || 0).filter(x => x > 0); return b.length ? { cap: Math.min(...b), n: b.length } : null; }
+// the lowest budget set in the crew: the one number about budgets everyone sees
+function budgetCap() { return budgetCapShared(); }
 const nightsOf = d => d ? Math.round((D(d.end) - D(d.start)) / 864e5) : 0;
 const homes = () => [...new Set(active().map(m => (m.home || '').trim()).filter(Boolean))];
 const nameOf = id => id === 'ai' ? 'Outta Here AI' : (S.members.find(m => m.id === id) || {}).nick || 'Someone';
@@ -163,7 +164,7 @@ function nudges() {
     const todo = [];
     if (m.status === 'maybe') todo.push('say if you’re in');
     if (!(m.days || []).length && !S.trip.lockedDates) todo.push(isSmall() ? 'say which days work' : 'pick your dates');
-    if (!m.budget) todo.push('set your budget');
+    if (!m.budget && !m.budgetSet) todo.push('set your budget');
     if (hasDest && !(m.votes || []).length && !S.trip.lockedDest) todo.push(isSmall() ? 'vote on the plan' : 'vote on where');
     if (size() === 'trip' && booking_time() && going(m) && !tk[m.id]) todo.push('book your flight and upload your boarding pass');
     if (!m.quiz || Object.keys(m.quiz).length < QUIZ.length) todo.push('take the vibe quiz');
@@ -674,7 +675,7 @@ function crewTab() {
     ${S.members.length ? S.members.filter(x => !x.removed).map(x => `<div class="crew-row">
       <div class="av" style="background:${colorFor(x.id)}">${esc((x.nick || '?')[0].toUpperCase())}</div>
       <div style="min-width:0"><b>${esc(x.nick || 'Someone')}${x.id === S.uid ? ' <span class="muted small">(you)</span>' : ''}</b>
-        <div class="small muted">${x.home && !isSmall() ? (size() === 'trip' ? '✈ ' : 'from ') + esc(x.home) + ' · ' : ''}${(x.days || []).length} ${(x.days || []).length === 1 ? 'day' : 'days'} free · ${(x.votes || []).length ? 'voted' : 'no vote yet'}${x.budget ? ' · budget set' : ''}</div></div>
+        <div class="small muted">${x.home && !isSmall() ? (size() === 'trip' ? '✈ ' : 'from ') + esc(x.home) + ' · ' : ''}${(x.days || []).length} ${(x.days || []).length === 1 ? 'day' : 'days'} free · ${(x.votes || []).length ? 'voted' : 'no vote yet'}${x.budget || x.budgetSet ? ' · budget set' : ''}</div></div>
       <div class="cr-side"><span class="pill lvl-${x.status || 'maybe'}">${LEVEL_LABEL[x.status || 'maybe']}</span>${x.id === S.trip.createdBy || (S.trip.orgs || {})[x.id] ? '<span class="small muted">Organizer</span>' : ''}
         ${isOrganizer() && !S.demo && x.id !== S.uid && x.id !== S.trip.createdBy ? (S.confirmRm === x.id ? `<span class="row" style="gap:4px"><button class="btn sm danger-fill" data-rmdo="${esc(x.id)}">Remove</button><button class="btn sm ghost" data-act="rmCancel">Cancel</button></span>` : `<span class="row" style="gap:8px"><button class="linkbtn small" data-mkorg="${esc(x.id)}">${(S.trip.orgs || {})[x.id] ? 'Not organizer' : 'Make organizer'}</button><button class="linkbtn small" data-rmmember="${esc(x.id)}">Remove</button></span>`) : ''}</div>
     </div>`).join('') : `<p class="muted">Nobody yet. Add your details above.</p>`}
@@ -1186,11 +1187,12 @@ const okForAll = p => { const vs = active(); return vs.length >= 2 && vs.every(m
 const fitScore = p => yesOf(p) * 2 + workableOf(p);
 function groupFit(p) {
   const vs = active(), out = [], r = moneyRange(p.perPerson);
-  const withB = vs.filter(m => +m.budget > 0);
-  if (r && withB.length) {
-    const over = withB.filter(m => +m.budget < r[0]), stretch = withB.filter(m => +m.budget >= r[0] && +m.budget < r[1]);
-    out.push(over.length ? { ok: false, text: `Over budget for ${budgetWho(over)}` } : stretch.length ? { ok: 'meh', text: `A stretch for ${budgetWho(stretch)}` } : { ok: true, text: withB.length === vs.length ? `Fits ${vs.length}/${vs.length} budgets` : `Fits every budget set (${withB.length} of ${vs.length})` });
-  } else out.push({ ok: 'meh', text: withB.length ? 'No price to check yet' : 'Nobody set a budget yet' });
+  const nB = vs.filter(m => +m.budget > 0 || m.budgetSet).length, f = r && nB ? budgetFit({ low: r[0], high: r[1] }) : null;
+  if (f && f.pending) out.push({ ok: 'meh', text: 'Checking budgets…' });
+  else if (f && f.n) {
+    const { over, stretch } = f;
+    out.push(over.length ? { ok: false, text: `Over budget for ${budgetWho(over)}` } : stretch.length ? { ok: 'meh', text: `A stretch for ${budgetWho(stretch)}` } : { ok: true, text: f.n === vs.length ? `Fits ${vs.length}/${vs.length} budgets` : `Fits every budget set (${f.n} of ${vs.length})` });
+  } else out.push({ ok: 'meh', text: nB ? 'No price to check yet' : 'Nobody set a budget yet' });
   const days = span(p.start, p.end), can = vs.filter(m => fitOf(m, days)), cant = vs.filter(m => !fitOf(m, days)), picked = vs.filter(m => (m.days || []).length);
   if (picked.length) out.push(cant.filter(m => (m.days || []).length).length ? { ok: false, text: `${listNames(cant.filter(m => (m.days || []).length))} can’t make ${p.start === p.end ? 'that day' : 'those dates'}` } : { ok: true, text: `Free: ${can.length}/${vs.length}` });
   const rs = rated(p);
@@ -1946,11 +1948,53 @@ function costSummary(t = S.trip, who = 'crew') {
   const missing = rows.filter(r => r.major && !r.v && !r.booked), estimates = rows.filter(r => r.v && ['estimate', 'ai'].includes(r.v.src));
   return { rows, buffer, other, low: withBuf(low), high: withBuf(high), missing, estimates, any: rows.some(r => r.v) || other > 0 };
 }
-// Who can afford it: budget ≥ high fits, between low and high is a stretch, below low doesn't.
-function budgetFit(sum) {
-  const ms = active().filter(m => +m.budget > 0);
-  const fits = ms.filter(m => +m.budget >= sum.high), stretch = ms.filter(m => +m.budget < sum.high && +m.budget >= sum.low), over = ms.filter(m => +m.budget < sum.low);
-  return { fits, stretch, over, n: ms.length, unknown: active().length - ms.length };
+/* ---------- budget fit ----------
+   Other people's budgets never reach this browser. "Does lo–hi fit the crew?" goes to
+   /api/budget, which answers with counts and only names people who chose to be named (or
+   you). Answers are kept until the crew's details change. The demo and the Claude version
+   have no server of their own, so there it's worked out here from the data the page has.
+   Budget ≥ high fits, between low and high is a stretch, below low is over. */
+const BQ = { tid: null, cache: new Map(), queue: new Map(), cap: undefined, t: 0 };
+const NO_FIT = { n: 0, unknown: 0, fits: [], stretch: [], over: [], hard: [], hardOpen: [], pending: true };
+const budgetsHere = () => S.demo || IN_CLAUDE;
+function budgetReset() { BQ.cache.clear(); BQ.cap = undefined; }
+function bq(check) {
+  if (BQ.tid !== S.tid) { BQ.tid = S.tid; budgetReset(); BQ.queue.clear(); }
+  if (budgetsHere()) return budgetLocal(check);
+  const k = JSON.stringify(check);
+  if (BQ.cache.has(k)) return BQ.cache.get(k);
+  if (!BQ.queue.has(k)) { BQ.queue.set(k, check); clearTimeout(BQ.t); BQ.t = setTimeout(budgetFetch, 0); }
+  return null;
+}
+async function budgetFetch() {
+  const tid = S.tid, items = [...BQ.queue]; BQ.queue.clear();
+  if (!tid || !items.length) return;
+  let data = null;
+  try {
+    const r = await fetch('/api/budget', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-outta-user': S.uid }, body: JSON.stringify({ tid, checks: items.map(([, c]) => c) }) });
+    if (r.ok) data = await r.json();
+  } catch {}
+  if (S.tid !== tid) return;
+  // a failed check counts as "no budgets to compare" rather than retrying in a loop
+  items.forEach(([k], i) => BQ.cache.set(k, data ? budgetShape(data.results[i]) : { ...NO_FIT, pending: false }));
+  if (data) BQ.cap = data.cap; else if (BQ.cap === undefined) BQ.cap = null;
+  render();
+}
+// counts from the server → lists the UI can use: named people, then anonymous stand-ins
+function budgetShape(r) {
+  const list = g => [...g.ids.map(id => S.members.find(m => m.id === id) || { id, nick: 'Someone' }), ...Array.from({ length: Math.max(0, g.count - g.ids.length) }, (_, i) => ({ id: 'anon-' + i, nick: 'Someone' }))];
+  return { n: r.n, unknown: r.total - r.n, fits: list(r.fits), stretch: list(r.stretch), over: list(r.over), hard: list(r.hard), hardOpen: list(r.hardOpen) };
+}
+function budgetLocal({ lo = 0, hi = 0, key = '' }) {
+  const ms = active().filter(m => +m.budget > 0), h = Math.max(lo, hi || lo), consent = ((S.trip.consent || {})[key]) || {};
+  const hard = lo ? ms.filter(m => m.hard?.budget && lo > +m.budget) : [];
+  return { n: ms.length, unknown: active().length - ms.length, fits: ms.filter(m => +m.budget >= h), stretch: ms.filter(m => +m.budget < h && +m.budget >= lo), over: ms.filter(m => +m.budget < lo), hard, hardOpen: hard.filter(m => !consent[m.id]) };
+}
+// extra: { exclude: [ids], myBudget } for "what if" questions (someone drops out, my budget changes)
+function budgetFit(sum, extra) { return bq({ lo: Math.round(sum.low || 0), hi: Math.round(sum.high || 0), ...(extra || {}) }) || NO_FIT; }
+function budgetCapShared() {
+  if (budgetsHere()) { const b = active().map(m => +m.budget || 0).filter(x => x > 0); return b.length ? { cap: Math.min(...b), n: b.length } : null; }
+  bq({}); return BQ.cap || null;
 }
 const rangeText = (lo, hi) => `${money(lo)}${hi !== lo ? '–' + money(hi) : ''}`;
 function costTab() {
@@ -2125,15 +2169,15 @@ const $all = s => [...document.querySelectorAll(s)];
 const CHANGES = [['drop', 'Someone dropped out'], ['price', 'A price changed'], ['budget', 'My budget changed'], ['dates', 'Dates moved'], ['closed', 'A place closed']];
 // run fn as if the plan looked like trip/members, then put everything back
 function withPlan(trip, members, fn) { const t0 = S.trip, m0 = S.members; S.trip = trip; S.members = members; try { return fn(); } finally { S.trip = t0; S.members = m0; } }
-function planState() {
-  const sum = costSummary(), fit = budgetFit(sum), heads = planHeads(), st = S.trip.stay, stayRow = sum.rows.find(r => r.k === 'stay');
+function planState(extra) {
+  const sum = costSummary(), fit = budgetFit(sum, extra), heads = planHeads(), st = S.trip.stay, stayRow = sum.rows.find(r => r.k === 'stay');
   const L = S.trip.lockedDates, ldays = L ? span(L.start, L.end) : null;
   return {
     heads, low: sum.low, high: sum.high, any: sum.any,
     stayEach: st && +st.total ? Math.round(st.total / heads) : stayRow?.v ? Math.round(stayRow.v.high) : 0,
     over: fit.over.map(m => m.id), stretch: fit.stretch.map(m => m.id),
     condOff: active().filter(m => +m.cond?.under > 0 && sum.any && sum.low > +m.cond.under).map(m => m.id),
-    hardBudget: active().filter(m => m.hard?.budget && +m.budget > 0 && sum.any && sum.low > +m.budget).map(m => m.id),
+    hardBudget: sum.any ? budgetFit(sum, extra).hard.map(m => m.id) : [],
     hardDays: ldays ? active().filter(m => m.hard?.days && (m.days || []).length && !fitOf(m, ldays)).map(m => m.id) : [],
   };
 }
@@ -2154,7 +2198,7 @@ const nm = id => S.members.find(m => m.id === id)?.nick || 'Someone';
 const lineLabel = k => (COST_LINES[size()].find(l => l[0] === k) || [k, k])[1];
 // what a change does, as before → after rows plus the things it leaves hanging
 function changeImpact(ch) {
-  const before = planState(), sim = simulate(ch), after = withPlan(sim.trip, sim.members, planState);
+  const before = planState(), sim = simulate(ch), after = withPlan(sim.trip, sim.members, () => planState(ch.kind === 'drop' ? { exclude: [ch.who] } : ch.kind === 'budget' ? { myBudget: ch.amount } : undefined));
   const fx = [], add = (area, text, level = 'info', from = '', to = '') => fx.push({ area, text, level, from, to });
   if (before.heads !== after.heads) add('Headcount', `${after.heads < before.heads ? 'Down' : 'Up'} to ${after.heads}`, 'info', before.heads, after.heads);
   if (before.stayEach && after.stayEach && before.stayEach !== after.stayEach) add('Stay, each', after.stayEach > before.stayEach ? 'Each share goes up' : 'Each share goes down', after.stayEach > before.stayEach ? 'warn' : 'good', money(before.stayEach), money(after.stayEach));
@@ -2540,14 +2584,16 @@ function optOf(kind, id) {
 }
 const agreed = (o, uid) => !!((S.trip.consent || {})[o.key] || {})[uid];
 // people whose hard limit this option breaks (before anyone agreed)
+// date limits are checked here (free days aren't private); budget limits come from the
+// server, which says who is over without saying anyone's budget
+const daysHit = (o, m) => !!(m.hard?.days && (m.days || []).length && o.days && !fitOf(m, o.days));
+const budgetHits = o => (o.lo ? bq({ lo: Math.round(o.lo), hi: Math.round(o.lo), key: o.key }) : null) || (o.lo ? NO_FIT : { ...NO_FIT, pending: false });
 function hitWhy(o, m) {
-  const h = m.hard || {};
-  if (h.days && (m.days || []).length && o.days && !fitOf(m, o.days)) return 'days';
-  if (h.budget && +m.budget > 0 && o.lo && o.lo > +m.budget) return 'budget';
-  return '';
+  if (daysHit(o, m)) return 'days';
+  return budgetHits(o).hard.some(x => x.id === m.id) ? 'budget' : '';
 }
-const hardHitsAll = o => active().filter(m => hitWhy(o, m));
-const hardHits = o => hardHitsAll(o).filter(m => !agreed(o, m.id));
+function hardHitsAll(o) { const d = active().filter(m => daysHit(o, m)); return [...d, ...budgetHits(o).hard.filter(x => !d.some(y => y.id === x.id))]; }
+function hardHits(o) { const d = active().filter(m => daysHit(o, m) && !agreed(o, m.id)); return [...d, ...budgetHits(o).hardOpen.filter(x => !d.some(y => y.id === x.id))]; }
 const softHits = o => o.lo ? active().filter(m => m.cond && +m.cond.under > 0 && o.lo > +m.cond.under) : [];
 // what the crew's chosen style says about locking this option
 function ruleCheck(o) {
@@ -2567,6 +2613,7 @@ function lockGate(kind, id) {
   if (S.demo) return { ok: true };
   const o = optOf(kind, id); if (!o) return { ok: true };
   const r = ruleCheck(o); if (!r.ok) return r;
+  if (budgetHits(o).pending) return { ok: false, why: 'Checking everyone’s budget limits. Try again in a second.' };
   const hits = hardHits(o);
   if (hits.length) {
     const me = hits.find(m => m.id === S.uid);
@@ -4892,11 +4939,11 @@ function openTrip(id, tab) {
   app.innerHTML = `${topBar()}${skel()}`;
   S.unsub.push(S.db.doc('trips/' + id).onSnapshot(snap => {
     if (!snap.exists) { flash('That trip doesn’t exist anymore.'); goHome(); return; }
-    const first = !S.trip; S.trip = { ...snap.data() }; if (first && !S.tabPicked && isLive()) S.tab = 'live'; render();
+    const first = !S.trip; S.trip = { ...snap.data() }; budgetReset(); if (first && !S.tabPicked && isLive()) S.tab = 'live'; render();
   }, () => flash('Lost the connection to this trip. Reload to reconnect.')));
   S.unsub.push(S.db.collection(`trips/${id}/members`).onSnapshot(snap => {
     const local = meDoc();
-    S.members = snap.docs.map(d => ({ id: d.id, ...d.data() })); S.membersIn = true;
+    S.members = snap.docs.map(d => ({ id: d.id, ...d.data() })); S.membersIn = true; budgetReset();
     if (S.meDirty && local) { const i = S.members.findIndex(m => m.id === S.uid); i >= 0 ? S.members[i] = local : S.members.push(local); }
     S.members.sort((a, b) => (a.updatedAt || 0) - (b.updatedAt || 0));
     if (S.trip) render();

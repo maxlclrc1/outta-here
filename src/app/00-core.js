@@ -138,7 +138,8 @@ function dates() {
   if (S.trip.lockedDates) return { ...S.trip.lockedDates, locked: true };
   const w = bestWindows()[0]; return w ? { start: w.start, end: w.end, locked: false } : null;
 }
-function budgetCap() { const b = active().map(m => +m.budget || 0).filter(x => x > 0); return b.length ? { cap: Math.min(...b), n: b.length } : null; }
+// the lowest budget set in the crew: the one number about budgets everyone sees
+function budgetCap() { return budgetCapShared(); }
 const nightsOf = d => d ? Math.round((D(d.end) - D(d.start)) / 864e5) : 0;
 const homes = () => [...new Set(active().map(m => (m.home || '').trim()).filter(Boolean))];
 const nameOf = id => id === 'ai' ? 'Outta Here AI' : (S.members.find(m => m.id === id) || {}).nick || 'Someone';
@@ -163,7 +164,7 @@ function nudges() {
     const todo = [];
     if (m.status === 'maybe') todo.push('say if you’re in');
     if (!(m.days || []).length && !S.trip.lockedDates) todo.push(isSmall() ? 'say which days work' : 'pick your dates');
-    if (!m.budget) todo.push('set your budget');
+    if (!m.budget && !m.budgetSet) todo.push('set your budget');
     if (hasDest && !(m.votes || []).length && !S.trip.lockedDest) todo.push(isSmall() ? 'vote on the plan' : 'vote on where');
     if (size() === 'trip' && booking_time() && going(m) && !tk[m.id]) todo.push('book your flight and upload your boarding pass');
     if (!m.quiz || Object.keys(m.quiz).length < QUIZ.length) todo.push('take the vibe quiz');

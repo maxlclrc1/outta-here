@@ -9,15 +9,15 @@ const $all = s => [...document.querySelectorAll(s)];
 const CHANGES = [['drop', 'Someone dropped out'], ['price', 'A price changed'], ['budget', 'My budget changed'], ['dates', 'Dates moved'], ['closed', 'A place closed']];
 // run fn as if the plan looked like trip/members, then put everything back
 function withPlan(trip, members, fn) { const t0 = S.trip, m0 = S.members; S.trip = trip; S.members = members; try { return fn(); } finally { S.trip = t0; S.members = m0; } }
-function planState() {
-  const sum = costSummary(), fit = budgetFit(sum), heads = planHeads(), st = S.trip.stay, stayRow = sum.rows.find(r => r.k === 'stay');
+function planState(extra) {
+  const sum = costSummary(), fit = budgetFit(sum, extra), heads = planHeads(), st = S.trip.stay, stayRow = sum.rows.find(r => r.k === 'stay');
   const L = S.trip.lockedDates, ldays = L ? span(L.start, L.end) : null;
   return {
     heads, low: sum.low, high: sum.high, any: sum.any,
     stayEach: st && +st.total ? Math.round(st.total / heads) : stayRow?.v ? Math.round(stayRow.v.high) : 0,
     over: fit.over.map(m => m.id), stretch: fit.stretch.map(m => m.id),
     condOff: active().filter(m => +m.cond?.under > 0 && sum.any && sum.low > +m.cond.under).map(m => m.id),
-    hardBudget: active().filter(m => m.hard?.budget && +m.budget > 0 && sum.any && sum.low > +m.budget).map(m => m.id),
+    hardBudget: sum.any ? budgetFit(sum, extra).hard.map(m => m.id) : [],
     hardDays: ldays ? active().filter(m => m.hard?.days && (m.days || []).length && !fitOf(m, ldays)).map(m => m.id) : [],
   };
 }
@@ -38,7 +38,7 @@ const nm = id => S.members.find(m => m.id === id)?.nick || 'Someone';
 const lineLabel = k => (COST_LINES[size()].find(l => l[0] === k) || [k, k])[1];
 // what a change does, as before → after rows plus the things it leaves hanging
 function changeImpact(ch) {
-  const before = planState(), sim = simulate(ch), after = withPlan(sim.trip, sim.members, planState);
+  const before = planState(), sim = simulate(ch), after = withPlan(sim.trip, sim.members, () => planState(ch.kind === 'drop' ? { exclude: [ch.who] } : ch.kind === 'budget' ? { myBudget: ch.amount } : undefined));
   const fx = [], add = (area, text, level = 'info', from = '', to = '') => fx.push({ area, text, level, from, to });
   if (before.heads !== after.heads) add('Headcount', `${after.heads < before.heads ? 'Down' : 'Up'} to ${after.heads}`, 'info', before.heads, after.heads);
   if (before.stayEach && after.stayEach && before.stayEach !== after.stayEach) add('Stay, each', after.stayEach > before.stayEach ? 'Each share goes up' : 'Each share goes down', after.stayEach > before.stayEach ? 'warn' : 'good', money(before.stayEach), money(after.stayEach));

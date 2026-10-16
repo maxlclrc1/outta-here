@@ -61,8 +61,9 @@ The server checks every request (`lib/access.ts`), not just the app:
 - An invite link opens a plan. Before joining you see who's in and whether they're coming, nothing else about them.
 - Joining adds only yourself, only while invites are on, only with the current link if the organizer made a new one, and never after being removed.
 - Only people in a plan can change it or read its expenses, photos, packing list and so on. Only organizers can delete it or change who can invite and lock.
+- Budgets stay with their owner. Other members only learn whether you've set one. Budget fit ("fits 4/5 budgets", hard limits) is worked out on the server (`lib/budget.ts`) and comes back as counts, naming only people who chose to be named.
 
-Until real accounts exist these rules rely on each browser's id, so they keep a plan private from everyone except someone who copies another person's browser data.
+`npm run test:server` checks these rules against the running app. Until real accounts exist these rules rely on each browser's id, so they keep a plan private from everyone except someone who copies another person's browser data.
 
 ## What's where
 

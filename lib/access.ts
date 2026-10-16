@@ -45,6 +45,14 @@ function mayJoin(tid: string, t: Json, ctx: Ctx) {
   if (t.invitesOff) return false;
   return !t.inviteKey || t.inviteKey === ctx.invite;
 }
+// Budgets are private: other members get whether one is set, never the amount (or whether
+// it's a hard limit). Budget fit comes from /api/budget instead.
+function hideBudget(d: Json): Json {
+  const { budget, ...rest } = d;
+  const out: Json = { ...rest, budgetSet: +String(budget ?? 0) > 0 };
+  if (isObj(rest.hard)) { const { budget: _hb, ...h } = rest.hard; out.hard = h; }
+  return out;
+}
 // the part of a member record someone outside the plan may see on an invite
 const PUBLIC_MEMBER = ['nick', 'status'];
 const redactMember = (d: Json) => Object.fromEntries(PUBLIC_MEMBER.filter(k => k in d).map(k => [k, d[k]]));
@@ -56,7 +64,7 @@ const ORG_FIELDS = ['orgs', 'perm', 'inviteKey', 'invitesOff', 'createdBy'];
 export function readable(p: string, data: Json, ctx: Ctx): Json | null {
   const s = p.split('/');
   if (s[0] === 'trips' && s.length >= 4) {
-    if (inTrip(s[1], ctx.user)) return data;
+    if (inTrip(s[1], ctx.user)) return s[2] === 'members' && s.length === 4 && s[3] !== ctx.user ? hideBudget(data) : data;
     return s[2] === 'members' && s.length === 4 ? redactMember(data) : null;
   }
   return data; // a plan or crew by its id, and everything else, is open to the link holder
