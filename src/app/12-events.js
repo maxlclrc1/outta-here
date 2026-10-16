@@ -1,6 +1,4 @@
 /* ---------- events ---------- */
-// tapping anywhere on a date or time field opens its picker (not just the small icon)
-app.addEventListener('click', e => { const i = e.target.closest && e.target.closest('input[type=date],input[type=time]'); if (i && !i.disabled && !i.readOnly && i.showPicker) try { i.showPicker(); } catch {} });
 app.addEventListener('click', e => {
   const t = e.target.closest('button,[data-open],[data-pin],[data-act]'); if (!t) return;
   const ds = t.dataset;
