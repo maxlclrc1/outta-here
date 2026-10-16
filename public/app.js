@@ -1,4 +1,5 @@
-// Outta Here app. Runs on the window.claude runtime from shim.js.
+// Outta Here app. Runs on the window.claude runtime: Claude's own, or public/shim.js on localhost.
+// Built from src/app/*.js by scripts/build.mjs. Edit those files, not this one.
 (() => {
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -50,7 +51,7 @@ function writeErr(e) {
 }
 function aiErr(e) {
   const c = e && e.code;
-  if (c === 'not_granted') return 'Your Anthropic API key was rejected. Check .env.local.';
+  if (c === 'not_granted') return IN_CLAUDE ? 'Claude wasn’t allowed for this page, so AI picks are off for now.' : 'Your Anthropic API key was rejected. Check .env.local.';
   if (c === 'sampling_disabled') return 'AI is off. Add your Anthropic API key to .env.local and restart the app.';
   if (c === 'refused') return 'Claude declined that one. Try rewording it.';
   if (c === 'rate_limited') return 'Too many requests at once. Give it a minute.';
@@ -235,7 +236,7 @@ async function flushMe() {
 
 /* ---------- AI ---------- */
 async function askAI(kind, prompt, done) {
-  if (!S.sample) { flash('AI is off. Add your Anthropic API key to .env.local and restart the app.'); return; }
+  if (!S.sample) { flash(IN_CLAUDE ? 'AI picks need this page opened in Claude.' : 'AI is off. Add your Anthropic API key to .env.local and restart the app.'); return; }
   S.busy[kind] = true; render();
   try { const data = await S.sample.json(prompt, { modelTier: 'default' }); await done(data); }
   catch (e) { flash(aiErr(e)); }
@@ -1866,7 +1867,7 @@ function photosTab() {
   return `<section class="card stack">
     <div class="row" style="justify-content:space-between"><h2>Photo album</h2><span class="small muted">${photos.length} photo${photos.length === 1 ? '' : 's'}</span></div>
     ${S.assets && !S.demo ? `<label class="btn primary" style="align-self:flex-start;cursor:pointer">${S.busy.photos ? `<i class="spin"></i>Uploading ${esc(S.busy.photos)}…` : 'Add photos'}<input id="ph-files" type="file" accept="image/*" multiple hidden></label>`
-      : `<p class="small muted">${S.demo ? 'Photo uploads work on real trips.' : 'Photo uploads aren’t available right now.'}</p>`}
+      : `<p class="small muted">${S.demo ? 'Photo uploads work on real trips.' : IN_CLAUDE ? 'Photo uploads aren’t available for you here. They’ll work for everyone once the app has its own site.' : 'Photo uploads aren’t available right now.'}</p>`}
     ${photos.length ? `<div class="row" style="gap:6px"><button class="btn sm" data-show="0">▶ Play recap</button><button class="btn sm" data-act="collage">Make collage</button></div>
       ${S.img?.kind === 'collage' ? imgPanel() : ''}
       <div class="photos">${photos.map((p, i) => { const sc = score(rkey('ph' + p.id)); return `<div class="ph"><button class="ph-open" data-show="${i}" aria-label="Open photo ${i + 1}"><img src="/_blob/${esc(p.asset)}" alt="Photo by ${esc(nameOf(p.by))}" loading="lazy"></button>
@@ -2798,7 +2799,7 @@ function resetTrip() {
 function goHome() { stop(); if (S.meDirty) flushMe(); S.tid = null; S.creating = null; S.crewView = null; subscribeSongs(null); S.demo = false; resetTrip(); setHash(''); render(); }
 
 function openTrip(id, tab) {
-  if (!S.db) { flash('Can’t reach the local server. Is npm run dev still running?'); return; }
+  if (!S.db) { flash(IN_CLAUDE ? 'Open this page in Claude to load trips.' : 'Can’t reach the local server. Is npm run dev still running?'); return; }
   stop(); S.demo = false; S.crewView = null; S.tid = id; S.tab = tab || 'overview'; S.tabPicked = !!tab; S.secTab = {}; resetTrip(); setHash(id);
   app.innerHTML = `${topBar()}<p class="muted">Loading trip…</p>`;
   S.unsub.push(S.db.doc('trips/' + id).onSnapshot(snap => {
@@ -2939,7 +2940,7 @@ render();
   try { id = user ? await user.id() : null; } catch {}
   try { const me = user ? await user.me() : null; S.myName = (me && me.name || '').split(' ')[0]; } catch {}
   if (!id) { try { id = localStorage.getItem('oh_uid'); if (!id) { id = 'g' + rid(12); localStorage.setItem('oh_uid', id); } } catch { id = 'g' + rid(12); } }
-  S.realId = id && /^u_/.test(String(id)) ? id : null;
+  S.realId = id && (IN_CLAUDE ? !String(id).startsWith('g') : /^u_/.test(String(id))) ? id : null;
   S.uid = segSafe(id);
   S.loading = false;
   if (db) {
