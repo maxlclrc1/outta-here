@@ -918,3 +918,18 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 .skel-row{height:84px}.skel-strip{height:58px}.skel-hero{height:240px;border-radius:18px}.skel-card{height:140px}
 @keyframes skel{from{background-position:100% 0}to{background-position:-100% 0}}
 @media (prefers-reduced-motion:reduce){.skel{animation:none}}
+/* date, time and dropdown fields: the whole field opens the picker, with icons that match the app */
+:root{accent-color:var(--accent)}
+:root[data-theme="light"]{color-scheme:light}
+input[type=date],input[type=time]{position:relative;-webkit-appearance:none;appearance:none;min-height:42px;text-align:left;font-variant-numeric:tabular-nums;font-weight:600;letter-spacing:.01em;cursor:pointer;padding-right:38px;background-repeat:no-repeat;background-position:right 12px center;background-size:17px;transition:border-color .15s,box-shadow .15s,background-color .15s}
+input[type=date]{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23FF3D8B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4.5' width='18' height='16.5' rx='3'/%3E%3Cpath d='M3 9.5h18M8 2.5v4M16 2.5v4'/%3E%3C/svg%3E")}
+input[type=time]{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23FF3D8B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E")}
+input[type=date]:hover,input[type=time]:hover{border-color:color-mix(in oklab,var(--accent) 45%,var(--line))}
+input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-calendar-picker-indicator{position:absolute;inset:0;width:auto;height:auto;margin:0;padding:0;opacity:0;cursor:pointer}
+input[type=date]::-webkit-datetime-edit,input[type=time]::-webkit-datetime-edit{padding:0}
+input[type=date]::-webkit-datetime-edit-fields-wrapper,input[type=time]::-webkit-datetime-edit-fields-wrapper{padding:0}
+input[type=date]::-webkit-datetime-edit-text,input[type=time]::-webkit-datetime-edit-text{color:var(--muted);padding:0 2px}
+input::-webkit-datetime-edit-month-field:focus,input::-webkit-datetime-edit-day-field:focus,input::-webkit-datetime-edit-year-field:focus,input::-webkit-datetime-edit-hour-field:focus,input::-webkit-datetime-edit-minute-field:focus,input::-webkit-datetime-edit-ampm-field:focus{background:color-mix(in oklab,var(--accent) 28%,transparent);color:var(--ink);border-radius:5px;outline:none}
+input[type=date]:invalid::-webkit-datetime-edit,input[type=time]:invalid::-webkit-datetime-edit{color:var(--muted)}
+select{-webkit-appearance:none;appearance:none;cursor:pointer;padding-right:34px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239A93A8' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 11px center;background-size:15px}
+select:disabled{cursor:default;opacity:.7}
