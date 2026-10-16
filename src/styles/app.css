@@ -807,6 +807,8 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 @media (max-width:560px){.cost-row{grid-template-columns:1fr}}
 .fx{display:block;font:600 12px var(--f-mono);color:var(--muted);letter-spacing:.02em}
 .dep-row .pr-name{font:800 19px var(--f-display);font-variation-settings:"wdth" 85;line-height:1.15;overflow-wrap:anywhere}
-.own-stay-cta{justify-content:space-between;align-items:center;gap:12px}
+.own-stay-cta,.repeat-cta{justify-content:space-between;align-items:center;gap:12px}
+.tpl-row{align-items:center;gap:12px;flex-wrap:nowrap}
+.last-time{display:block;font-style:italic}
 .own-stay .stay-top{background:linear-gradient(135deg,#3D4458,#232838)}
 .pr-sub{font:700 13px var(--f-body);color:var(--ink);opacity:.8;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

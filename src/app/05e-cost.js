@@ -110,7 +110,7 @@ function costTab() {
     <div class="cost-rows">${sum.rows.map(r => { const m = me.rows.find(x => x.k === r.k), shown = m && m.v && m.v.src === 'booked' ? m : r;
       return `<div class="cost-row ${shown.v || m?.booked ? '' : 'empty-line'}">
       <div class="cost-what"><b>${esc(r.label)}${r.major && !shown.v && !m?.booked ? ' <span class="small" style="color:#D63B3B">· missing</span>' : ''}</b>
-        <span class="small muted">${esc(shown.v?.note || r.hint)}</span>
+        <span class="small muted">${esc(shown.v?.note || r.hint)}</span>${S.trip.lastCosts?.[r.k] ? `<span class="small muted last-time">Last time: ${rangeText(Math.round(S.trip.lastCosts[r.k].low), Math.round(S.trip.lastCosts[r.k].high))}. Prices change, so check again.</span>` : ''}
         ${shown.v ? `<span class="cost-val"><b>${rangeText(Math.round(shown.v.low), Math.round(shown.v.high))}</b> <span class="src-tag s-${shown.v.src}">${esc(SRC_LABEL[shown.v.src] || shown.v.src)}</span>${shown.v.paid ? ` <span class="small muted">· ${money(shown.v.paid)} paid so far</span>` : ''}</span>` : ''}
       </div>
       ${m?.booked === 'noprice' ? `<div class="cost-in"><span class="src-tag s-booked">You’re booked</span><label style="flex:1 1 120px"><span class="sr-only">What you paid for your flight</span><input id="my-flight-price" type="number" min="0" inputmode="numeric" placeholder="What you paid"></label></div>`
