@@ -77,11 +77,20 @@
   });
 
   /* ---------- db ---------- */
+  // An invite link can carry a key (#plan.key). The server checks it when you join, so the
+  // key is remembered for that plan and sent along with its requests.
+  const inviteKeys = (() => { try { return JSON.parse(sessionStorage.getItem('outta_invites') || '{}'); } catch { return {}; } })();
+  const noteInvite = () => {
+    const m = (location.hash || '').slice(1).match(/^([a-z0-9]{6,20})\.([a-z0-9]{4,12})$/);
+    if (m && inviteKeys[m[1]] !== m[2]) { inviteKeys[m[1]] = m[2]; try { sessionStorage.setItem('outta_invites', JSON.stringify(inviteKeys)); } catch {} }
+  };
+  noteInvite(); window.addEventListener('hashchange', noteInvite);
   const err = (code, message) => Object.assign(new Error(message || code), { code, message: message || code });
   async function call(op, path, data) {
     let res;
     try {
-      res = await fetch('/api/db', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-outta-user': uid }, body: JSON.stringify({ op, path, data }) });
+      const tid = (String(path).match(/^trips\/([^/]+)/) || [])[1], key = tid && inviteKeys[tid];
+      res = await fetch('/api/db', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-outta-user': uid, ...(key ? { 'x-outta-invite': key } : {}) }, body: JSON.stringify({ op, path, data }) });
     } catch { throw err('unavailable', 'Can’t reach the local server. Is it still running?'); }
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw err(body.code || 'unavailable', body.message);
@@ -101,17 +110,22 @@
   let es = null;
   function ensureStream() {
     if (es) return;
-    es = new EventSource('/api/db/stream');
+    es = new EventSource('/api/db/stream?u=' + encodeURIComponent(uid));
     es.onmessage = e => {
       let path; try { ({ path } = JSON.parse(e.data)); } catch { return; }
-      for (const s of subs) if (s.matches(path)) s.refresh();
+      // when you join a plan, everything under it becomes readable: re-read all of it
+      const joined = String(path).match(/^(trips\/[^/]+)\/members\/(.+)$/);
+      const scope = joined && joined[2] === uid ? joined[1] + '/' : null;
+      // joining or leaving a crew changes which plans you can see
+      const crew = /^crews\/[^/]+$/.test(path);
+      for (const s of subs) if (s.matches(path) || (scope && s.under(scope)) || (crew && s.base === 'trips')) s.refresh();
     };
     es.onerror = () => { for (const s of subs) s.refresh(); }; // catch up after a reconnect
   }
-  function subscribe(matches, read, next, error) {
+  function subscribe(matches, read, next, error, base = '') {
     let timer = null, alive = true;
     const s = {
-      matches,
+      matches, base, under: prefix => base.startsWith(prefix) || (base + '/').startsWith(prefix),
       refresh() {
         clearTimeout(timer);
         timer = setTimeout(() => { if (alive) read().then(v => alive && next(v), e => alive && error && error(e)); }, 40);
@@ -131,7 +145,7 @@
       update: async data => { await call('update', path, data); },
       delete: async () => { await call('delete', path); },
       acquire: async () => ({ acquired: true }),
-      onSnapshot: (next, error) => subscribe(p => p === path, async () => docSnap(id, await call('get', path)), next, error),
+      onSnapshot: (next, error) => subscribe(p => p === path, async () => docSnap(id, await call('get', path)), next, error, path),
       collection: sub => collRef(path + '/' + sub),
     });
   }
@@ -158,7 +172,7 @@
       orderBy: (f, dir = 'asc') => query(path, { ...opts, order: [f, dir] }),
       limit: n => query(path, { ...opts, limit: n }),
       get: run,
-      onSnapshot: (next, error) => subscribe(p => p.startsWith(path + '/') && segCount(p) === depth, run, next, error),
+      onSnapshot: (next, error) => subscribe(p => p.startsWith(path + '/') && segCount(p) === depth, run, next, error, path),
     });
   }
   function test(a, op, b) {

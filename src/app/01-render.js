@@ -82,12 +82,23 @@ function render() {
   paint();
 }
 function paint() {
+  MEMO = new Map();
+  try { paintNow(); } finally { MEMO = null; }
+}
+function paintNow() {
   try { if (S.tid && S.trip) announceChanges(); } catch {}
   const a = document.activeElement, fid = (a && a !== document.body && a.id) || (lastDown && Date.now() - lastDown.at < 800 ? lastDown.id : ''), sel = a && 'selectionStart' in a ? [a.selectionStart, a.selectionEnd] : null;
   const scrollTabs = $('.tabs')?.scrollLeft;
   const vk = viewKey(), fresh = vk !== lastView || !app.firstChild; lastView = vk;
   if (S.tid && S.trip && !S.demo) try { sessionStorage.setItem('outta_tab_' + S.tid, S.tab); } catch {}
-  const html = S.tid && S.trip ? tripView() : homeView();
+  let html;
+  try { html = S.tid && S.trip ? tripView() : homeView(); }
+  catch (e) {
+    // one broken screen shouldn't take the whole app down
+    console.error(e);
+    html = `${topBar()}<section class="card stack" style="margin-top:20px"><h2>This screen hit a problem</h2><p class="muted">Something in this ${S.tid ? planWord() : 'page'} couldn’t be shown. Your data is safe.</p>
+      <div class="row" style="gap:8px"><button class="btn primary" data-act="reloadView">Try again</button><button class="btn" data-act="home">Back home</button></div></section>`;
+  }
   let born = [];
   if (fresh) app.innerHTML = html; else born = morph(app, html);
   const sk = S.tid && S.trip ? secOf(S.tab).k : 'none';
@@ -96,6 +107,9 @@ function paint() {
   if (fid) { const el = document.getElementById(fid); if (el) { el.focus(); if (sel && el.setSelectionRange) try { el.setSelectionRange(...sel); } catch {} } }
   if (scrollTabs) { const t = $('.tabs'); if (t) t.scrollLeft = scrollTabs; }
   bindSwipe();
+  // a sheet that just opened takes focus, so keyboard and screen reader users land in it
+  const dlg = $('.sheet[role=dialog], .show[role=dialog]');
+  if (dlg && !dlg.contains(document.activeElement)) (dlg.querySelector('input, button:not([disabled])') || dlg).focus({ preventScroll: true });
   applyBeacon(); checkMilestones();
   const stb = $('.subtabs'), son = $('.subtab.on'); if (stb && son) stb.scrollLeft = son.offsetLeft - stb.clientWidth / 2 + son.clientWidth / 2;
   const fd = $('#feed'); if (fd) fd.scrollTop = fd.scrollHeight;
@@ -104,6 +118,10 @@ function paint() {
   else popIn(born);
 }
 
+// Placeholders shaped like what's coming, so the screen doesn't jump when it arrives.
+const skel = (kind = 'plan') => kind === 'rows'
+  ? `<div class="skel-list" aria-busy="true" aria-label="Loading your plans">${'<div class="skel skel-row"></div>'.repeat(3)}</div>`
+  : `<div class="skel-list" aria-busy="true" aria-label="Loading">${'<div class="skel skel-strip"></div><div class="skel skel-hero"></div><div class="skel skel-card"></div>'}</div>`;
 function topBar() {
   const day = document.documentElement.dataset.theme === 'light';
   return `<div class="top"><button class="logo" data-act="home">Outta<span>/</span>Here</button>
@@ -154,7 +172,7 @@ function crewTab() {
       ${ns.length ? `<button class="btn primary sm" data-act="copyNudge">Copy nudge for the group chat</button>` : ''}</div>
     ${ns.length ? `<div>${ns.map(x => `<div class="nudge"><b>${esc(x.m.nick || 'Someone')}${x.m.id === S.uid ? ' (you)' : ''}</b><span class="small muted">${x.todo.join(' · ')}</span></div>`).join('')}</div>`
       : `<p class="small" style="color:var(--good)">Nobody. Everyone’s done their part.</p>`}
-    ${S.copyText ? `<textarea id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
+    ${S.copyText ? `<textarea aria-label="Text to copy" id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
   </section>
   <section class="card stack">
     <h2>Your details</h2>
@@ -178,7 +196,7 @@ function crewTab() {
     ${S.members.length ? S.members.filter(x => !x.removed).map(x => `<div class="crew-row">
       <div class="av" style="background:${colorFor(x.id)}">${esc((x.nick || '?')[0].toUpperCase())}</div>
       <div style="min-width:0"><b>${esc(x.nick || 'Someone')}${x.id === S.uid ? ' <span class="muted small">(you)</span>' : ''}</b>
-        <div class="small muted">${x.home && !isSmall() ? (size() === 'trip' ? '✈ ' : 'from ') + esc(x.home) + ' · ' : ''}${(x.days || []).length} ${(x.days || []).length === 1 ? 'day' : 'days'} free · ${(x.votes || []).length ? 'voted' : 'no vote yet'}${x.budget ? ' · budget set' : ''}</div></div>
+        <div class="small muted">${x.home && !isSmall() ? (size() === 'trip' ? '✈ ' : 'from ') + esc(x.home) + ' · ' : ''}${(x.days || []).length} ${(x.days || []).length === 1 ? 'day' : 'days'} free · ${(x.votes || []).length ? 'voted' : 'no vote yet'}${x.budget || x.budgetSet ? ' · budget set' : ''}</div></div>
       <div class="cr-side"><span class="pill lvl-${x.status || 'maybe'}">${LEVEL_LABEL[x.status || 'maybe']}</span>${x.id === S.trip.createdBy || (S.trip.orgs || {})[x.id] ? '<span class="small muted">Organizer</span>' : ''}
         ${isOrganizer() && !S.demo && x.id !== S.uid && x.id !== S.trip.createdBy ? (S.confirmRm === x.id ? `<span class="row" style="gap:4px"><button class="btn sm danger-fill" data-rmdo="${esc(x.id)}">Remove</button><button class="btn sm ghost" data-act="rmCancel">Cancel</button></span>` : `<span class="row" style="gap:8px"><button class="linkbtn small" data-mkorg="${esc(x.id)}">${(S.trip.orgs || {})[x.id] ? 'Not organizer' : 'Make organizer'}</button><button class="linkbtn small" data-rmmember="${esc(x.id)}">Remove</button></span>`) : ''}</div>
     </div>`).join('') : `<p class="muted">Nobody yet. Add your details above.</p>`}
@@ -325,7 +343,7 @@ function spotsTab() {
         return `<div class="stack" style="gap:4px"><div class="row" style="justify-content:space-between"><span class="label">${esc(q.q)}</span>${w.how !== 'majority' ? `<span class="tie">Tie</span>` : ''}</div>
         ${top.map(x => `<div class="row" style="gap:8px;flex-wrap:nowrap"><span class="small" style="flex:0 0 46%">${x.a === w.a ? '<b>★ ' : ''}${x.pct}% ${esc(x.a)}${x.a === w.a ? '</b>' : ''}</span><div class="bar" style="flex:1"><i style="width:${x.pct}%"></i></div></div>`).join('')}
         ${w.how !== 'majority' ? `<div class="runoff"><span class="small">${w.how === 'runoff' ? `Runoff winner: <b>${esc(w.a)}</b> (${w.tied.map(a => (w.rv[a] || 0)).join('–')})` : w.votes ? `Runoff is tied too, so a coin flip picked <b>${esc(w.a)}</b>` : `Coin flip picked <b>${esc(w.a)}</b> for now. Vote in the runoff to decide it yourselves.`}</span>
-          <div class="row" style="gap:6px">${w.tied.map(a => `<button class="chip ${myRun === a ? 'on' : ''}" data-runoff="${q.k}|${esc(a)}">${esc(a)}</button>`).join('')}</div></div>` : ''}</div>`; }).join('')}
+          <div class="row" style="gap:6px">${w.tied.map(a => `<button class="chip ${myRun === a ? 'on' : ''}" data-qrunoff="${q.k}|${esc(a)}">${esc(a)}</button>`).join('')}</div></div>` : ''}</div>`; }).join('')}
       <span class="small" style="opacity:.75">Screenshot this and drop it in the chat.</span>
     </div>` : `<div class="empty"><b>Your crew’s vibe shows up here.</b><span>Answer the 5 questions. Once friends answer too, you’ll see the blend, like “60% Big club, 40% Rooftop cocktails”, and the AI uses it for its picks.</span></div>`}
   </section>
@@ -467,6 +485,7 @@ async function leaveTrip() {
 async function sendTicket() {
   const flight = ($('#tk-flight')?.value || '').trim().slice(0, 20), file = S.tkFile, price = Math.max(0, Math.round(+($('#tk-price')?.value || 0)));
   if (!file && !flight) { flash('Add your boarding pass or your flight number.'); return; }
+  const tid = S.tid;
   if (file && file.size > 20 * 1024 * 1024) { flash('That file is over 20 MB. Try a screenshot instead.'); return; }
   let asset = null, type = '';
   if (file && S.assets && !S.demo) {
@@ -475,10 +494,11 @@ async function sendTicket() {
     catch (e) { S.busy.ticket = false; render(); flash(e && e.code === 'unsupported_type' ? 'Use a photo, screenshot or PDF.' : 'Upload failed. Try again, or just add your flight number.'); return; }
     S.busy.ticket = false;
   }
+  if (S.tid !== tid) { flash('Your boarding pass upload finished after you left that plan. Open it and send it again.'); return; }
   S.tkFile = null;
-  await saveTrip({ tickets: { [S.uid]: { asset, type, flight, ...(price ? { price } : {}), at: Date.now() } } });
+  if (!await saveTrip({ tickets: { [S.uid]: { asset, type, flight, ...(price ? { price } : {}), at: Date.now() } } })) return;
   if (meDoc()?.status !== 'booked') saveMe({ status: 'booked', seen: true }, true);
-  if (tickets().on) flash('That’s everyone. The trip is ON.');
+  flash(tickets().on ? 'That’s everyone. The trip is ON.' : 'Boarding pass in. You’re marked as booked.');
 }
 async function delTicket() {
   const mine = tickets().tk[S.uid]; if (!mine) return;

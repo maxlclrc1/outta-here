@@ -33,7 +33,7 @@ function budgetWho(ms) {
 }
 function accessCard() {
   const t = S.trip, org = isOrganizer(), perm = t.perm || {};
-  const sel = (id, v, opts) => `<select id="${id}" style="width:auto" ${org ? '' : 'disabled'}>${opts.map(([k, l]) => `<option value="${k}" ${v === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+  const sel = (id, v, opts) => `<select id="${id}" aria-label="${id === 'perm-invite' ? 'Who can invite people' : 'Who can lock decisions'}" style="width:auto" ${org ? '' : 'disabled'}>${opts.map(([k, l]) => `<option value="${k}" ${v === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
   return `<section class="card stack access">
     <h3>Access</h3>
     ${org ? '' : '<p class="small muted">Only organizers can change these.</p>'}

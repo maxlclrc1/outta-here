@@ -83,11 +83,53 @@ function costSummary(t = S.trip, who = 'crew') {
   const missing = rows.filter(r => r.major && !r.v && !r.booked), estimates = rows.filter(r => r.v && ['estimate', 'ai'].includes(r.v.src));
   return { rows, buffer, other, low: withBuf(low), high: withBuf(high), missing, estimates, any: rows.some(r => r.v) || other > 0 };
 }
-// Who can afford it: budget ≥ high fits, between low and high is a stretch, below low doesn't.
-function budgetFit(sum) {
-  const ms = active().filter(m => +m.budget > 0);
-  const fits = ms.filter(m => +m.budget >= sum.high), stretch = ms.filter(m => +m.budget < sum.high && +m.budget >= sum.low), over = ms.filter(m => +m.budget < sum.low);
-  return { fits, stretch, over, n: ms.length, unknown: active().length - ms.length };
+/* ---------- budget fit ----------
+   Other people's budgets never reach this browser. "Does lo–hi fit the crew?" goes to
+   /api/budget, which answers with counts and only names people who chose to be named (or
+   you). Answers are kept until the crew's details change. The demo and the Claude version
+   have no server of their own, so there it's worked out here from the data the page has.
+   Budget ≥ high fits, between low and high is a stretch, below low is over. */
+const BQ = { tid: null, cache: new Map(), queue: new Map(), cap: undefined, t: 0 };
+const NO_FIT = { n: 0, unknown: 0, fits: [], stretch: [], over: [], hard: [], hardOpen: [], pending: true };
+const budgetsHere = () => S.demo || IN_CLAUDE;
+function budgetReset() { BQ.cache.clear(); BQ.cap = undefined; }
+function bq(check) {
+  if (BQ.tid !== S.tid) { BQ.tid = S.tid; budgetReset(); BQ.queue.clear(); }
+  if (budgetsHere()) return budgetLocal(check);
+  const k = JSON.stringify(check);
+  if (BQ.cache.has(k)) return BQ.cache.get(k);
+  if (!BQ.queue.has(k)) { BQ.queue.set(k, check); clearTimeout(BQ.t); BQ.t = setTimeout(budgetFetch, 0); }
+  return null;
+}
+async function budgetFetch() {
+  const tid = S.tid, items = [...BQ.queue]; BQ.queue.clear();
+  if (!tid || !items.length) return;
+  let data = null;
+  try {
+    const r = await fetch('/api/budget', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-outta-user': S.uid }, body: JSON.stringify({ tid, checks: items.map(([, c]) => c) }) });
+    if (r.ok) data = await r.json();
+  } catch {}
+  if (S.tid !== tid) return;
+  // a failed check counts as "no budgets to compare" rather than retrying in a loop
+  items.forEach(([k], i) => BQ.cache.set(k, data ? budgetShape(data.results[i]) : { ...NO_FIT, pending: false }));
+  if (data) BQ.cap = data.cap; else if (BQ.cap === undefined) BQ.cap = null;
+  render();
+}
+// counts from the server → lists the UI can use: named people, then anonymous stand-ins
+function budgetShape(r) {
+  const list = g => [...g.ids.map(id => S.members.find(m => m.id === id) || { id, nick: 'Someone' }), ...Array.from({ length: Math.max(0, g.count - g.ids.length) }, (_, i) => ({ id: 'anon-' + i, nick: 'Someone' }))];
+  return { n: r.n, unknown: r.total - r.n, fits: list(r.fits), stretch: list(r.stretch), over: list(r.over), hard: list(r.hard), hardOpen: list(r.hardOpen) };
+}
+function budgetLocal({ lo = 0, hi = 0, key = '' }) {
+  const ms = active().filter(m => +m.budget > 0), h = Math.max(lo, hi || lo), consent = ((S.trip.consent || {})[key]) || {};
+  const hard = lo ? ms.filter(m => m.hard?.budget && lo > +m.budget) : [];
+  return { n: ms.length, unknown: active().length - ms.length, fits: ms.filter(m => +m.budget >= h), stretch: ms.filter(m => +m.budget < h && +m.budget >= lo), over: ms.filter(m => +m.budget < lo), hard, hardOpen: hard.filter(m => !consent[m.id]) };
+}
+// extra: { exclude: [ids], myBudget } for "what if" questions (someone drops out, my budget changes)
+function budgetFit(sum, extra) { return bq({ lo: Math.round(sum.low || 0), hi: Math.round(sum.high || 0), ...(extra || {}) }) || NO_FIT; }
+function budgetCapShared() {
+  if (budgetsHere()) { const b = active().map(m => +m.budget || 0).filter(x => x > 0); return b.length ? { cap: Math.min(...b), n: b.length } : null; }
+  bq({}); return BQ.cap || null;
 }
 const rangeText = (lo, hi) => `${money(lo)}${hi !== lo ? '–' + money(hi) : ''}`;
 function costTab() {
@@ -132,15 +174,15 @@ function costTab() {
 const costT = {}, costPending = {};
 function saveCostLine(k) {
   const el = id => $('#cost-' + id + '-' + k);
-  costPending[k] = { low: el('low') ? el('low').value : costPending[k]?.low, high: el('high') ? el('high').value : costPending[k]?.high, src: el('src') ? el('src').value : costPending[k]?.src };
+  costPending[k] = { low: el('low') ? el('low').value : costPending[k]?.low, high: el('high') ? el('high').value : costPending[k]?.high, src: el('src') ? el('src').value : costPending[k]?.src, tid: S.tid };
   clearTimeout(costT[k]); costT[k] = setTimeout(() => saveCostLineNow(k), 350);
 }
 function saveCostLineNow(k) {
-  const { low, high, src = 'estimate' } = costPending[k] || {}; delete costPending[k];
+  const { low, high, src = 'estimate', tid } = costPending[k] || {}; delete costPending[k];
   const l = Math.max(0, Math.round(+low || 0)), h = Math.max(0, Math.round(+high || 0));
   delete DRAFT['cost-low-' + k]; delete DRAFT['cost-high-' + k];
-  if (!l && !h) return saveTrip({ costs: { [k]: null } });
-  saveTrip({ costs: { [k]: { low: l || h, high: Math.max(l, h), src, by: S.uid, at: Date.now() } } });
+  if (!l && !h) return saveTrip({ costs: { [k]: null } }, tid);
+  saveTrip({ costs: { [k]: { low: l || h, high: Math.max(l, h), src, by: S.uid, at: Date.now() } } }, tid);
 }
 // AI fills only the lines that don't have a real quote or booking yet.
 function estimateCosts() {

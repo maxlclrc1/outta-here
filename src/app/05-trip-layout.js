@@ -5,7 +5,10 @@ async function saveCrew(name) {
   const cid = S.trip.crewId || rid(10);
   const body = { name: name.slice(0, 40), ids: ms.map(m => m.id), profiles, by: S.uid, at: Date.now() };
   if (S.demo) { S.crews = [...S.crews.filter(c => c.id !== cid), { id: cid, ...body }]; await saveTrip({ crewId: cid }); flash('Crew saved.'); return; }
-  try { await S.db.doc('crews/' + cid).set(body); await saveTrip({ crewId: cid }); flash(`Saved “${body.name}”. Start the next trip from the home screen.`); }
+  try {
+    if (S.trip.crewId && S.crews.some(c => c.id === cid)) { const { by, ...rest } = body; await S.db.doc('crews/' + cid).update({ ...rest, people: Object.fromEntries(body.ids.map(id => [id, true])) }); flash(`Updated “${body.name}”.`); return; }
+    await S.db.doc('crews/' + cid).set({ ...body, people: Object.fromEntries(body.ids.map(id => [id, true])) }); await saveTrip({ crewId: cid }); flash(`Saved “${body.name}”. Start the next trip from the home screen.`);
+  }
   catch (e) { flash(writeErr(e)); }
 }
 function crewSection() {
@@ -14,7 +17,7 @@ function crewSection() {
     ${crew ? `<p class="small">This ${planWord()} belongs to <b>${esc(crew.name)}</b>. Start the next plan from their crew page in one tap.</p>
       <div><button class="btn sm" data-act="syncCrew">Update crew with these people</button></div>`
     : `<p class="small muted">Save this group as a crew so the next plan starts with everyone already added, and keep a history of your plans together.</p>
-      <form id="crewForm" class="row" style="gap:6px"><input id="crew-name" maxlength="40" placeholder="The Vegas Six" style="flex:1 1 180px" required><button class="btn sm primary" type="submit">Save crew</button></form>`}
+      <form id="crewForm" class="row" style="gap:6px"><input aria-label="Crew name" id="crew-name" maxlength="40" placeholder="The Vegas Six" style="flex:1 1 180px" required><button class="btn sm primary" type="submit">Save crew</button></form>`}
   </section>`;
 }
 /* ---------- trip modes ---------- */

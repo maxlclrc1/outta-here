@@ -53,7 +53,7 @@ export function segments(p: string, parity: 'doc' | 'collection'): string[] {
 }
 
 export class StoreError extends Error {
-  constructor(public code: 'invalid_argument' | 'unavailable', message: string) {
+  constructor(public code: 'invalid_argument' | 'unavailable' | 'permission_denied', message: string) {
     super(message);
   }
 }
@@ -74,6 +74,11 @@ function merge(target: Json, patch: Json): Json {
 function changed(p: string) {
   persist();
   state().bus.emit('change', p);
+}
+
+/** The stored data at a path, with no access checks (for the access rules themselves). */
+export function rawDoc(p: string): Json | null {
+  return state().docs.get(p)?.data ?? null;
 }
 
 export function getDoc(p: string, user: string) {

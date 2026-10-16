@@ -33,14 +33,16 @@ function optOf(kind, id) {
 }
 const agreed = (o, uid) => !!((S.trip.consent || {})[o.key] || {})[uid];
 // people whose hard limit this option breaks (before anyone agreed)
+// date limits are checked here (free days aren't private); budget limits come from the
+// server, which says who is over without saying anyone's budget
+const daysHit = (o, m) => !!(m.hard?.days && (m.days || []).length && o.days && !fitOf(m, o.days));
+const budgetHits = o => (o.lo ? bq({ lo: Math.round(o.lo), hi: Math.round(o.lo), key: o.key }) : null) || (o.lo ? NO_FIT : { ...NO_FIT, pending: false });
 function hitWhy(o, m) {
-  const h = m.hard || {};
-  if (h.days && (m.days || []).length && o.days && !fitOf(m, o.days)) return 'days';
-  if (h.budget && +m.budget > 0 && o.lo && o.lo > +m.budget) return 'budget';
-  return '';
+  if (daysHit(o, m)) return 'days';
+  return budgetHits(o).hard.some(x => x.id === m.id) ? 'budget' : '';
 }
-const hardHitsAll = o => active().filter(m => hitWhy(o, m));
-const hardHits = o => hardHitsAll(o).filter(m => !agreed(o, m.id));
+function hardHitsAll(o) { const d = active().filter(m => daysHit(o, m)); return [...d, ...budgetHits(o).hard.filter(x => !d.some(y => y.id === x.id))]; }
+function hardHits(o) { const d = active().filter(m => daysHit(o, m) && !agreed(o, m.id)); return [...d, ...budgetHits(o).hardOpen.filter(x => !d.some(y => y.id === x.id))]; }
 const softHits = o => o.lo ? active().filter(m => m.cond && +m.cond.under > 0 && o.lo > +m.cond.under) : [];
 // what the crew's chosen style says about locking this option
 function ruleCheck(o) {
@@ -60,6 +62,7 @@ function lockGate(kind, id) {
   if (S.demo) return { ok: true };
   const o = optOf(kind, id); if (!o) return { ok: true };
   const r = ruleCheck(o); if (!r.ok) return r;
+  if (budgetHits(o).pending) return { ok: false, why: 'Checking everyone’s budget limits. Try again in a second.' };
   const hits = hardHits(o);
   if (hits.length) {
     const me = hits.find(m => m.id === S.uid);

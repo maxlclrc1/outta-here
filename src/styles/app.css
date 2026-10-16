@@ -912,3 +912,9 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 .more-opts>summary,.more-opts-inline>summary{cursor:pointer;font-weight:600;color:var(--ink)}
 .more-opts-inline>summary{color:var(--muted)}
 .p-more summary{cursor:pointer;color:var(--muted)}
+/* loading placeholders */
+.skel-list{display:flex;flex-direction:column;gap:12px;margin-top:8px}
+.skel{border-radius:16px;background:linear-gradient(90deg,var(--surface) 0%,color-mix(in oklab,var(--ink) 7%,var(--surface)) 50%,var(--surface) 100%);background-size:200% 100%;animation:skel 1.3s ease-in-out infinite;border:1px solid var(--line)}
+.skel-row{height:84px}.skel-strip{height:58px}.skel-hero{height:240px;border-radius:18px}.skel-card{height:140px}
+@keyframes skel{from{background-position:100% 0}to{background-position:-100% 0}}
+@media (prefers-reduced-motion:reduce){.skel{animation:none}}

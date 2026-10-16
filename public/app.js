@@ -12,10 +12,25 @@ const D = s => new Date(s + 'T00:00:00Z');
 const iso = d => d.toISOString().slice(0, 10);
 const add = (s, n) => { const d = D(s); d.setUTCDate(d.getUTCDate() + n); return iso(d); };
 const span = (a, b) => { const o = []; if (!a || !b) return o; for (let s = a; s <= b && o.length < 92; s = add(s, 1)) o.push(s); return o; };
-const fmt = (s, o = { weekday: 'short', month: 'short', day: 'numeric' }) => D(s).toLocaleDateString('en-US', { ...o, timeZone: 'UTC' });
+// Date labels are formatted constantly while drawing; formatters are reused and results kept.
+const DTF = {}, FMT = new Map(), FMT_DEF = { weekday: 'short', month: 'short', day: 'numeric' };
+const fmt = (s, o = FMT_DEF) => {
+  const ok = o === FMT_DEF ? 'd' : JSON.stringify(o), key = ok + s;
+  let v = FMT.get(key);
+  if (v === undefined) {
+    v = (DTF[ok] ||= new Intl.DateTimeFormat('en-US', { ...o, timeZone: 'UTC' })).format(D(s));
+    if (FMT.size > 3000) FMT.clear();
+    FMT.set(key, v);
+  }
+  return v;
+};
 const short = s => fmt(s, { month: 'short', day: 'numeric' });
 const dow = s => fmt(s, { weekday: 'short' });
-const TODAY = iso(new Date());
+// Today in the viewer's own time zone (plan dates are plain calendar days). Rolls over at
+// midnight if the app stays open.
+const calDay = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+let TODAY = calDay(new Date());
+setInterval(() => { const t = calDay(new Date()); if (t !== TODAY) { TODAY = t; if (typeof render === 'function') render(); } }, 60000);
 const money = n => fmtMoney(Math.round(n), cur());
 
 /* ---------- state ---------- */
@@ -47,7 +62,9 @@ const rid = (n = 10) => Array.from(crypto.getRandomValues(new Uint8Array(n)), b 
 let toastT;
 function flash(msg) { const t = $('#toast'); t.textContent = msg; t.classList.remove('out'); t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.classList.add('out'); toastT = setTimeout(() => { t.hidden = true; t.classList.remove('out'); }, 260); }, 4200); }
 function writeErr(e) {
+  if (e && e.code === 'invalid_argument' && !IN_CLAUDE) return /256 KiB/.test(e.message || '') ? 'This plan has gotten too big to save more. Remove some old items and try again.' : 'That didn’t save. Try again.';
   if (e && e.code === 'invalid_argument') { S.readOnly = true; return "You can view this plan but not edit it. Ask the owner to share it with you as a Contributor."; }
+  if (e && e.code === 'permission_denied') return e.message || 'You don’t have access to change this.';
   if (e && e.code === 'quota_exceeded') return 'Storage is full. Delete an old trip and try again.';
   return 'Couldn’t save that. Check your connection and try again.';
 }
@@ -67,8 +84,15 @@ const active = () => S.members.filter(m => m.status !== 'out');
 const meDoc = () => S.members.find(m => m.id === S.uid);
 // Can this person make these days? All of them, or all but the first (arrives a day late)
 // or the last (leaves a day early) if they said they're flexible that way.
+// Some derived values (best dates, the journey) are read many times while drawing one
+// screen. During a paint they're worked out once and reused; outside a paint, always fresh.
+let MEMO = null;
+const memo = (k, f) => { if (!MEMO) return f(); if (!MEMO.has(k)) MEMO.set(k, f()); return MEMO.get(k); };
+// a member's free days as a Set, built once per days array (saving replaces the array)
+const DAYSETS = new WeakMap(), NO_DAYS = new Set();
+const daySet = arr => { if (!arr || !arr.length) return NO_DAYS; let s = DAYSETS.get(arr); if (!s) DAYSETS.set(arr, s = new Set(arr)); return s; };
 function fitOf(m, d) {
-  const has = new Set(m.days || []);
+  const has = daySet(m.days);
   if (d.every(x => has.has(x))) return 'full';
   if (d.length > 1) {
     const f = m.flex || {};
@@ -78,14 +102,18 @@ function fitOf(m, d) {
   return null;
 }
 function bestWindows(nights) {
-  const t = S.trip; const len = (nights ?? nightsSet(t)) + 1; const days = span(t.winStart, t.winEnd); const ms = active();
+  const t = S.trip, len = (nights ?? nightsSet(t)) + 1;
+  return memo('bw' + len, () => bestWindowsNow(len));
+}
+function bestWindowsNow(len) {
+  const t = S.trip; const days = span(t.winStart, t.winEnd); const ms = active();
   const out = [];
   for (let i = 0; i + len <= days.length; i++) {
     const d = days.slice(i, i + len), fit = new Map(ms.map(m => [m, fitOf(m, d)]));
     const ok = ms.filter(m => fit.get(m));
     if (!ok.length) continue;
-    const pref = ms.filter(m => d.some(x => (m.pref || []).includes(x)));
-    const prefN = ms.reduce((n, m) => n + d.filter(x => (m.pref || []).includes(x)).length, 0);
+    const pref = ms.filter(m => d.some(x => daySet(m.pref).has(x)));
+    const prefN = ms.reduce((n, m) => n + d.filter(x => daySet(m.pref).has(x)).length, 0);
     out.push({ start: d[0], end: d[len - 1], ok, full: ok.filter(m => fit.get(m) === 'full'), late: ok.filter(m => fit.get(m) === 'late'), early: ok.filter(m => fit.get(m) === 'early'), pref, prefN, miss: ms.filter(m => !fit.get(m)) });
   }
   // most people first, then most people for the whole thing, then most preferred
@@ -110,7 +138,8 @@ function dates() {
   if (S.trip.lockedDates) return { ...S.trip.lockedDates, locked: true };
   const w = bestWindows()[0]; return w ? { start: w.start, end: w.end, locked: false } : null;
 }
-function budgetCap() { const b = active().map(m => +m.budget || 0).filter(x => x > 0); return b.length ? { cap: Math.min(...b), n: b.length } : null; }
+// the lowest budget set in the crew: the one number about budgets everyone sees
+function budgetCap() { return budgetCapShared(); }
 const nightsOf = d => d ? Math.round((D(d.end) - D(d.start)) / 864e5) : 0;
 const homes = () => [...new Set(active().map(m => (m.home || '').trim()).filter(Boolean))];
 const nameOf = id => id === 'ai' ? 'Outta Here AI' : (S.members.find(m => m.id === id) || {}).nick || 'Someone';
@@ -135,7 +164,7 @@ function nudges() {
     const todo = [];
     if (m.status === 'maybe') todo.push('say if you’re in');
     if (!(m.days || []).length && !S.trip.lockedDates) todo.push(isSmall() ? 'say which days work' : 'pick your dates');
-    if (!m.budget) todo.push('set your budget');
+    if (!m.budget && !m.budgetSet) todo.push('set your budget');
     if (hasDest && !(m.votes || []).length && !S.trip.lockedDest) todo.push(isSmall() ? 'vote on the plan' : 'vote on where');
     if (size() === 'trip' && booking_time() && going(m) && !tk[m.id]) todo.push('book your flight and upload your boarding pass');
     if (!m.quiz || Object.keys(m.quiz).length < QUIZ.length) todo.push('take the vibe quiz');
@@ -205,25 +234,51 @@ function voteBtns(key) {
 
 /* ---------- writes ---------- */
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
+// a list from AI or older saved data that might not be a list
+const arr = v => Array.isArray(v) ? v : [];
 function merge(t, p) { const o = { ...t }; for (const [k, v] of Object.entries(p)) o[k] = isObj(v) && isObj(o[k]) ? merge(o[k], v) : v; return o; }
-async function saveTrip(patch) {
-  S.trip = merge(S.trip, patch); render();
+// Changes show right away and are written in the background. Every write goes to the plan it
+// was made in, even if you've moved on by the time it runs. If a write fails, the screen is
+// put back to what's actually saved, so it never shows something the crew can't see.
+async function saveTrip(patch, tid = S.tid) {
+  if (!tid) return false;
+  const here = tid === S.tid && S.trip;
+  if (here) { S.trip = merge(S.trip, patch); render(); }
   if (S.demo) return true;
   if (!S.db) return false;
-  try { await S.db.doc('trips/' + S.tid).update(patch); return true; } catch (e) { flash(writeErr(e)); return false; }
+  try { await S.db.doc('trips/' + tid).update(patch); return true; }
+  catch (e) { flash(writeErr(e)); if (here) resync(tid); return false; }
+}
+async function resync(tid) {
+  try { const snap = await S.db.doc('trips/' + tid).get(); if (S.tid === tid && snap.exists) { S.trip = { ...snap.data() }; render(); } } catch {}
 }
 async function putSub(coll, id, data, partial) {
-  const list = S[coll], i = list.findIndex(x => x.id === id);
+  const tid = S.tid, list = S[coll], i = list.findIndex(x => x.id === id), before = i >= 0 ? list[i] : null;
   if (i >= 0) list[i] = partial ? { ...list[i], ...data } : { id, ...data }; else list.push({ id, ...data });
   render();
-  if (S.demo || !S.db) return;
-  const ref = S.db.doc(`trips/${S.tid}/${coll}/${id}`);
-  try { partial ? await ref.update(data) : await ref.set(data); } catch (e) { flash(writeErr(e)); }
+  if (S.demo || !S.db || !tid) return true;
+  const ref = S.db.doc(`trips/${tid}/${coll}/${id}`);
+  try { partial ? await ref.update(data) : await ref.set(data); return true; }
+  catch (e) {
+    flash(writeErr(e));
+    if (S.tid === tid) { S[coll] = before ? S[coll].map(x => x.id === id ? before : x) : S[coll].filter(x => x.id !== id); render(); }
+    return false;
+  }
 }
 async function delSub(coll, id) {
+  const tid = S.tid, before = S[coll].find(x => x.id === id);
   S[coll] = S[coll].filter(x => x.id !== id); render();
-  if (S.demo || !S.db) return;
-  try { await S.db.doc(`trips/${S.tid}/${coll}/${id}`).delete(); } catch (e) { flash(writeErr(e)); }
+  if (S.demo || !S.db || !tid) return;
+  try { await S.db.doc(`trips/${tid}/${coll}/${id}`).delete(); }
+  catch (e) { flash(writeErr(e)); if (S.tid === tid && before) { S[coll].push(before); render(); } }
+}
+// One at a time: a second tap while the first is still saving does nothing.
+const INFLIGHT = new Set();
+async function once(key, fn) {
+  if (INFLIGHT.has(key)) return;
+  INFLIGHT.add(key); S.busy[key] = true;
+  const job = fn(); render(); // fn reads its form fields before the busy state is drawn
+  try { return await job; } finally { INFLIGHT.delete(key); S.busy[key] = false; render(); }
 }
 async function copy(text) {
   try { await navigator.clipboard.writeText(text); flash('Copied. Paste it in the group chat.'); S.copyText = ''; }
@@ -240,16 +295,17 @@ function saveMe(patch, now, quiet) {
   S.meDirty = true; meSeq++; clearTimeout(meT); meT = setTimeout(flushMe, now ? 0 : 600);
 }
 async function flushMe() {
-  if (meWriting) { meT = setTimeout(flushMe, 300); return; }
-  const m = meDoc(); if (!m || !S.db) return;
-  meWriting = true; const seq = meSeq;
-  const { id, ...body } = m;
+  clearTimeout(meT);
+  const m = meDoc(); if (!m || !S.db || S.demo || !S.tid) return;
+  const { id, ...body } = m, job = { tid: S.tid, body, seq: meSeq, joined: !!(S.trip?.people || {})[S.uid] && !(S.trip?.left || {})[S.uid] };
+  while (meWriting) await new Promise(r => setTimeout(r, 120));
+  meWriting = true;
   try {
-    await S.db.doc(`trips/${S.tid}/members/${S.uid}`).set({ ...body, updatedAt: Date.now() });
-    if (!(S.trip?.people || {})[S.uid] || (S.trip?.left || {})[S.uid]) S.db.doc('trips/' + S.tid).update({ people: { [S.uid]: true }, left: { [S.uid]: null } }).catch(() => {});
+    await S.db.doc(`trips/${job.tid}/members/${S.uid}`).set({ ...job.body, updatedAt: Date.now() });
+    if (!job.joined) S.db.doc('trips/' + job.tid).update({ people: { [S.uid]: true }, left: { [S.uid]: null } }).catch(() => {});
   }
-  catch (e) { flash(writeErr(e)); }
-  meWriting = false; if (seq === meSeq) S.meDirty = false;
+  catch (e) { flash(S.tid === job.tid ? writeErr(e) : 'Your last change to the other plan didn’t save. Open it and try again.'); }
+  meWriting = false; if (job.seq === meSeq && S.tid === job.tid) S.meDirty = false;
 }
 
 /* ---------- AI ---------- */
@@ -258,9 +314,14 @@ async function askAI(kind, prompt, done) {
   S.busy[kind] = true; render();
   if (S.trip) { const nt = needsText(); if (nt) prompt += '\n\n' + nt; }
   if (S.trip) prompt += `\n\nGive every price in ${cur()} (${curSymbol(cur())}), not in any other currency, and use that symbol in price text.`;
-  try { const data = await S.sample.json(prompt, { modelTier: 'default' }); await done(data); }
-  catch (e) { flash(aiErr(e)); }
-  finally { S.busy[kind] = false; render(); }
+  const tid = S.tid;
+  try {
+    const data = await S.sample.json(prompt, { modelTier: 'default' });
+    if (S.tid !== tid) { flash('An AI answer came back after you left that plan. Open it and ask again.'); return; }
+    await done(data);
+  }
+  catch (e) { if (S.tid === tid) flash(aiErr(e)); }
+  finally { if (S.tid === tid) { S.busy[kind] = false; render(); } }
 }
 function context() {
   const d = dates(), ds = dest(), b = budgetCap();
@@ -500,12 +561,23 @@ function render() {
   paint();
 }
 function paint() {
+  MEMO = new Map();
+  try { paintNow(); } finally { MEMO = null; }
+}
+function paintNow() {
   try { if (S.tid && S.trip) announceChanges(); } catch {}
   const a = document.activeElement, fid = (a && a !== document.body && a.id) || (lastDown && Date.now() - lastDown.at < 800 ? lastDown.id : ''), sel = a && 'selectionStart' in a ? [a.selectionStart, a.selectionEnd] : null;
   const scrollTabs = $('.tabs')?.scrollLeft;
   const vk = viewKey(), fresh = vk !== lastView || !app.firstChild; lastView = vk;
   if (S.tid && S.trip && !S.demo) try { sessionStorage.setItem('outta_tab_' + S.tid, S.tab); } catch {}
-  const html = S.tid && S.trip ? tripView() : homeView();
+  let html;
+  try { html = S.tid && S.trip ? tripView() : homeView(); }
+  catch (e) {
+    // one broken screen shouldn't take the whole app down
+    console.error(e);
+    html = `${topBar()}<section class="card stack" style="margin-top:20px"><h2>This screen hit a problem</h2><p class="muted">Something in this ${S.tid ? planWord() : 'page'} couldn’t be shown. Your data is safe.</p>
+      <div class="row" style="gap:8px"><button class="btn primary" data-act="reloadView">Try again</button><button class="btn" data-act="home">Back home</button></div></section>`;
+  }
   let born = [];
   if (fresh) app.innerHTML = html; else born = morph(app, html);
   const sk = S.tid && S.trip ? secOf(S.tab).k : 'none';
@@ -514,6 +586,9 @@ function paint() {
   if (fid) { const el = document.getElementById(fid); if (el) { el.focus(); if (sel && el.setSelectionRange) try { el.setSelectionRange(...sel); } catch {} } }
   if (scrollTabs) { const t = $('.tabs'); if (t) t.scrollLeft = scrollTabs; }
   bindSwipe();
+  // a sheet that just opened takes focus, so keyboard and screen reader users land in it
+  const dlg = $('.sheet[role=dialog], .show[role=dialog]');
+  if (dlg && !dlg.contains(document.activeElement)) (dlg.querySelector('input, button:not([disabled])') || dlg).focus({ preventScroll: true });
   applyBeacon(); checkMilestones();
   const stb = $('.subtabs'), son = $('.subtab.on'); if (stb && son) stb.scrollLeft = son.offsetLeft - stb.clientWidth / 2 + son.clientWidth / 2;
   const fd = $('#feed'); if (fd) fd.scrollTop = fd.scrollHeight;
@@ -522,6 +597,10 @@ function paint() {
   else popIn(born);
 }
 
+// Placeholders shaped like what's coming, so the screen doesn't jump when it arrives.
+const skel = (kind = 'plan') => kind === 'rows'
+  ? `<div class="skel-list" aria-busy="true" aria-label="Loading your plans">${'<div class="skel skel-row"></div>'.repeat(3)}</div>`
+  : `<div class="skel-list" aria-busy="true" aria-label="Loading">${'<div class="skel skel-strip"></div><div class="skel skel-hero"></div><div class="skel skel-card"></div>'}</div>`;
 function topBar() {
   const day = document.documentElement.dataset.theme === 'light';
   return `<div class="top"><button class="logo" data-act="home">Outta<span>/</span>Here</button>
@@ -572,7 +651,7 @@ function crewTab() {
       ${ns.length ? `<button class="btn primary sm" data-act="copyNudge">Copy nudge for the group chat</button>` : ''}</div>
     ${ns.length ? `<div>${ns.map(x => `<div class="nudge"><b>${esc(x.m.nick || 'Someone')}${x.m.id === S.uid ? ' (you)' : ''}</b><span class="small muted">${x.todo.join(' · ')}</span></div>`).join('')}</div>`
       : `<p class="small" style="color:var(--good)">Nobody. Everyone’s done their part.</p>`}
-    ${S.copyText ? `<textarea id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
+    ${S.copyText ? `<textarea aria-label="Text to copy" id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
   </section>
   <section class="card stack">
     <h2>Your details</h2>
@@ -596,7 +675,7 @@ function crewTab() {
     ${S.members.length ? S.members.filter(x => !x.removed).map(x => `<div class="crew-row">
       <div class="av" style="background:${colorFor(x.id)}">${esc((x.nick || '?')[0].toUpperCase())}</div>
       <div style="min-width:0"><b>${esc(x.nick || 'Someone')}${x.id === S.uid ? ' <span class="muted small">(you)</span>' : ''}</b>
-        <div class="small muted">${x.home && !isSmall() ? (size() === 'trip' ? '✈ ' : 'from ') + esc(x.home) + ' · ' : ''}${(x.days || []).length} ${(x.days || []).length === 1 ? 'day' : 'days'} free · ${(x.votes || []).length ? 'voted' : 'no vote yet'}${x.budget ? ' · budget set' : ''}</div></div>
+        <div class="small muted">${x.home && !isSmall() ? (size() === 'trip' ? '✈ ' : 'from ') + esc(x.home) + ' · ' : ''}${(x.days || []).length} ${(x.days || []).length === 1 ? 'day' : 'days'} free · ${(x.votes || []).length ? 'voted' : 'no vote yet'}${x.budget || x.budgetSet ? ' · budget set' : ''}</div></div>
       <div class="cr-side"><span class="pill lvl-${x.status || 'maybe'}">${LEVEL_LABEL[x.status || 'maybe']}</span>${x.id === S.trip.createdBy || (S.trip.orgs || {})[x.id] ? '<span class="small muted">Organizer</span>' : ''}
         ${isOrganizer() && !S.demo && x.id !== S.uid && x.id !== S.trip.createdBy ? (S.confirmRm === x.id ? `<span class="row" style="gap:4px"><button class="btn sm danger-fill" data-rmdo="${esc(x.id)}">Remove</button><button class="btn sm ghost" data-act="rmCancel">Cancel</button></span>` : `<span class="row" style="gap:8px"><button class="linkbtn small" data-mkorg="${esc(x.id)}">${(S.trip.orgs || {})[x.id] ? 'Not organizer' : 'Make organizer'}</button><button class="linkbtn small" data-rmmember="${esc(x.id)}">Remove</button></span>`) : ''}</div>
     </div>`).join('') : `<p class="muted">Nobody yet. Add your details above.</p>`}
@@ -743,7 +822,7 @@ function spotsTab() {
         return `<div class="stack" style="gap:4px"><div class="row" style="justify-content:space-between"><span class="label">${esc(q.q)}</span>${w.how !== 'majority' ? `<span class="tie">Tie</span>` : ''}</div>
         ${top.map(x => `<div class="row" style="gap:8px;flex-wrap:nowrap"><span class="small" style="flex:0 0 46%">${x.a === w.a ? '<b>★ ' : ''}${x.pct}% ${esc(x.a)}${x.a === w.a ? '</b>' : ''}</span><div class="bar" style="flex:1"><i style="width:${x.pct}%"></i></div></div>`).join('')}
         ${w.how !== 'majority' ? `<div class="runoff"><span class="small">${w.how === 'runoff' ? `Runoff winner: <b>${esc(w.a)}</b> (${w.tied.map(a => (w.rv[a] || 0)).join('–')})` : w.votes ? `Runoff is tied too, so a coin flip picked <b>${esc(w.a)}</b>` : `Coin flip picked <b>${esc(w.a)}</b> for now. Vote in the runoff to decide it yourselves.`}</span>
-          <div class="row" style="gap:6px">${w.tied.map(a => `<button class="chip ${myRun === a ? 'on' : ''}" data-runoff="${q.k}|${esc(a)}">${esc(a)}</button>`).join('')}</div></div>` : ''}</div>`; }).join('')}
+          <div class="row" style="gap:6px">${w.tied.map(a => `<button class="chip ${myRun === a ? 'on' : ''}" data-qrunoff="${q.k}|${esc(a)}">${esc(a)}</button>`).join('')}</div></div>` : ''}</div>`; }).join('')}
       <span class="small" style="opacity:.75">Screenshot this and drop it in the chat.</span>
     </div>` : `<div class="empty"><b>Your crew’s vibe shows up here.</b><span>Answer the 5 questions. Once friends answer too, you’ll see the blend, like “60% Big club, 40% Rooftop cocktails”, and the AI uses it for its picks.</span></div>`}
   </section>
@@ -885,6 +964,7 @@ async function leaveTrip() {
 async function sendTicket() {
   const flight = ($('#tk-flight')?.value || '').trim().slice(0, 20), file = S.tkFile, price = Math.max(0, Math.round(+($('#tk-price')?.value || 0)));
   if (!file && !flight) { flash('Add your boarding pass or your flight number.'); return; }
+  const tid = S.tid;
   if (file && file.size > 20 * 1024 * 1024) { flash('That file is over 20 MB. Try a screenshot instead.'); return; }
   let asset = null, type = '';
   if (file && S.assets && !S.demo) {
@@ -893,10 +973,11 @@ async function sendTicket() {
     catch (e) { S.busy.ticket = false; render(); flash(e && e.code === 'unsupported_type' ? 'Use a photo, screenshot or PDF.' : 'Upload failed. Try again, or just add your flight number.'); return; }
     S.busy.ticket = false;
   }
+  if (S.tid !== tid) { flash('Your boarding pass upload finished after you left that plan. Open it and send it again.'); return; }
   S.tkFile = null;
-  await saveTrip({ tickets: { [S.uid]: { asset, type, flight, ...(price ? { price } : {}), at: Date.now() } } });
+  if (!await saveTrip({ tickets: { [S.uid]: { asset, type, flight, ...(price ? { price } : {}), at: Date.now() } } })) return;
   if (meDoc()?.status !== 'booked') saveMe({ status: 'booked', seen: true }, true);
-  if (tickets().on) flash('That’s everyone. The trip is ON.');
+  flash(tickets().on ? 'That’s everyone. The trip is ON.' : 'Boarding pass in. You’re marked as booked.');
 }
 async function delTicket() {
   const mine = tickets().tk[S.uid]; if (!mine) return;
@@ -926,7 +1007,7 @@ function setupView() {
         ${dayPicker()}<span class="small muted">${nDays ? `${nDays} day${nDays === 1 ? '' : 's'} picked` : 'Nothing picked yet'}</span>` },
     home: { h: size() === 'trip' ? 'Where are you flying from?' : 'Where are you coming from?',
       p: size() === 'trip' ? 'Your home airport or city. It’s used for flight prices and to pitch places that are easy for everyone to reach.' : 'Your city or neighborhood, so pitches stay within reach for everyone.',
-      c: `<input id="me-home" class="big-input" maxlength="40" value="${esc(m.home || '')}" placeholder="${size() === 'trip' ? 'JFK or New York' : 'Brooklyn'}" autocomplete="address-level2" enterkeyhint="next">` },
+      c: `<input id="me-home" aria-label="${size() === 'trip' ? 'Home airport or city' : 'Your city or neighborhood'}" class="big-input" maxlength="40" value="${esc(m.home || '')}" placeholder="${size() === 'trip' ? 'JFK or New York' : 'Brooklyn'}" autocomplete="address-level2" enterkeyhint="next">` },
     budget: { h: 'What’s your max?',
       p: isSmall() ? 'The most you’d spend on this, all in. Pitches stay under the lowest budget in the crew.' : 'The most you’d spend in total, travel included. Pitches stay under the lowest budget in the crew.',
       c: `<div class="row" style="gap:6px">${BUDGETS[size()].map(u => niceIn(u)).map(v => `<button class="chip big-chip ${+m.budget === v ? 'on' : ''}" data-budget="${v}">${money(v)}</button>`).join('')}</div>
@@ -1106,11 +1187,12 @@ const okForAll = p => { const vs = active(); return vs.length >= 2 && vs.every(m
 const fitScore = p => yesOf(p) * 2 + workableOf(p);
 function groupFit(p) {
   const vs = active(), out = [], r = moneyRange(p.perPerson);
-  const withB = vs.filter(m => +m.budget > 0);
-  if (r && withB.length) {
-    const over = withB.filter(m => +m.budget < r[0]), stretch = withB.filter(m => +m.budget >= r[0] && +m.budget < r[1]);
-    out.push(over.length ? { ok: false, text: `Over budget for ${budgetWho(over)}` } : stretch.length ? { ok: 'meh', text: `A stretch for ${budgetWho(stretch)}` } : { ok: true, text: withB.length === vs.length ? `Fits ${vs.length}/${vs.length} budgets` : `Fits every budget set (${withB.length} of ${vs.length})` });
-  } else out.push({ ok: 'meh', text: withB.length ? 'No price to check yet' : 'Nobody set a budget yet' });
+  const nB = vs.filter(m => +m.budget > 0 || m.budgetSet).length, f = r && nB ? budgetFit({ low: r[0], high: r[1] }) : null;
+  if (f && f.pending) out.push({ ok: 'meh', text: 'Checking budgets…' });
+  else if (f && f.n) {
+    const { over, stretch } = f;
+    out.push(over.length ? { ok: false, text: `Over budget for ${budgetWho(over)}` } : stretch.length ? { ok: 'meh', text: `A stretch for ${budgetWho(stretch)}` } : { ok: true, text: f.n === vs.length ? `Fits ${vs.length}/${vs.length} budgets` : `Fits every budget set (${f.n} of ${vs.length})` });
+  } else out.push({ ok: 'meh', text: nB ? 'No price to check yet' : 'Nobody set a budget yet' });
   const days = span(p.start, p.end), can = vs.filter(m => fitOf(m, days)), cant = vs.filter(m => !fitOf(m, days)), picked = vs.filter(m => (m.days || []).length);
   if (picked.length) out.push(cant.filter(m => (m.days || []).length).length ? { ok: false, text: `${listNames(cant.filter(m => (m.days || []).length))} can’t make ${p.start === p.end ? 'that day' : 'those dates'}` } : { ok: true, text: `Free: ${can.length}/${vs.length}` });
   const rs = rated(p);
@@ -1166,7 +1248,7 @@ Reply with only JSON: {"pitches":[{"city":"","code":"IATA airport code","start":
       const o = valid.get(p.start) || opts[0];
       return { id: rid(6), city: String(p.city).slice(0, 40), code: isCode(p.code) ? p.code.toUpperCase() : '', start: o.start, end: o.end,
         tagline: String(p.tagline || '').slice(0, 80), why: String(p.why || '').slice(0, 300), perPerson: String(p.perPerson || '').slice(0, 30),
-        vibeMatch: Math.max(0, Math.min(100, Math.round(+p.vibeMatch || 0))), highlights: (p.highlights || []).slice(0, 3).map(h => String(h).slice(0, 80)), weather: String(p.weather || '').slice(0, 60) };
+        vibeMatch: Math.max(0, Math.min(100, Math.round(+p.vibeMatch || 0))), highlights: arr(p.highlights).slice(0, 3).map(h => String(h).slice(0, 80)), weather: String(p.weather || '').slice(0, 60) };
     });
     if (!items.length) { flash('No pitches came back. Try again.'); return; }
     return saveTrip({ pitches: { items, at: Date.now() }, pitchHistory: nextHistory(), runoff: null });
@@ -1211,7 +1293,7 @@ function matchBody() {
         <div class="facts"><div><span class="label">${p.small ? 'When' : 'Dates'}</span><b>${p.small ? fmt(p.start) + (p.time ? ' · ' + t12(p.time) : '') : short(p.start) + ' → ' + short(p.end)}</b></div><div><span class="label">Per person</span><b>${esc(p.perPerson || '?')}</b></div></div>
         ${fitChips(p)}
         <p>${esc(p.why)}</p>
-        ${p.highlights.length || p.weather ? `<details class="p-more"><summary class="small">See details</summary>${p.weather ? `<p class="small" style="margin:6px 0 0"><b>Weather:</b> ${esc(p.weather)}</p>` : ''}${p.highlights.length ? `<ul style="margin:6px 0 0;padding-left:18px">${p.highlights.map(h => `<li>${esc(h)}</li>`).join('')}</ul>` : ''}</details>` : ''}
+        ${arr(p.highlights).length || p.weather ? `<details class="p-more"><summary class="small">See details</summary>${p.weather ? `<p class="small" style="margin:6px 0 0"><b>Weather:</b> ${esc(p.weather)}</p>` : ''}${arr(p.highlights).length ? `<ul style="margin:6px 0 0;padding-left:18px">${arr(p.highlights).map(h => `<li>${esc(h)}</li>`).join('')}</ul>` : ''}</details>` : ''}
       </div>
     </article>`; };
   return `${S.sample === null ? whereTab() : ''}<section class="card stack">
@@ -1326,7 +1408,7 @@ function liveTab() {
   </section>
   <section class="card stack"><div class="row" style="justify-content:space-between"><h3>Where’s everyone</h3>${myCi ? `<span class="small muted">You: ${esc(myCi.text)} · ${ago(myCi.at)}</span>` : ''}</div>
     <div class="row" style="gap:6px">${(isSmall() ? CHECKINS_SMALL : CHECKINS).map(c => `<button class="chip ${myCi?.text === c ? 'on' : ''}" data-checkin="${esc(c)}">${esc(c)}</button>`).join('')}</div>
-    <form id="ciForm" class="row" style="gap:6px"><input id="ci-text" maxlength="60" placeholder="Or type it: “at the bar by the pool”" style="flex:1 1 200px"><button class="btn sm" type="submit">Check in</button></form>
+    <form id="ciForm" class="row" style="gap:6px"><input aria-label="Where you are" id="ci-text" maxlength="60" placeholder="Or type it: “at the bar by the pool”" style="flex:1 1 200px"><button class="btn sm" type="submit">Check in</button></form>
     <div>${active().map(m => `<div class="nudge"><b>${esc(m.nick || 'Someone')}</b><span class="small ${m.checkin ? '' : 'muted'}">${m.checkin ? (m.hideLoc && m.id !== S.uid ? 'Checked in' : esc(m.checkin.text)) + ' · ' + ago(m.checkin.at) : 'No check-in yet'}</span></div>`).join('')}</div>
   </section>
   ${mapPoints().length ? `<section class="card stack"><div class="row" style="justify-content:space-between"><h3>Map</h3><button class="btn sm ghost" data-tab="map">Full map</button></div>${mapView(300)}</section>` : ''}
@@ -1368,7 +1450,7 @@ function hypeTab() {
     <div class="feed" id="feed">${feed.length ? feed.map(f => `<div class="bubble ${f.by === S.uid ? 'mine' : ''} ${f.by === 'ai' ? 'ai' : ''}">${f.secret ? '<span class="secret-tag">Planners only</span><br>' : ''}${f.by !== S.uid ? `<span class="small" style="font-weight:700">${esc(nameOf(f.by))}</span><br>` : ''}${linkify(f.text)}
       <span class="small" style="opacity:.7;display:block;margin-top:2px">${ago(f.at)}${f.by === S.uid ? ` · <button class="linkbtn" data-delfeed="${esc(f.id)}">delete</button>` : ''}</span></div>`).join('') : '<p class="small muted">Drop links, outfit ideas and hype here so they don’t get buried in the group chat.</p>'}</div>
     <div class="row" style="gap:6px">${(isLive() ? HYPES_LIVE : isSmall() ? HYPES_SMALL : HYPES).map(h => `<button class="chip" data-hype="${esc(h)}">${esc(h)}</button>`).join('')}</div>
-    <form id="feedForm" class="row" style="gap:6px"><input id="fd-text" maxlength="500" placeholder="Say something…" style="flex:1 1 200px" autocomplete="off"><button class="btn primary" type="submit">Send</button>
+    <form id="feedForm" class="row" style="gap:6px"><input aria-label="Message to the crew" id="fd-text" maxlength="500" placeholder="Say something…" style="flex:1 1 200px" autocomplete="off"><button class="btn primary" type="submit">Send</button>
       ${honoreeMode() && !isHonoree() ? `<label class="row small" style="gap:6px;flex:1 1 100%"><input type="checkbox" id="fd-secret" style="width:auto"> Planners only (hidden from the ${esc(mode().honoree)})</label>` : ''}</form>
   </section>`;
 }
@@ -1394,8 +1476,9 @@ function openShow(i) {
 function closeShow() { S.show = null; clearInterval(showTimer); render(); }
 async function uploadPhotos(files) {
   if (!S.assets || !files.length) return;
-  const list = [...files].slice(0, 30); let n = 0;
+  const list = [...files].slice(0, 30), tid = S.tid; let n = 0;
   for (const f of list) {
+    if (S.tid !== tid) { flash(`Stopped adding photos: you left that plan. ${n} of ${list.length} went in.`); return; }
     S.busy.photos = `${++n}/${list.length}`; render();
     if (f.size > 20 * 1024 * 1024) { flash(`${f.name} is over 20 MB, skipped.`); continue; }
     try { const r = await S.assets.upload(f); await putSub('photos', rid(10), { asset: r.id, by: S.uid, at: Date.now() }); }
@@ -1465,7 +1548,10 @@ async function saveCrew(name) {
   const cid = S.trip.crewId || rid(10);
   const body = { name: name.slice(0, 40), ids: ms.map(m => m.id), profiles, by: S.uid, at: Date.now() };
   if (S.demo) { S.crews = [...S.crews.filter(c => c.id !== cid), { id: cid, ...body }]; await saveTrip({ crewId: cid }); flash('Crew saved.'); return; }
-  try { await S.db.doc('crews/' + cid).set(body); await saveTrip({ crewId: cid }); flash(`Saved “${body.name}”. Start the next trip from the home screen.`); }
+  try {
+    if (S.trip.crewId && S.crews.some(c => c.id === cid)) { const { by, ...rest } = body; await S.db.doc('crews/' + cid).update({ ...rest, people: Object.fromEntries(body.ids.map(id => [id, true])) }); flash(`Updated “${body.name}”.`); return; }
+    await S.db.doc('crews/' + cid).set({ ...body, people: Object.fromEntries(body.ids.map(id => [id, true])) }); await saveTrip({ crewId: cid }); flash(`Saved “${body.name}”. Start the next trip from the home screen.`);
+  }
   catch (e) { flash(writeErr(e)); }
 }
 function crewSection() {
@@ -1474,7 +1560,7 @@ function crewSection() {
     ${crew ? `<p class="small">This ${planWord()} belongs to <b>${esc(crew.name)}</b>. Start the next plan from their crew page in one tap.</p>
       <div><button class="btn sm" data-act="syncCrew">Update crew with these people</button></div>`
     : `<p class="small muted">Save this group as a crew so the next plan starts with everyone already added, and keep a history of your plans together.</p>
-      <form id="crewForm" class="row" style="gap:6px"><input id="crew-name" maxlength="40" placeholder="The Vegas Six" style="flex:1 1 180px" required><button class="btn sm primary" type="submit">Save crew</button></form>`}
+      <form id="crewForm" class="row" style="gap:6px"><input aria-label="Crew name" id="crew-name" maxlength="40" placeholder="The Vegas Six" style="flex:1 1 180px" required><button class="btn sm primary" type="submit">Save crew</button></form>`}
   </section>`;
 }
 /* ---------- trip modes ---------- */
@@ -1862,11 +1948,53 @@ function costSummary(t = S.trip, who = 'crew') {
   const missing = rows.filter(r => r.major && !r.v && !r.booked), estimates = rows.filter(r => r.v && ['estimate', 'ai'].includes(r.v.src));
   return { rows, buffer, other, low: withBuf(low), high: withBuf(high), missing, estimates, any: rows.some(r => r.v) || other > 0 };
 }
-// Who can afford it: budget ≥ high fits, between low and high is a stretch, below low doesn't.
-function budgetFit(sum) {
-  const ms = active().filter(m => +m.budget > 0);
-  const fits = ms.filter(m => +m.budget >= sum.high), stretch = ms.filter(m => +m.budget < sum.high && +m.budget >= sum.low), over = ms.filter(m => +m.budget < sum.low);
-  return { fits, stretch, over, n: ms.length, unknown: active().length - ms.length };
+/* ---------- budget fit ----------
+   Other people's budgets never reach this browser. "Does lo–hi fit the crew?" goes to
+   /api/budget, which answers with counts and only names people who chose to be named (or
+   you). Answers are kept until the crew's details change. The demo and the Claude version
+   have no server of their own, so there it's worked out here from the data the page has.
+   Budget ≥ high fits, between low and high is a stretch, below low is over. */
+const BQ = { tid: null, cache: new Map(), queue: new Map(), cap: undefined, t: 0 };
+const NO_FIT = { n: 0, unknown: 0, fits: [], stretch: [], over: [], hard: [], hardOpen: [], pending: true };
+const budgetsHere = () => S.demo || IN_CLAUDE;
+function budgetReset() { BQ.cache.clear(); BQ.cap = undefined; }
+function bq(check) {
+  if (BQ.tid !== S.tid) { BQ.tid = S.tid; budgetReset(); BQ.queue.clear(); }
+  if (budgetsHere()) return budgetLocal(check);
+  const k = JSON.stringify(check);
+  if (BQ.cache.has(k)) return BQ.cache.get(k);
+  if (!BQ.queue.has(k)) { BQ.queue.set(k, check); clearTimeout(BQ.t); BQ.t = setTimeout(budgetFetch, 0); }
+  return null;
+}
+async function budgetFetch() {
+  const tid = S.tid, items = [...BQ.queue]; BQ.queue.clear();
+  if (!tid || !items.length) return;
+  let data = null;
+  try {
+    const r = await fetch('/api/budget', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-outta-user': S.uid }, body: JSON.stringify({ tid, checks: items.map(([, c]) => c) }) });
+    if (r.ok) data = await r.json();
+  } catch {}
+  if (S.tid !== tid) return;
+  // a failed check counts as "no budgets to compare" rather than retrying in a loop
+  items.forEach(([k], i) => BQ.cache.set(k, data ? budgetShape(data.results[i]) : { ...NO_FIT, pending: false }));
+  if (data) BQ.cap = data.cap; else if (BQ.cap === undefined) BQ.cap = null;
+  render();
+}
+// counts from the server → lists the UI can use: named people, then anonymous stand-ins
+function budgetShape(r) {
+  const list = g => [...g.ids.map(id => S.members.find(m => m.id === id) || { id, nick: 'Someone' }), ...Array.from({ length: Math.max(0, g.count - g.ids.length) }, (_, i) => ({ id: 'anon-' + i, nick: 'Someone' }))];
+  return { n: r.n, unknown: r.total - r.n, fits: list(r.fits), stretch: list(r.stretch), over: list(r.over), hard: list(r.hard), hardOpen: list(r.hardOpen) };
+}
+function budgetLocal({ lo = 0, hi = 0, key = '' }) {
+  const ms = active().filter(m => +m.budget > 0), h = Math.max(lo, hi || lo), consent = ((S.trip.consent || {})[key]) || {};
+  const hard = lo ? ms.filter(m => m.hard?.budget && lo > +m.budget) : [];
+  return { n: ms.length, unknown: active().length - ms.length, fits: ms.filter(m => +m.budget >= h), stretch: ms.filter(m => +m.budget < h && +m.budget >= lo), over: ms.filter(m => +m.budget < lo), hard, hardOpen: hard.filter(m => !consent[m.id]) };
+}
+// extra: { exclude: [ids], myBudget } for "what if" questions (someone drops out, my budget changes)
+function budgetFit(sum, extra) { return bq({ lo: Math.round(sum.low || 0), hi: Math.round(sum.high || 0), ...(extra || {}) }) || NO_FIT; }
+function budgetCapShared() {
+  if (budgetsHere()) { const b = active().map(m => +m.budget || 0).filter(x => x > 0); return b.length ? { cap: Math.min(...b), n: b.length } : null; }
+  bq({}); return BQ.cap || null;
 }
 const rangeText = (lo, hi) => `${money(lo)}${hi !== lo ? '–' + money(hi) : ''}`;
 function costTab() {
@@ -1911,15 +2039,15 @@ function costTab() {
 const costT = {}, costPending = {};
 function saveCostLine(k) {
   const el = id => $('#cost-' + id + '-' + k);
-  costPending[k] = { low: el('low') ? el('low').value : costPending[k]?.low, high: el('high') ? el('high').value : costPending[k]?.high, src: el('src') ? el('src').value : costPending[k]?.src };
+  costPending[k] = { low: el('low') ? el('low').value : costPending[k]?.low, high: el('high') ? el('high').value : costPending[k]?.high, src: el('src') ? el('src').value : costPending[k]?.src, tid: S.tid };
   clearTimeout(costT[k]); costT[k] = setTimeout(() => saveCostLineNow(k), 350);
 }
 function saveCostLineNow(k) {
-  const { low, high, src = 'estimate' } = costPending[k] || {}; delete costPending[k];
+  const { low, high, src = 'estimate', tid } = costPending[k] || {}; delete costPending[k];
   const l = Math.max(0, Math.round(+low || 0)), h = Math.max(0, Math.round(+high || 0));
   delete DRAFT['cost-low-' + k]; delete DRAFT['cost-high-' + k];
-  if (!l && !h) return saveTrip({ costs: { [k]: null } });
-  saveTrip({ costs: { [k]: { low: l || h, high: Math.max(l, h), src, by: S.uid, at: Date.now() } } });
+  if (!l && !h) return saveTrip({ costs: { [k]: null } }, tid);
+  saveTrip({ costs: { [k]: { low: l || h, high: Math.max(l, h), src, by: S.uid, at: Date.now() } } }, tid);
 }
 // AI fills only the lines that don't have a real quote or booking yet.
 function estimateCosts() {
@@ -2041,15 +2169,15 @@ const $all = s => [...document.querySelectorAll(s)];
 const CHANGES = [['drop', 'Someone dropped out'], ['price', 'A price changed'], ['budget', 'My budget changed'], ['dates', 'Dates moved'], ['closed', 'A place closed']];
 // run fn as if the plan looked like trip/members, then put everything back
 function withPlan(trip, members, fn) { const t0 = S.trip, m0 = S.members; S.trip = trip; S.members = members; try { return fn(); } finally { S.trip = t0; S.members = m0; } }
-function planState() {
-  const sum = costSummary(), fit = budgetFit(sum), heads = planHeads(), st = S.trip.stay, stayRow = sum.rows.find(r => r.k === 'stay');
+function planState(extra) {
+  const sum = costSummary(), fit = budgetFit(sum, extra), heads = planHeads(), st = S.trip.stay, stayRow = sum.rows.find(r => r.k === 'stay');
   const L = S.trip.lockedDates, ldays = L ? span(L.start, L.end) : null;
   return {
     heads, low: sum.low, high: sum.high, any: sum.any,
     stayEach: st && +st.total ? Math.round(st.total / heads) : stayRow?.v ? Math.round(stayRow.v.high) : 0,
     over: fit.over.map(m => m.id), stretch: fit.stretch.map(m => m.id),
     condOff: active().filter(m => +m.cond?.under > 0 && sum.any && sum.low > +m.cond.under).map(m => m.id),
-    hardBudget: active().filter(m => m.hard?.budget && +m.budget > 0 && sum.any && sum.low > +m.budget).map(m => m.id),
+    hardBudget: sum.any ? budgetFit(sum, extra).hard.map(m => m.id) : [],
     hardDays: ldays ? active().filter(m => m.hard?.days && (m.days || []).length && !fitOf(m, ldays)).map(m => m.id) : [],
   };
 }
@@ -2070,7 +2198,7 @@ const nm = id => S.members.find(m => m.id === id)?.nick || 'Someone';
 const lineLabel = k => (COST_LINES[size()].find(l => l[0] === k) || [k, k])[1];
 // what a change does, as before → after rows plus the things it leaves hanging
 function changeImpact(ch) {
-  const before = planState(), sim = simulate(ch), after = withPlan(sim.trip, sim.members, planState);
+  const before = planState(), sim = simulate(ch), after = withPlan(sim.trip, sim.members, () => planState(ch.kind === 'drop' ? { exclude: [ch.who] } : ch.kind === 'budget' ? { myBudget: ch.amount } : undefined));
   const fx = [], add = (area, text, level = 'info', from = '', to = '') => fx.push({ area, text, level, from, to });
   if (before.heads !== after.heads) add('Headcount', `${after.heads < before.heads ? 'Down' : 'Up'} to ${after.heads}`, 'info', before.heads, after.heads);
   if (before.stayEach && after.stayEach && before.stayEach !== after.stayEach) add('Stay, each', after.stayEach > before.stayEach ? 'Each share goes up' : 'Each share goes down', after.stayEach > before.stayEach ? 'warn' : 'good', money(before.stayEach), money(after.stayEach));
@@ -2288,7 +2416,7 @@ function budgetWho(ms) {
 }
 function accessCard() {
   const t = S.trip, org = isOrganizer(), perm = t.perm || {};
-  const sel = (id, v, opts) => `<select id="${id}" style="width:auto" ${org ? '' : 'disabled'}>${opts.map(([k, l]) => `<option value="${k}" ${v === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+  const sel = (id, v, opts) => `<select id="${id}" aria-label="${id === 'perm-invite' ? 'Who can invite people' : 'Who can lock decisions'}" style="width:auto" ${org ? '' : 'disabled'}>${opts.map(([k, l]) => `<option value="${k}" ${v === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
   return `<section class="card stack access">
     <h3>Access</h3>
     ${org ? '' : '<p class="small muted">Only organizers can change these.</p>'}
@@ -2338,12 +2466,15 @@ function planSnapshot(t = S.trip) {
     from: S.tid, fromName: t.name, at: Date.now(),
   };
 }
-const snapCounts = s => [s.tasks.length && `${s.tasks.length} to-do${s.tasks.length === 1 ? '' : 's'}`, s.itin.length && `${s.itin.length} stop${s.itin.length === 1 ? '' : 's'}`, s.packing.length && `${s.packing.length} packing item${s.packing.length === 1 ? '' : 's'}`, Object.keys(s.costs).length && 'last time’s costs'].filter(Boolean);
+// templates saved by older versions (or edited elsewhere) may be missing parts
+const tplOf = s => ({ ...s, tasks: arr(s.tasks), itin: arr(s.itin), packing: arr(s.packing), costs: isObj(s.costs) ? s.costs : {} });
+const snapCounts = raw => { const s = tplOf(raw); return [s.tasks.length && `${s.tasks.length} to-do${s.tasks.length === 1 ? '' : 's'}`, s.itin.length && `${s.itin.length} stop${s.itin.length === 1 ? '' : 's'}`, s.packing.length && `${s.packing.length} packing item${s.packing.length === 1 ? '' : 's'}`, Object.keys(s.costs).length && 'last time’s costs'].filter(Boolean); };
 function repeatDialog() {
   const r = S.repeat; if (!r) return '';
   const crew = S.crews.find(c => c.id === (r.cid || S.trip?.crewId));
-  const snap = r.tpl ? (crew?.templates || {})[r.tpl] : planSnapshot();
-  if (!snap) return '';
+  const raw = r.tpl ? (crew?.templates || {})[r.tpl] : planSnapshot();
+  if (!raw) return '';
+  const snap = tplOf(raw);
   const sz = SIZES[snap.size] || SIZES.trip, small = ['hangout', 'day'].includes(snap.size);
   const a = small ? TODAY : add(TODAY, 30), b = add(a, sz.win + (small ? 0 : 15));
   const what = [['tasks', `To-dos (${snap.tasks.length})`, snap.tasks.length], ['itin', `Itinerary outline (${snap.itin.length} stops)`, snap.itin.length], ['pack', `Group packing list (${snap.packing.length})`, snap.packing.length], ['costs', 'Last time’s costs, as a guide', Object.keys(snap.costs).length], ['dest', snap.dest ? `Suggest ${snap.dest.city} again` : '', !!snap.dest]].filter(x => x[2]);
@@ -2353,7 +2484,7 @@ function repeatDialog() {
     <label class="field" style="flex:none"><span class="label">Name it</span><input id="rp-name" maxlength="60" value="${esc(r.tpl ? snap.name : snap.fromName + ' again')}"></label>
     <div class="row" style="gap:8px"><label class="field"><span class="label">${small ? 'Days that could work, from' : 'Earliest'}</span><input id="rp-start" type="date" value="${a}"></label><label class="field"><span class="label">${small ? 'to' : 'Latest'}</span><input id="rp-end" type="date" value="${b}"></label></div>
     ${what.length ? `<div class="stack" style="gap:6px"><span class="label">Bring over</span>${what.map(([k, l]) => `<label class="check-line"><input type="checkbox" id="rp-${k}" checked> ${esc(l)}</label>`).join('')}</div>` : '<span class="small muted">There’s nothing to bring over yet, so this starts a fresh plan with the same settings.</span>'}
-    <div><button class="btn primary" data-act="repeatGo">Create it</button></div>
+    <div><button class="btn primary" data-act="repeatGo" ${S.busy.repeat ? 'disabled' : ''}>${S.busy.repeat ? '<i class="spin"></i>Creating…' : 'Create it'}</button></div>
   </section>`;
 }
 async function seedMembers(id, crew) {
@@ -2367,7 +2498,8 @@ async function seedMembers(id, crew) {
 async function repeatGo() {
   const r = S.repeat; if (!r || !S.db || S.demo) { if (S.demo) flash('Repeating works on real plans.'); return; }
   const crew = S.crews.find(c => c.id === (r.cid || S.trip?.crewId));
-  const snap = r.tpl ? (crew?.templates || {})[r.tpl] : planSnapshot(); if (!snap) return;
+  const raw = r.tpl ? (crew?.templates || {})[r.tpl] : planSnapshot(); if (!raw) return;
+  const snap = tplOf(raw);
   const on = k => !!$('#rp-' + k)?.checked;
   const name = ($('#rp-name')?.value || '').trim().slice(0, 60) || snap.fromName || 'New plan';
   let a = $('#rp-start')?.value || TODAY, b = $('#rp-end')?.value || add(a, 30); if (b < a) [a, b] = [b, a];
@@ -2452,14 +2584,16 @@ function optOf(kind, id) {
 }
 const agreed = (o, uid) => !!((S.trip.consent || {})[o.key] || {})[uid];
 // people whose hard limit this option breaks (before anyone agreed)
+// date limits are checked here (free days aren't private); budget limits come from the
+// server, which says who is over without saying anyone's budget
+const daysHit = (o, m) => !!(m.hard?.days && (m.days || []).length && o.days && !fitOf(m, o.days));
+const budgetHits = o => (o.lo ? bq({ lo: Math.round(o.lo), hi: Math.round(o.lo), key: o.key }) : null) || (o.lo ? NO_FIT : { ...NO_FIT, pending: false });
 function hitWhy(o, m) {
-  const h = m.hard || {};
-  if (h.days && (m.days || []).length && o.days && !fitOf(m, o.days)) return 'days';
-  if (h.budget && +m.budget > 0 && o.lo && o.lo > +m.budget) return 'budget';
-  return '';
+  if (daysHit(o, m)) return 'days';
+  return budgetHits(o).hard.some(x => x.id === m.id) ? 'budget' : '';
 }
-const hardHitsAll = o => active().filter(m => hitWhy(o, m));
-const hardHits = o => hardHitsAll(o).filter(m => !agreed(o, m.id));
+function hardHitsAll(o) { const d = active().filter(m => daysHit(o, m)); return [...d, ...budgetHits(o).hard.filter(x => !d.some(y => y.id === x.id))]; }
+function hardHits(o) { const d = active().filter(m => daysHit(o, m) && !agreed(o, m.id)); return [...d, ...budgetHits(o).hardOpen.filter(x => !d.some(y => y.id === x.id))]; }
 const softHits = o => o.lo ? active().filter(m => m.cond && +m.cond.under > 0 && o.lo > +m.cond.under) : [];
 // what the crew's chosen style says about locking this option
 function ruleCheck(o) {
@@ -2479,6 +2613,7 @@ function lockGate(kind, id) {
   if (S.demo) return { ok: true };
   const o = optOf(kind, id); if (!o) return { ok: true };
   const r = ruleCheck(o); if (!r.ok) return r;
+  if (budgetHits(o).pending) return { ok: false, why: 'Checking everyone’s budget limits. Try again in a second.' };
   const hits = hardHits(o);
   if (hits.length) {
     const me = hits.find(m => m.id === S.uid);
@@ -2817,9 +2952,9 @@ function myNeeds() {
     <h2>Your needs</h2>
     <p class="small muted">So the plan works for you. No need to say why. You choose who sees each part, and the AI plans around all of it without using your name.</p>
     <div class="stack need-sec"><div class="row" style="justify-content:space-between;gap:8px"><span class="label">Food</span>${sh('diet')}</div>${tags('diet', DIETS)}
-      <input id="nd-dietNote" maxlength="80" value="${esc(n.dietNote || '')}" placeholder="Anything else? e.g. severe, carry an EpiPen"></div>
+      <input aria-label="Other food needs" id="nd-dietNote" maxlength="80" value="${esc(n.dietNote || '')}" placeholder="Anything else? e.g. severe, carry an EpiPen"></div>
     <div class="stack need-sec"><div class="row" style="justify-content:space-between;gap:8px"><span class="label">Getting around and rooms</span>${sh('access')}</div>${tags('access', ACCESS)}
-      <input id="nd-accessNote" maxlength="80" value="${esc(n.accessNote || '')}" placeholder="Anything else the planner should know"></div>
+      <input aria-label="Other access needs" id="nd-accessNote" maxlength="80" value="${esc(n.accessNote || '')}" placeholder="Anything else the planner should know"></div>
     ${isSmall() ? '' : `<div class="stack need-sec"><div class="row" style="justify-content:space-between;gap:8px"><span class="label">Travel</span>${sh('travel')}</div>
       <div class="row" style="gap:8px">
         <label class="field" style="flex:1 1 130px"><span class="small muted">Leave no earlier than</span><input id="nd-depart" type="time" value="${esc(n.depart || '')}"></label>
@@ -2878,7 +3013,7 @@ function jSteps() {
     why: `Their share can be covered, and surprise plans stay hidden from them.`,
     todo: `Pick them below. Only planners see this step.`,
     after: 'Anything you mark as a surprise in the itinerary is hidden from them until you reveal it.',
-    act: () => `<select id="set-honoree" style="width:auto"><option value="">Pick someone</option>${S.members.map(m => `<option value="${esc(m.id)}">${esc(m.nick || 'Someone')}</option>`).join('')}</select>`,
+    act: () => `<select aria-label="Who it’s for" id="set-honoree" style="width:auto"><option value="">Pick someone</option>${S.members.map(m => `<option value="${esc(m.id)}">${esc(m.nick || 'Someone')}</option>`).join('')}</select>`,
     help: { tab: 'settings', sel: '#set-honoree' },
   });
   {
@@ -3096,7 +3231,8 @@ function jSteps() {
   });
 }
 // which stage the plan is in: decided by time first, then by what's open
-function journey() {
+function journey() { return memo('journey', journeyNow); }
+function journeyNow() {
   const t = S.trip, d = t.lockedDates, steps = jSteps();
   let stage;
   if (d && TODAY > d.end) stage = 'after';
@@ -3214,7 +3350,7 @@ lat/lng: your best estimate of the location.`;
     const items = (Array.isArray(data?.items) ? data.items : []).filter(x => x && x.name).slice(0, 8).map(x => ({
       id: rid(6), name: String(x.name).slice(0, 80), kind: ['hotel', 'rental', 'hostel'].includes(x.kind) ? x.kind : 'hotel', area: String(x.area || '').slice(0, 60),
       sleeps: String(x.sleeps || '').slice(0, 60), perNight: String(x.perNight || '').slice(0, 40), perPerson: String(x.perPerson || '').slice(0, 40),
-      why: String(x.why || '').slice(0, 240), pros: (x.pros || []).slice(0, 3).map(p => String(p).slice(0, 50)), lat: +x.lat || null, lng: +x.lng || null }));
+      why: String(x.why || '').slice(0, 240), pros: arr(x.pros).slice(0, 3).map(p => String(p).slice(0, 50)), lat: +x.lat || null, lng: +x.lng || null }));
     if (!items.length) { flash('No stays came back. Try again.'); return; }
     return saveTrip({ stays: { city: dest()?.city || '', items, at: Date.now() } });
   });
@@ -3247,7 +3383,7 @@ function staysTab() {
         <div class="row" style="justify-content:space-between;align-items:baseline"><b class="mono">${esc(s.perNight)}</b><span class="small muted">${esc(s.perPerson)}</span></div>
         ${s.sleeps ? `<span class="small muted">Sleeps: ${esc(s.sleeps)}</span>` : ''}
         <p class="small">${esc(s.why)}</p>
-        ${s.pros.length ? `<div class="row" style="gap:4px">${s.pros.map(p => `<span class="chip" style="cursor:default">${esc(p)}</span>`).join('')}</div>` : ''}
+        ${arr(s.pros).length ? `<div class="row" style="gap:4px">${arr(s.pros).map(p => `<span class="chip" style="cursor:default">${esc(p)}</span>`).join('')}</div>` : ''}
         <div class="row" style="gap:6px">${voteBtns(rkey('st' + s.name))}</div>
         <div class="row" style="gap:6px">${stayLinks(s, ds, d, n)}${st?.name !== s.name ? `<button class="btn sm ghost" data-lockstay="${i}">Lock as our stay</button>` : ''}</div>
       </div></article>`).join('')}</section>
@@ -3458,7 +3594,7 @@ function lostSheet() {
   return `<div class="sheet-bg" data-act="lostClose"></div><div class="sheet" role="dialog" aria-label="I'm lost">
     <h2>Where are you?</h2><p class="small muted">The crew gets an alert with your spot and directions to you. Tap the closest place or type a landmark or cross street.</p>
     <div class="row" style="gap:6px">${[...new Set(places)].slice(0, 10).map(p => `<button class="chip" data-lostat="${esc(p)}">${esc(p)}</button>`).join('')}</div>
-    <form id="lostForm" class="row" style="gap:6px"><input id="lost-where" maxlength="80" placeholder="Collins Ave & 8th St" style="flex:1 1 200px"><button class="btn lost-btn" type="submit">Send SOS</button></form>
+    <form id="lostForm" class="row" style="gap:6px"><input aria-label="Where you are" id="lost-where" maxlength="80" placeholder="Collins Ave & 8th St" style="flex:1 1 200px"><button class="btn lost-btn" type="submit">Send SOS</button></form>
     <p class="small muted">Tip: also share your live location from Google Maps or Find My with the group chat.</p>
     <button class="btn sm ghost" data-act="lostClose">Cancel</button></div>`;
 }
@@ -3613,9 +3749,9 @@ function potTab() {
     <div class="pot-big ${low ? 'low' : ''}"><span class="label">In the pot</span><b>${money2(bal)}</b>${alsoMine(bal)}<span class="small muted">${money2(tin)} in · ${money2(tout)} spent</span>
       <div class="bigbar" style="margin-top:6px"><i style="width:${tin ? Math.max(0, bal / tin * 100) : 0}%;background:${low ? 'var(--meter-over)' : 'var(--good)'}"></i></div></div>
     ${low ? `<div class="lost-banner" style="background:color-mix(in oklab,var(--gold) 22%,var(--surface));color:var(--ink);border-color:var(--gold)"><div><b>The pot’s running low.</b><div class="small">Top up about ${money(topUp)} each to cover the rest of the ${planWord()}.</div></div><button class="btn sm" data-act="copyPot">Copy reminder</button></div>` : ''}
-    <div class="row" style="gap:8px;align-items:center"><span class="small">Holding the pot:</span><select id="pot-keeper" style="width:auto">${active().map(m => `<option value="${esc(m.id)}" ${keeper === m.id ? 'selected' : ''}>${esc(m.nick || 'Someone')}</option>`).join('')}</select></div>
+    <div class="row" style="gap:8px;align-items:center"><span class="small">Holding the pot:</span><select aria-label="Who holds the pot" id="pot-keeper" style="width:auto">${active().map(m => `<option value="${esc(m.id)}" ${keeper === m.id ? 'selected' : ''}>${esc(m.nick || 'Someone')}</option>`).join('')}</select></div>
     <div>${ms.map(m => `<div class="nudge"><b>${esc(m.nick || 'Someone')}</b><span class="row" style="gap:8px"><span class="mono small">${money2(by[m.id] || 0)}</span>${behind.includes(m) ? `<span class="pill maybe">${money2(fair - (by[m.id] || 0))} behind</span>` : '<span class="pill in">Even</span>'}</span></div>`).join('')}</div>
-    ${S.copyText ? `<textarea id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
+    ${S.copyText ? `<textarea aria-label="Text to copy" id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
   </section>
   <section class="grid2">
     <form id="potIn" class="card stack"><h3>Chip in</h3>
@@ -3991,7 +4127,7 @@ Reply with only JSON: {"pitches":[{"title":"the plan in 2-5 words","tagline":"pu
   askAI('pitch', prompt, data => {
     const valid = new Map(opts.map(o => [o.start, o]));
     const items = (Array.isArray(data?.pitches) ? data.pitches : []).filter(p => p && p.title).slice(0, 8).map(p => {
-      const o = valid.get(p.date) || opts[0], steps = (p.steps || []).slice(0, 5).map(s => ({ time: String(s.time || '').slice(0, 5), title: String(s.title || '').slice(0, 80) })).filter(s => s.title);
+      const o = valid.get(p.date) || opts[0], steps = arr(p.steps).slice(0, 5).map(s => ({ time: String(s.time || '').slice(0, 5), title: String(s.title || '').slice(0, 80) })).filter(s => s.title);
       return { id: rid(6), small: true, title: String(p.title).slice(0, 50), city: String(p.title).slice(0, 50), code: '', start: o.start, end: o.start, time: /^\d\d:\d\d$/.test(p.time) ? p.time : '',
         where: String(p.where || '').slice(0, 60), tagline: String(p.tagline || '').slice(0, 80), why: String(p.why || '').slice(0, 300), perPerson: String(p.perPerson || '').slice(0, 30),
         vibeMatch: Math.max(0, Math.min(100, Math.round(+p.vibeMatch || 0))), highlights: steps.map(s => (s.time ? t12(s.time) + ' · ' : '') + s.title), steps, weather: String(p.weather || '').slice(0, 60) };
@@ -4046,13 +4182,13 @@ function planRow(t, opts = {}) {
     </div>
     <div class="pr-status"><span class="board-st">${BOARD[st]}</span>${mine ? '<span class="your-flag">Your move</span>' : ''}</div>
     <div class="pr-acts">${S.confirmHome === t.id
-      ? `<span class="small pr-ask">Delete for everyone?</span><button class="btn sm ghost" data-act="homeCancel">Cancel</button><button class="btn sm danger-fill" data-homedo="${esc(t.id)}">Delete</button>`
+      ? `<span class="small pr-ask">Delete for everyone?</span><button class="btn sm ghost" data-act="homeCancel">Cancel</button><button class="btn sm danger-fill" data-homedo="${esc(t.id)}" ${S.busy.delete ? 'disabled' : ''}>${S.busy.delete ? 'Deleting…' : 'Delete'}</button>`
       : `${canDelete(t) ? `<button class="btn sm ghost icon pr-del" data-homedel="${esc(t.id)}" aria-label="Delete ${esc(t.name)}" title="Delete"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg></button>` : ''}<button class="btn sm" data-share="${esc(t.id)}" aria-label="Share ${esc(t.name)}">Share</button><button class="btn sm primary" data-open="${esc(t.id)}">Open</button>`}</div>
-    ${S.shareHome === t.id && S.copyText ? `<textarea class="pr-copy" id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
+    ${S.shareHome === t.id && S.copyText ? `<textarea aria-label="Text to copy" class="pr-copy" id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
   </div>`;
 }
 function homeView() {
-  if (S.loading && parseTripHash(location.hash.slice(1))) return `${topBar()}<p class="muted">Loading…</p>`;
+  if (S.loading && parseTripHash(location.hash.slice(1))) return `${topBar()}${skel()}`;
   if (S.creating === 'crew') return pickCrewStep();
   if (S.creating === 'size') return pickSizeStep();
   if (S.creating === 'mode') return modePicker();
@@ -4073,8 +4209,8 @@ function homeView() {
     ${!canSave && !S.loading ? `<span class="small muted">${IN_CLAUDE ? 'Couldn’t connect. Reload the page to try again.' : 'Can’t reach the local server. Start it with npm run dev, then reload.'}</span>` : ''}
   </section>
   ${S.creating === 'newCrew' ? `<section class="card stack"><h2>New crew</h2><p class="small muted">A crew is a group you make plans with. You’ll get an invite link for it next.</p>
-    <form id="newCrewForm" class="row" style="gap:6px"><input id="nc-name" maxlength="40" required placeholder="The Vegas Six" style="flex:1 1 200px"><button class="btn primary" type="submit">Create crew</button><button class="btn ghost" type="button" data-act="cancelNew">Cancel</button></form></section>` : ''}
-  ${!canSave ? '' : !S.tripsLoaded ? '<p class="muted">Loading your plans…</p>' : `
+    <form id="newCrewForm" class="row" style="gap:6px"><input aria-label="Crew name" id="nc-name" maxlength="40" required placeholder="The Vegas Six" style="flex:1 1 200px"><button class="btn primary" type="submit">Create crew</button><button class="btn ghost" type="button" data-act="cancelNew">Cancel</button></form></section>` : ''}
+  ${!canSave ? '' : !S.tripsLoaded ? skel('rows') : `
   ${inboxCard()}
   <div class="home-bar"><span class="small muted">${[live.length && live.length + ' happening now', upcoming.length && upcoming.length + ' coming up', deciding.length && deciding.length + ' deciding'].filter(Boolean).join(' · ') || 'No plans yet'}</span>${viewSwitch()}</div>
   ${homeMode === 'cal' ? calView(plans, deciding) : `
@@ -4151,7 +4287,7 @@ function crewCard(c, plans) {
 const crewLink = cid => SHARE_BASE + '#c-' + cid;
 function crewPage(cid) {
   const c = S.crews.find(x => x.id === cid);
-  if (!c) return `${topBar()}<p class="muted">Loading crew…</p><button class="btn" data-act="home">Back home</button>`;
+  if (!c) return `${topBar()}${skel('rows')}<button class="btn" data-act="home">Back home</button>`;
   const ids = crewMembers(c), plans = myPlans().filter(t => t.crewId === cid);
   const upcoming = plans.filter(t => !t.lockedDates || t.lockedDates.end >= TODAY).sort((a, b) => (a.lockedDates?.start || '9') < (b.lockedDates?.start || '9') ? -1 : 1);
   const past = plans.filter(t => t.lockedDates && t.lockedDates.end < TODAY);
@@ -4169,7 +4305,7 @@ function crewPage(cid) {
   ${dnaCard(c)}
   ${crewTemplates(c)}
   ${past.length ? `<details class="card past"><summary><b>Landed</b> <span class="small muted">Past plans ·</span> <span class="small muted">${past.length}</span></summary><div class="stack" style="margin-top:10px">${past.map(t => planRow(t, { noCrew: true })).join('')}</div></details>` : ''}
-  ${c.by === S.uid || S.isOwner ? `<div><button class="btn sm ghost danger" data-delcrew="${esc(cid)}">Delete crew</button></div>` : ''}`;
+  ${c.by === S.uid || S.isOwner ? (S.confirmCrew === cid ? `<section class="card row confirm-row" style="justify-content:space-between;gap:10px"><span class="small"><b>Delete ${esc(c.name)}?</b> Its plans are kept. Templates and Crew DNA go with it.</span><span class="row" style="gap:6px"><button class="btn sm danger-fill" data-delcrewdo="${esc(cid)}" ${S.busy.delcrew ? 'disabled' : ''}>${S.busy.delcrew ? '<i class="spin"></i>Deleting…' : 'Delete crew'}</button><button class="btn sm ghost" data-act="delCrewCancel">Cancel</button></span></section>` : `<div><button class="btn sm ghost danger" data-delcrew="${esc(cid)}">Delete crew</button></div>`) : ''}`;
 }
 async function createCrew(name) {
   const cid = rid(10), body = { name: name.slice(0, 40), ids: [S.uid], people: { [S.uid]: true }, profiles: { [S.uid]: { nick: S.myName || 'Me' } }, by: S.uid, at: Date.now() };
@@ -4186,6 +4322,7 @@ async function joinCrew(cid) {
   } catch (e) { flash(writeErr(e)); }
 }
 function openCrew(cid) {
+  S.confirmCrew = null;
   stop(); S.tid = null; resetTrip(); S.crewView = cid; S.creating = null; setHash('c-' + cid);
   render(); window.scrollTo({ top: 0 });
 }
@@ -4241,7 +4378,7 @@ function newTripForm() {
         <span class="small muted">All of this can change later in Settings.</span>
       </details>
       <p class="small muted">${small ? 'Everyone taps which of these days they’re free. The crew picks the exact plan and day together.' : 'Not sure on dates yet? Give a wide window. The crew picks the exact nights later.'}</p>
-      <div><button class="btn primary big" type="submit">Create ${esc(sz.label.toLowerCase())}</button></div>
+      <div><button class="btn primary big" type="submit" ${S.busy.create ? 'disabled' : ''}>${S.busy.create ? '<i class="spin"></i>Creating…' : `Create ${esc(sz.label.toLowerCase())}`}</button></div>
     </form>
   </section>`;
 }
@@ -4431,6 +4568,7 @@ app.addEventListener('click', e => {
   const t = e.target.closest('button,[data-open],[data-pin],[data-act]'); if (!t) return;
   const ds = t.dataset;
   if (ds.act === 'home') return goHome();
+  if (ds.act === 'reloadView') { lastView = null; S.tab = 'overview'; return render(); }
   if (ds.act === 'remindOpen') { S.remindOpen = !S.remindOpen; return render(); }
   if (ds.remind) { const p = remindPrefs(); p[ds.remind] = !p[ds.remind]; lsSet('outta_remind', p); return render(); }
   if (ds.act === 'notifyAsk') { try { Notification.requestPermission().then(render); } catch {} return; }
@@ -4450,9 +4588,11 @@ app.addEventListener('click', e => {
   }
   if (ds.startcrew) return startNewPlan(ds.startcrew);
   if (ds.act === 'clearCrew') { S.newCrew = null; return render(); }
-  if (ds.delcrew) { if (S.db) S.db.doc('crews/' + ds.delcrew).delete().then(() => { flash('Crew deleted. Its plans are kept.'); goHome(); }, e => flash(writeErr(e))); return; }
+  if (ds.delcrew) { S.confirmCrew = ds.delcrew; return render(); }
+  if (ds.act === 'delCrewCancel') { S.confirmCrew = null; return render(); }
+  if (ds.delcrewdo) return once('delcrew', () => S.db ? S.db.doc('crews/' + ds.delcrewdo).delete().then(() => { S.confirmCrew = null; flash('Crew deleted. Its plans are kept.'); goHome(); }, e => flash(writeErr(e))) : null);
   if (ds.act === 'homeCancel') { S.confirmHome = null; return render(); }
-  if (ds.homedo) return deleteTrip(ds.homedo);
+  if (ds.homedo) return once('delete', () => deleteTrip(ds.homedo));
   if (ds.act === 'newTrip') return startNewPlan();
   if (ds.pickcrew !== undefined) { S.newCrew = ds.pickcrew || null; S.creating = 'size'; render(); window.scrollTo({ top: 0 }); return; }
   if (ds.size) { S.newSize = ds.size; S.creating = ['hangout', 'day'].includes(ds.size) ? 'form' : 'mode'; render(); window.scrollTo({ top: 0 }); return; }
@@ -4476,7 +4616,7 @@ app.addEventListener('click', e => {
     if (ds.dnareset) { S.dnaEdit = null; return dnaSave(cid, { fix: { [ds.dnareset]: null } }); }
     if (ds.dnaforget) { flash('Forgotten. It won’t shape new pitches.'); return dnaSave(cid, { forget: { [ds.dnaforget]: true } }); }
     if (ds.dnanote) return dnaSave(cid, { notes: { [ds.dnanote]: null } }); }
-  if (ds.act === 'repeatGo') return repeatGo();
+  if (ds.act === 'repeatGo') return once('repeat', repeatGo);
   if (ds.ack) return ackChange(ds.ack);
   if (ds.undo) return undoChange(ds.undo);
   if (ds.act === 'ackAll') return saveTrip({ changes: Object.fromEntries(logList().filter(x => needsMe(x)).map(x => [x.id, { seen: { [S.uid]: true } }])) });
@@ -4484,7 +4624,7 @@ app.addEventListener('click', e => {
   if (ds.jgo) return jGo(ds.jgo);
   if (ds.jnudge) return jNudge(ds.jnudge);
   if (ds.act === 'repeatOpen') { S.repeat = {}; render(); setTimeout(() => $('#repeat-box')?.scrollIntoView({ block: 'nearest', behavior: calm() ? 'auto' : 'smooth' }), 60); return; }
-  if (ds.act === 'tplSave') return saveTemplate();
+  if (ds.act === 'tplSave') return once('tpl', saveTemplate);
   if (ds.act === 'applyOutline') return applyOutline();
   if (ds.act === 'dropOutline') return saveTrip({ itinTpl: null });
   if (ds.status) return setStatus(ds.status);
@@ -4515,12 +4655,12 @@ app.addEventListener('click', e => {
   if (ds.act === 'checkClose') return saveTrip({ check: null });
   if (ds.act === 'recoverAlts') return recoverAlts();
   if (ds.swapin !== undefined) { const o = S.alts?.options?.[+ds.swapin]; if (o) swapItem(o.title); return; }
-  if (ds.act === 'linkReset') { saveTrip({ inviteKey: rid(6), invitesOff: false }); flash('New link made. Old invite links stop working for people who haven’t joined.'); return; }
-  if (ds.act === 'linkToggle') { const off = !S.trip.invitesOff; saveTrip({ invitesOff: off }); flash(off ? 'Invites are off. Nobody new can join.' : 'Invites are back on.'); return; }
+  if (ds.act === 'linkReset') return saveTrip({ inviteKey: rid(6), invitesOff: false }).then(ok => ok && flash('New link made. Old invite links stop working for people who haven’t joined.'));
+  if (ds.act === 'linkToggle') { const off = !S.trip.invitesOff; return saveTrip({ invitesOff: off }).then(ok => ok && flash(off ? 'Invites are off. Nobody new can join.' : 'Invites are back on.')); }
   if (ds.rmmember) { S.confirmRm = ds.rmmember; return render(); }
   if (ds.act === 'rmCancel') { S.confirmRm = null; return render(); }
   if (ds.rmdo) return removeMember(ds.rmdo);
-  if (ds.mkorg) { const on = !(S.trip.orgs || {})[ds.mkorg]; saveTrip({ orgs: { [ds.mkorg]: on || null } }); flash(on ? 'Now an organizer.' : 'No longer an organizer.'); return; }
+  if (ds.mkorg) { const on = !(S.trip.orgs || {})[ds.mkorg]; return saveTrip({ orgs: { [ds.mkorg]: on || null } }).then(ok => ok && flash(on ? 'Now an organizer.' : 'No longer an organizer.')); }
   if (ds.act === 'passportImg') return makePassportImg();
   if (ds.nightvote) { const cur = (S.trip.nightVotes || {})[S.uid]; return saveTrip({ nightVotes: { [S.uid]: cur === ds.nightvote ? null : ds.nightvote } }); }
   if (ds.act === 'nextPlan') return S.trip.crewId ? startNewPlan(S.trip.crewId) : (goHome(), startNewPlan());
@@ -4565,11 +4705,11 @@ app.addEventListener('click', e => {
   if (ds.act === 'hangCancel') { S.hangPlan = null; return render(); }
   if (ds.act === 'writeRecap') return writeRecap(ds.day);
   if (ds.act === 'findStays') return findStays();
-  if (ds.lockstay !== undefined) { if (!canLock()) { flash('Only organizers can lock this one. Your vote still counts.'); return; } const it = S.trip.stays?.items?.[+ds.lockstay]; if (it) { flash(`Locked ${it.name} as your stay.`); return setStay({ ...it }); } return; }
+  if (ds.lockstay !== undefined) { if (!canLock()) { flash('Only organizers can lock this one. Your vote still counts.'); return; } const it = S.trip.stays?.items?.[+ds.lockstay]; if (it) return setStay({ ...it }).then(ok => ok && flash(`Locked ${it.name} as your stay.`)); return; }
   if (ds.act === 'unlockStay') return saveTrip(withLog({ stay: null }, { area: 'stay', text: `Stay unlocked: ${S.trip.stay?.name || ''}`, act: 'all', undo: { k: 'set', patch: { stay: S.trip.stay }, clear: ['stay'] } }));
   if (ds.act === 'addStayOpen') { S.addStay = true; render(); setTimeout(() => $('#os-url')?.focus(), 60); return; }
   if (ds.act === 'addStayClose') { S.addStay = false; return render(); }
-  if (ds.lockown) { if (!canLock()) { flash('Only organizers can lock this one. Your vote still counts.'); return; } const s = (S.trip.myStays || {})[ds.lockown]; if (s) { flash(`Locked ${s.name} as your stay.`); return setStay(stayFromOwn(ds.lockown, s)); } return; }
+  if (ds.lockown) { if (!canLock()) { flash('Only organizers can lock this one. Your vote still counts.'); return; } const s = (S.trip.myStays || {})[ds.lockown]; if (s) return setStay(stayFromOwn(ds.lockown, s)).then(ok => ok && flash(`Locked ${s.name} as your stay.`)); return; }
   if (ds.delown) return saveTrip({ myStays: { [ds.delown]: null } });
   if (ds.delspend) return saveMySpend((S.mySpend || []).filter(x => x.id !== ds.delspend));
   if (ds.delpot) return delSub('pot', ds.delpot);
@@ -4598,12 +4738,12 @@ app.addEventListener('click', e => {
   if (ds.act === 'showPrev') { S.show = (S.show - 1 + S.photos.length) % S.photos.length; return openShow(S.show); }
   if (ds.delphoto) return delPhoto(ds.delphoto);
   if (ds.act === 'syncCrew') { const c = S.crews.find(x => x.id === S.trip.crewId); return saveCrew(c ? c.name : S.trip.name); }
-  if (ds.runoff) { const [k, v] = ds.runoff.split('|'); const cur = (meDoc()?.runoff || {})[k]; return saveMe({ runoff: { ...(meDoc()?.runoff || {}), [k]: cur === v ? '' : v } }, true); }
+  if (ds.qrunoff) { const [k, v] = ds.qrunoff.split('|'); const cur = (meDoc()?.runoff || {})[k]; return saveMe({ runoff: { ...(meDoc()?.runoff || {}), [k]: cur === v ? '' : v } }, true); }
   if (ds.act === 'delTicket') return delTicket();
   if (ds.act === 'askDelete') { S.confirm = 'delete'; return render(); }
   if (ds.act === 'askLeave') { S.confirm = 'leave'; return render(); }
   if (ds.act === 'cancelConfirm') { S.confirm = null; return render(); }
-  if (ds.act === 'doDelete') return deleteTrip(S.tid);
+  if (ds.act === 'doDelete') return once('delete', () => deleteTrip(S.tid));
   if (ds.act === 'doLeave') return leaveTrip();
   if (ds.act === 'closeCard') { S.cardUrl = null; S.cardBlob = null; return render(); }
   if (ds.act === 'saveCard') return saveCard();
@@ -4655,7 +4795,7 @@ app.addEventListener('change', e => {
   if (id === 'me-hardDays') saveMe({ hard: { ...(meDoc()?.hard || {}), days: e.target.checked } }, true);
   if (id === 'me-condUnder' || id === 'me-condNote') { const u = Math.max(0, Math.round(+$('#me-condUnder').value || 0)), note = $('#me-condNote').value.trim().slice(0, 80); saveMe({ cond: u || note ? { under: u, note } : null }, true); }
   if (id === 'me-hideLoc') saveMe({ hideLoc: e.target.checked }, true, true);
-  if (id === 'my-flight-price') { const v = Math.round(+e.target.value || 0); if (v > 0) { saveTrip({ tickets: { [S.uid]: { price: v } } }); flash('Got it. Your flight is in the cost now.'); } }
+  if (id === 'my-flight-price') { const v = Math.round(+e.target.value || 0); if (v > 0) saveTrip({ tickets: { [S.uid]: { price: v } } }).then(ok => ok && flash('Got it. Your flight is in the cost now.')); }
   if (id === 'set-cur' && CUR_CODES.includes(e.target.value)) { saveTrip(withLog({ currency: e.target.value }, { area: 'money', text: `Currency changed to ${e.target.value}`, undo: { k: 'set', patch: { currency: cur() } } })); flash(`Now in ${e.target.value}. Amounts already typed in weren’t converted.`); }
   if (id === 'my-cur' && CUR_CODES.includes(e.target.value)) { try { localStorage.setItem('outta_mycur', e.target.value); } catch {} render(); }
   if (id === 'cost-buffer') saveTrip({ costBuffer: +e.target.value });
@@ -4664,7 +4804,7 @@ app.addEventListener('change', e => {
   if (id === 'rsvp-by') saveTrip({ rsvpBy: e.target.value || null });
   if (id === 'me-home') saveMe({ home: e.target.value.trim().slice(0, 40) }, true, true);
   if (id === 'me-budget') saveMe({ budget: Math.max(0, Math.round(+e.target.value || 0)) }, true, true);
-  if (id === 'ph-files') { uploadPhotos(e.target.files); return; }
+  if (id === 'ph-files') { const files = [...e.target.files]; e.target.value = ''; once('photos-up', () => uploadPhotos(files)); return; }
   if (id === 'set-honoree') { saveTrip({ honoree: e.target.value || null }); return; }
   if (id === 'set-free') { saveTrip({ honoreeFree: e.target.checked }); return; }
   if (id === 'pot-keeper') { saveTrip({ potKeeper: e.target.value }); return; }
@@ -4684,6 +4824,22 @@ app.addEventListener('change', e => {
     return;
   }
   if (id.startsWith('me-') || id === 'nights') delete DRAFT[id];
+});
+// Escape closes whatever is open on top (a sheet, a confirmation, an inline editor) and
+// puts focus back on the button that opened it.
+let opener = null;
+app.addEventListener('click', e => { const b = e.target.closest('button'); if (b) opener = b; }, true);
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || e.defaultPrevented) return;
+  const layers = [
+    [S.lostOpen, () => { S.lostOpen = false; }], [S.show !== null && S.show !== undefined, () => { S.show = null; clearInterval(showTimer); }],
+    [S.confirmCrew, () => { S.confirmCrew = null; }], [S.confirmHome, () => { S.confirmHome = null; }], [S.confirm, () => { S.confirm = null; }], [S.confirmRm, () => { S.confirmRm = null; }],
+    [S.editItem, () => { S.editItem = null; }], [S.repeat, () => { S.repeat = null; }], [S.recover, () => { S.recover = null; S.rc = null; }],
+    [S.addStay, () => { S.addStay = false; }], [S.remindOpen, () => { S.remindOpen = false; }], [S.dnaEdit, () => { S.dnaEdit = null; }],
+  ];
+  const top = layers.find(([on]) => on); if (!top) return;
+  e.preventDefault(); top[1](); render();
+  if (opener && opener.isConnected) opener.focus({ preventScroll: true });
 });
 app.addEventListener('keydown', e => { const p = e.target.closest && e.target.closest('[data-pin]'); if (p && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); p.dispatchEvent(new MouseEvent('click', { bubbles: true })); } });
 // swipe left/right on a phone to move between the tabs of a menu
@@ -4715,14 +4871,14 @@ app.addEventListener('submit', async e => {
   e.preventDefault();
   const f = e.target;
   clearDrafts(f);
-  if (f.id === 'newTrip') return createTrip();
-  if (f.id === 'newCrewForm') { const n = $('#nc-name').value.trim(); if (n) return createCrew(n); return; }
+  if (f.id === 'newTrip') return once('create', createTrip);
+  if (f.id === 'newCrewForm') { const n = $('#nc-name').value.trim(); if (n) return once('crew', () => createCrew(n)); return; }
   if (f.id === 'dnaNote') { const text = $('#dna-note').value.trim().slice(0, 80); if (!text) return; $('#dna-note').value = ''; return dnaSave(S.crewView || S.trip?.crewId, { notes: { [rid(6)]: { text, by: S.uid, at: Date.now() } } }); }
   if (f.classList.contains('dna-fix')) { const k = f.dataset.k, v = ($('#dna-fix-' + k)?.value || '').trim().slice(0, 50); S.dnaEdit = null; render(); return dnaSave(S.crewView || S.trip?.crewId, { fix: { [k]: v || null } }); }
-  if (f.id === 'tkForm') return sendTicket();
+  if (f.id === 'tkForm') return once('ticket-send', sendTicket);
   if (f.id === 'swapForm') return swapItem($('#swap-title').value);
   if (f.id === 'ownStayForm') return addOwnStay(e.submitter?.dataset.how === 'lock');
-  if (f.id === 'stayBookForm') { const v = Math.max(0, Math.round(+($('#sb-total')?.value || 0))); saveTrip({ stay: { booked: true, bookedBy: S.uid, bookedAt: Date.now(), ...(v ? { total: v } : {}) } }); flash('Stay marked as booked.'); return; }
+  if (f.id === 'stayBookForm') { const v = Math.max(0, Math.round(+($('#sb-total')?.value || 0))); return saveTrip({ stay: { booked: true, bookedBy: S.uid, bookedAt: Date.now(), ...(v ? { total: v } : {}) } }).then(ok => ok && flash('Stay marked as booked.')); }
   if (f.id === 'addTask') { addTask($('#task-title').value); $('#task-title').value = ''; return; }
   if (f.id === 'lostForm') return sendLost($('#lost-where').value);
   if (f.id === 'spendForm') { const note = $('#sp-note').value.trim(), amount = Math.round(+$('#sp-amt').value * 100) / 100; if (!note || !(amount > 0)) return; return saveMySpend([...(S.mySpend || []), { id: rid(6), note: note.slice(0, 50), amount, at: Date.now() }]); }
@@ -4768,26 +4924,26 @@ app.addEventListener('submit', async e => {
 });
 
 /* ---------- navigation ---------- */
-function stop() { S.unsub.forEach(u => { try { u(); } catch {} }); S.unsub = []; }
+function stop() { if (S.meDirty && S.tid && !S.demo) flushMe(); S.unsub.forEach(u => { try { u(); } catch {} }); S.unsub = []; }
 function setHash(h) { try { history.replaceState(null, '', h ? '#' + h : location.pathname + location.search); } catch {} }
 function resetTrip() {
-  S.trip = null; S.members = []; S.membersIn = false; S.setup = null; S.addStay = false; S.whatif = null; S.repeat = null; S.recover = null; S.rc = null; S.editItem = null; S.alts = null; S.expenses = []; S.packing = []; S.readOnly = false;
+  S.trip = null; S.members = []; S.membersIn = false; S.busy = {}; S.setup = null; S.addStay = false; S.whatif = null; S.repeat = null; S.recover = null; S.rc = null; S.editItem = null; S.alts = null; S.expenses = []; S.packing = []; S.readOnly = false;
   S.cardUrl = null; S.cardBlob = null; S.copyText = ''; S.split = null; S.confirm = null; S.tkFile = null; S.feed = []; S.bucket = []; S.photos = []; S.pot = []; S.mySpend = []; S.lostOpen = false; S.pinSel = null; S.hangPlan = null; S.wrapI = 0; S.img = null; S.show = null; clearInterval(showTimer);
   for (const k of Object.keys(DRAFT)) delete DRAFT[k];
 }
-function goHome() { stop(); if (S.meDirty) flushMe(); S.tid = null; S.creating = null; S.crewView = null; S.demo = false; resetTrip(); setHash(''); render(); }
+function goHome() { stop(); S.tid = null; S.creating = null; S.crewView = null; S.demo = false; resetTrip(); setHash(''); render(); }
 
 function openTrip(id, tab) {
   if (!S.db) { flash(IN_CLAUDE ? 'Open this page in Claude to load trips.' : 'Can’t reach the local server. Is npm run dev still running?'); return; }
   stop(); S.demo = false; S.crewView = null; S.tid = id; S.tab = tab || 'overview'; S.tabPicked = !!tab; S.secTab = {}; resetTrip(); setHash(id);
-  app.innerHTML = `${topBar()}<p class="muted">Loading trip…</p>`;
+  app.innerHTML = `${topBar()}${skel()}`;
   S.unsub.push(S.db.doc('trips/' + id).onSnapshot(snap => {
     if (!snap.exists) { flash('That trip doesn’t exist anymore.'); goHome(); return; }
-    const first = !S.trip; S.trip = { ...snap.data() }; if (first && !S.tabPicked && isLive()) S.tab = 'live'; render();
+    const first = !S.trip; S.trip = { ...snap.data() }; budgetReset(); if (first && !S.tabPicked && isLive()) S.tab = 'live'; render();
   }, () => flash('Lost the connection to this trip. Reload to reconnect.')));
   S.unsub.push(S.db.collection(`trips/${id}/members`).onSnapshot(snap => {
     const local = meDoc();
-    S.members = snap.docs.map(d => ({ id: d.id, ...d.data() })); S.membersIn = true;
+    S.members = snap.docs.map(d => ({ id: d.id, ...d.data() })); S.membersIn = true; budgetReset();
     if (S.meDirty && local) { const i = S.members.findIndex(m => m.id === S.uid); i >= 0 ? S.members[i] = local : S.members.push(local); }
     S.members.sort((a, b) => (a.updatedAt || 0) - (b.updatedAt || 0));
     if (S.trip) render();
@@ -4795,6 +4951,7 @@ function openTrip(id, tab) {
   S.unsub.push(S.db.collection(`trips/${id}/feed`).orderBy('at', 'desc').limit(150).onSnapshot(snap => {
     S.feed = snap.docs.map(d => ({ id: d.id, ...d.data() })); if (S.trip) render();
   }, () => {}));
+  if (!S.realId) { try { S.mySpend = JSON.parse(localStorage.getItem('oh_spend_' + id) || '[]'); } catch { S.mySpend = []; } }
   if (S.realId) S.unsub.push(S.db.doc(`data/users/${S.realId}/spend-${id}`).onSnapshot(snap => { S.mySpend = snap.exists ? (snap.data().items || []) : (() => { try { return JSON.parse(localStorage.getItem('oh_spend_' + id) || '[]'); } catch { return []; } })(); if (S.trip) render(); }, () => {}));
   for (const coll of ['expenses', 'packing', 'bucket', 'photos', 'pot']) {
     S.unsub.push(S.db.collection(`trips/${id}/${coll}`).orderBy('at').limit(500).onSnapshot(snap => {
