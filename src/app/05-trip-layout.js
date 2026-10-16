@@ -88,13 +88,14 @@ function tripView() {
   const fns = TABFN(); if (!fns[S.tab]) S.tab = 'overview';
   const sec = secOf(S.tab), cd = countdown(), m = mode(), gd = guide(), crumbTab = gd && !gd.wait && gd.tab !== S.tab ? gd.tab : null;
   const head = S.tab === 'overview' ? '' : `<div class="mini"><span class="sec-eyebrow">${esc(sec.label)}</span><button class="mini-name" data-tab="overview">${esc(S.trip.name)}</button>
-      ${isSmall() ? `<span class="mode-chip" style="--mc:${SIZES[size()].color}">${esc(SIZES[size()].label)}</span>` : `<span class="mode-chip" style="--mc:${m.color}">${esc(modeLabel(m, size()))}</span>`}${cd ? `<span class="small muted">${esc(cd.n > 0 ? cd.text + ' to go' : cd.text)}</span>` : ''}${nextPill(gd)}</div>`;
+      ${isSmall() ? `<span class="mode-chip" style="--mc:${SIZES[size()].color}">${esc(SIZES[size()].label)}</span>` : `<span class="mode-chip" style="--mc:${m.color}">${esc(modeLabel(m, size()))}</span>`}${cd ? `<span class="small muted">${esc(cd.n > 0 ? cd.text + ' to go' : cd.text)}</span>` : ''}</div>`;
   return `${topBar()}
   ${S.demo ? `<div class="banner"><span><b>Demo trip.</b> Sample crew, nothing is saved. Try switching the trip type in Home › Settings.</span><button class="btn sm" data-act="home">Back</button></div>` : ''}
   ${S.readOnly ? `<div class="banner"><span>You can view this plan but not edit it. Ask the owner to share it with you as a Contributor.</span></div>` : ''}
   ${lostBanner()}
   ${head}
   ${liveBanner()}
+  ${journeyPill()}
   ${sec.tabs.length > 1 ? `<nav class="subtabs" aria-label="${esc(sec.label)}">${sec.tabs.map(([k, l]) => `<button class="subtab ${S.tab === k ? 'on' : ''}" data-tab="${k}" aria-current="${S.tab === k}">${esc(l)}${crumbTab === k ? '<i class="crumb" aria-hidden="true"></i>' : ''}${k === 'log' && !S.demo && logList().some(x => needsMe(x)) ? ` <span class="count">${logList().filter(x => needsMe(x)).length}</span>` : ''}</button>`).join('')}</nav>` : ''}
   ${fns[S.tab]()}
   ${isLive() && !S.lostOpen && !['live', 'map', 'overview'].includes(S.tab) ? '<button class="fab-lost" data-act="lostOpen" aria-label="I’m lost: send the crew my spot">SOS</button>' : ''}
@@ -103,43 +104,17 @@ function tripView() {
 }
 
 /* ---------- home: overview ---------- */
-function steps() {
-  const t = S.trip, tk = tickets(), ins = S.members.filter(going).length, d = dates(), small = isSmall();
-  const all = {
-    crew: { label: 'Get the crew in', done: ins >= 2, sub: `${ins} in so far. Send your friends the invite.`, go: 'crew', cta: 'Invite friends' },
-    where: small ? { label: 'Pick the plan', done: !!t.lockedDest, sub: dest() ? `Leaning “${dest().city}”. Swipe on AI-pitched plans to settle it.` : 'Swipe on AI-pitched plans that fit everyone.', go: 'match', cta: 'Open Plan Match' }
-      : { label: 'Pick where', done: !!t.lockedDest, sub: dest() ? `Leaning ${dest().city}. Swipe on AI-pitched trips to settle it.` : 'Swipe on AI-pitched trips that fit everyone.', go: 'match', cta: 'Open Trip Match' },
-    dates: small ? { label: 'Pick the day', done: !!t.lockedDates, sub: d ? `Best so far: ${fmt(d.start)}` : 'Everyone taps the days they’re free.', go: 'dates', cta: 'Pick the day' }
-      : { label: 'Lock the dates', done: !!t.lockedDates, sub: d ? `Best so far: ${short(d.start)} – ${short(d.end)}` : 'Everyone taps the days they’re free.', go: 'dates', cta: 'Pick dates' },
-    flights: { label: 'Book flights', done: tk.on, sub: `${tk.have.length}/${tk.goal} booked. Search fares from every home city.`, go: 'flights', cta: 'Find flights' },
-    stay: { label: 'Book the stay', done: !!t.stay, sub: t.stay ? t.stay.name : 'Hotels and Airbnbs that fit the group budget.', go: 'stays', cta: 'Find stays' },
-    plan: { label: small ? (size() === 'day' ? 'Plan the day' : 'Plan the night') : 'Plan the days', done: (t.itinerary || []).length >= (small ? 1 : Math.max(3, nightsOf(d))), sub: small ? 'Add the stops: where you meet, eat, and end up.' : 'Nightlife picks, an itinerary and a packing list.', go: 'plan', cta: 'Build the plan' },
-  };
-  return STEP_KEYS[size()].map(k => all[k]);
-}
+/* ---------- home: overview ----------
+   The journey leads. Everything else on the plan home is secondary: the pass, recent changes,
+   "something changed?", and the crew at a glance. Booking, money and the rest stay one tap
+   away in the bottom menu. */
 function overviewTab() {
-  const st = steps(), next = st.find(s => !s.done), live = isLive(), d = dates(), over = d && TODAY > d.end;
-  const tk = tickets(), t = S.trip, ns = nudges();
-  const today = live ? visItems().filter(i => i.date === TODAY).sort(byTime) : [];
-  const nowT = new Date().toTimeString().slice(0, 5), upNext = today.find(i => timeKey(i.time) >= timeKey(nowT));
-  const fl = S.trip.deals?.data?.flights || [];
-  return `${showWelcome() ? welcomeCard() : ''}${honoreeMode() && !t.honoree ? `<section class="card row" style="justify-content:space-between"><span><b>Who’s the ${esc(mode().honoree)}?</b> <span class="small muted">${t.honoreeName ? esc(t.honoreeName) + ' · ' : ''}Their share is covered and surprises stay hidden from them.</span></span>
-    <select id="set-honoree" style="width:auto"><option value="">Pick someone</option>${S.members.map(m => `<option value="${esc(m.id)}">${esc(m.nick || 'Someone')}</option>`).join('')}</select></section>` : ''}
-  ${live ? `<section class="hero-card live-card"><div class="row" style="gap:8px"><i class="live-dot" aria-hidden="true"></i><span class="label" style="color:inherit">${isSmall() ? 'Happening today' : 'Trip is live · Day ' + (span(d.start, d.end).indexOf(TODAY) + 1)}</span></div>
-      <h2>${upNext ? `Up next: ${esc(upNext.title)}` : 'Nothing else planned today'}</h2>${upNext ? `<span>${esc(tShow(upNext.time) || '')}</span>` : ''}
-      <div class="row" style="gap:8px"><button class="btn" data-tab="live">Open today</button><button class="btn ghost-light" data-tab="map">Map</button><button class="btn lost-btn" data-act="lostOpen">I’m lost</button></div></section>`
-  : over ? `<section class="hero-card" style="--hc:#7048E8"><span class="label" style="color:inherit">That’s a wrap</span><h2>${isSmall() ? 'Your recap is ready' : `Your ${esc(dest()?.city || 'trip')} Wrapped is ready`}</h2><div><button class="btn" data-tab="wrapped">Watch it</button></div></section>`
-  : showWelcome() ? '' : moveCard()}
-  ${STAGES.findIndex(([k]) => k === stageOf(S.trip, S.members)) >= 2 ? passport() : pass()}
-  ${showWelcome() ? '' : stageTrack()}
-  ${showWelcome() ? '' : changesCard()}
-  ${showWelcome() ? '' : recoveryCard()}
-  ${isSmall() ? '' : `<section class="grid2">${size() === 'trip' ? `
-    <button class="tile" data-tab="flights"><span class="label">Flights</span><b class="tile-big">${tk.have.length}/${tk.goal || 0} booked</b>
-      <span class="small muted">${fl.length ? 'Typical: ' + esc(fl.map(f => f.roundTrip).filter(Boolean)[0] || '') + ' round trip' : 'Search fares from every home city'}</span><span class="tile-go">Find flights →</span></button>` : ''}
-    <button class="tile" data-tab="stays"><span class="label">Stay</span><b class="tile-big">${t.stay ? esc(t.stay.name) : (t.stays?.items?.length ? t.stays.items.length + ' options' : 'Not booked')}</b>
-      <span class="small muted">${t.stay ? esc(t.stay.area || '') + (t.stay.perNight ? ' · ' + esc(t.stay.perNight) : '') : 'Hotels and Airbnbs that fit the budget'}</span><span class="tile-go">${t.stay ? 'See the stay →' : 'Find stays →'}</span></button>
-  </section>`}
+  const t = S.trip, ns = nudges(), welcome = showWelcome();
+  return `${welcome ? welcomeCard() : journeyCard()}
+  ${isLive() ? '<div class="row" style="gap:8px"><button class="btn lost-btn" data-act="lostOpen">I’m lost</button><span class="small muted">Sends the crew your spot.</span></div>' : ''}
+  ${welcome ? '' : changesCard()}
+  ${STAGES.findIndex(([k]) => k === stageOf(t, S.members)) >= 2 ? passport() : pass()}
+  ${welcome ? '' : recoveryCard()}
   <section class="card stack">
     <div class="row" style="justify-content:space-between"><h3>Crew</h3><button class="btn sm" data-tab="crew">Invite & manage</button></div>
     <div class="row" style="gap:6px">${S.members.map(m => `<span class="av-sm" title="${esc(m.nick || 'Someone')}" style="background:${colorFor(m.id)};${m.status === 'out' ? 'opacity:.35' : ''}">${esc((m.nick || '?')[0].toUpperCase())}</span>`).join('')}</div>

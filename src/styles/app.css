@@ -863,3 +863,52 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 .need-group{display:flex;flex-direction:column;gap:6px}
 .need-c{font:600 13px var(--f-body);padding:5px 10px;border-radius:999px;background:color-mix(in oklab,var(--good) 13%,transparent);color:var(--ink)}
 .need-notes{margin:0;padding-left:18px}
+/* the plan journey */
+.journey{display:flex;flex-direction:column;gap:12px}
+.j-track ol{grid-template-columns:repeat(6,minmax(0,1fr))}
+.j-strip li.j-done::before,.j-strip li.j-cur::before{background:var(--accent)}
+.j-strip li.j-done i{background:var(--accent);border-color:var(--accent)}
+.j-strip li.j-cur i{border-color:var(--accent);background:var(--surface);box-shadow:0 0 0 4px color-mix(in oklab,var(--accent) 22%,transparent);transform:scale(1.15)}
+.j-strip li.j-cur{color:var(--ink);font-weight:800}
+.j-focus{--mv:#252C5C;background:linear-gradient(135deg,var(--mv),color-mix(in oklab,var(--mv) 62%,#0B0E1E));color:#fff;border-radius:18px;padding:22px;display:flex;flex-direction:column;gap:12px}
+.j-focus.mine{--mv:var(--accent)}
+.j-focus.done{--mv:#14915F}
+.j-focus.fresh{animation:jIn .5s var(--spring, cubic-bezier(.2,.9,.3,1.2))}
+@keyframes jIn{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
+.j-eyebrow{font:700 11px var(--f-mono);letter-spacing:.12em;text-transform:uppercase;opacity:.85}
+.j-focus h2{color:#fff;font-size:clamp(24px,5.4vw,32px);line-height:1.08;margin:0}
+.j-why{margin:0;color:rgba(255,255,255,.9);font-size:15px}
+.j-do{display:flex;flex-direction:column;gap:4px;padding:12px 14px;border-radius:12px;background:rgba(255,255,255,.1)}
+.j-do .label{color:rgba(255,255,255,.75);margin:0}
+.j-do b{font-size:15.5px;line-height:1.35}
+.j-after{margin:0;font-size:13.5px;color:rgba(255,255,255,.8)}
+.j-after .label{color:rgba(255,255,255,.65);margin-right:4px}
+.j-acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.j-focus .btn{background:#fff;color:#151A33;border-color:#fff}
+.j-focus .btn.ghost,.j-focus .btn:not(.primary){background:transparent;color:#fff;border-color:rgba(255,255,255,.55)}
+.j-focus .btn.primary{background:#fff;color:#151A33;border-color:#fff}
+.j-focus .j-help{color:#fff;opacity:.9}
+.j-focus .av-sm{border:2px solid color-mix(in oklab,var(--mv) 70%,#000)}
+.j-focus .avs{display:flex;gap:4px}
+.j-focus select,.j-focus input{background:#fff;color:#151A33}
+.j-focus .j-inline{width:100%}
+.j-focus .j-inline .label{color:rgba(255,255,255,.75)}
+.j-lists{display:flex;flex-direction:column;gap:10px}
+.j-list{display:flex;flex-direction:column}
+.j-list>.label{margin-bottom:4px}
+.j-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.j-list>.label+.j-row{border-top:0}
+.j-ic{width:24px;height:24px;flex:none;display:grid;place-items:center;border-radius:50%;font-size:12px;background:color-mix(in oklab,var(--muted) 14%,transparent);color:var(--muted)}
+.j-row.s-done .j-ic{background:color-mix(in oklab,var(--good) 18%,transparent);color:var(--good)}
+.j-row.s-ready .j-ic,.j-row.s-waiting .j-ic{background:color-mix(in oklab,var(--accent) 16%,transparent);color:var(--accent)}
+.j-row.s-done b,.j-row.s-blocked b,.j-row.s-later b{color:var(--muted);font-weight:600}
+.j-more summary{cursor:pointer;color:var(--muted);padding:4px 0}
+.j-pill{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-radius:14px;border:1px solid var(--line);background:var(--surface)}
+.j-pill.mine{border-color:color-mix(in oklab,var(--accent) 45%,transparent);background:color-mix(in oklab,var(--accent) 9%,var(--surface))}
+.j-pill .np-k{font:700 10px var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-right:6px}
+@media (max-width:420px){.j-strip li{font-size:9px}}
+@media (prefers-reduced-motion:reduce){.j-focus.fresh{animation:none}}
+.decided-sum h2{font-size:clamp(26px,6vw,36px);margin:0}
+.more-opts>summary,.more-opts-inline>summary{cursor:pointer;font-weight:600;color:var(--ink)}
+.more-opts-inline>summary{color:var(--muted)}
+.p-more summary{cursor:pointer;color:var(--muted)}

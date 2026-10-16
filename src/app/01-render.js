@@ -187,6 +187,13 @@ function crewTab() {
 
 const monthName = d => D(d).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' });
 function datesTab() {
+  if (!S.trip.lockedDates || S.demo) return datesBody();
+  const d = S.trip.lockedDates, ms = active(), can = ms.filter(m => fitOf(m, span(d.start, d.end)));
+  return `<section class="card stack decided-sum"><div class="row" style="justify-content:space-between"><span class="on-pill">Decided</span>${S.readOnly ? '' : '<button class="btn sm ghost" data-act="unlockDates">Change it</button>'}</div>
+    <h2>${dayRange(d.start, d.end)}</h2><span class="small muted">${can.length === ms.length ? 'Everyone can make it.' : `${can.length} of ${ms.length} marked these days as free.`}</span></section>
+  <details class="card more-opts"><summary>See everyone’s days and other options</summary><div class="stack" style="margin-top:12px">${datesBody()}</div></details>`;
+}
+function datesBody() {
   const t = S.trip, days = span(t.winStart, t.winEnd), ms = active(), mine = new Set(meDoc()?.days || []), myPref = new Set(meDoc()?.pref || []), flex = meDoc()?.flex || {};
   const best = bestWindows(), bestSet = new Set(best[0] ? span(best[0].start, best[0].end) : []);
   const max = Math.max(1, ms.length);

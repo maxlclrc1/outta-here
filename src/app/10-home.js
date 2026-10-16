@@ -216,13 +216,18 @@ function newTripForm() {
     <form id="newTrip" class="stack">
       <label class="field"><span class="label">Name it</span><input id="nt-name" required maxlength="60" placeholder="${esc(ph)}"></label>
       ${small ? `<label class="field"><span class="label">Which city?</span><input id="nt-city" maxlength="50" value="${esc(city)}" placeholder="Brooklyn" required></label>` : ''}
-      ${!small && m.honoree ? `<label class="field"><span class="label">Who’s the ${esc(m.honoree)}?</span><input id="nt-honoree" maxlength="40" placeholder="Their name"></label>` : ''}
       <div class="row">
         <label class="field"><span class="label">${small ? 'Could happen from' : 'Earliest date'}</span><input id="nt-start" type="date" value="${start}" min="${TODAY}" required></label>
         <label class="field"><span class="label">${small ? 'Until' : 'Latest date'}</span><input id="nt-end" type="date" value="${end}" min="${TODAY}" required></label>
-        <label class="field" style="flex:0 1 190px"><span class="label">Currency</span><select id="nt-cur">${curOptions(lsGetC('outta_lastcur', '') || myCur())}</select></label>
-        ${small ? '' : `<label class="field" style="flex:0 1 110px"><span class="label">Nights</span><select id="nt-nights">${[1, 2, 3, 4, 5, 6, 7, 10, 14].map(n => `<option ${n === sz.nights ? 'selected' : ''}>${n}</option>`).join('')}</select></label>`}
       </div>
+      <details class="more-opts-inline"><summary class="small">More options${small ? '' : ': nights, currency' + (m.honoree ? ', ' + esc(m.honoree) : '')}</summary>
+        <div class="row" style="margin-top:10px">
+          <label class="field" style="flex:0 1 190px"><span class="label">Currency</span><select id="nt-cur">${curOptions(lsGetC('outta_lastcur', '') || myCur())}</select></label>
+          ${small ? '' : `<label class="field" style="flex:0 1 110px"><span class="label">Nights</span><select id="nt-nights">${[1, 2, 3, 4, 5, 6, 7, 10, 14].map(n => `<option ${n === sz.nights ? 'selected' : ''}>${n}</option>`).join('')}</select></label>`}
+          ${!small && m.honoree ? `<label class="field"><span class="label">The ${esc(m.honoree)}’s name</span><input id="nt-honoree" maxlength="40" placeholder="Optional"></label>` : ''}
+        </div>
+        <span class="small muted">All of this can change later in Settings.</span>
+      </details>
       <p class="small muted">${small ? 'Everyone taps which of these days they’re free. The crew picks the exact plan and day together.' : 'Not sure on dates yet? Give a wide window. The crew picks the exact nights later.'}</p>
       <div><button class="btn primary big" type="submit">Create ${esc(sz.label.toLowerCase())}</button></div>
     </form>

@@ -37,7 +37,7 @@ app.addEventListener('click', e => {
   if (ds.act === 'backModes') { S.creating = 'mode'; return render(); }
   if (ds.act === 'cancelNew') { S.creating = null; S.newCrew = null; S.newSize = null; return render(); }
   if (ds.sec) { const sec = sections().find(x => x.k === ds.sec); S.tab = S.secTab[ds.sec] || (ds.sec === 'live' && !isLive() && !S.secTab.live ? 'live' : sec.tabs[0][0]); S.tabPicked = true; S.show = null; clearInterval(showTimer); render(); window.scrollTo({ top: 0 }); return; }
-  if (ds.tab) { S.guideJump = !!ds.guide; S.tab = TAB_ALIAS[ds.tab] || ds.tab; S.secTab[secOf(S.tab).k] = S.tab; S.tabPicked = true; if (ds.tab !== 'recap') { S.show = null; clearInterval(showTimer); } render(); window.scrollTo({ top: 0 }); return; }
+  if (ds.tab) { if (ds.tab === 'wrapped' && S.tid) lsSet('outta_wrapped_' + S.tid, true); S.guideJump = !!ds.guide; S.tab = TAB_ALIAS[ds.tab] || ds.tab; S.secTab[secOf(S.tab).k] = S.tab; S.tabPicked = true; if (ds.tab !== 'recap') { S.show = null; clearInterval(showTimer); } render(); window.scrollTo({ top: 0 }); return; }
   if (ds.tpluse) { S.repeat = { tpl: ds.tpluse, cid: S.crewView || S.trip?.crewId }; render(); setTimeout(() => $('#repeat-box')?.scrollIntoView({ block: 'nearest', behavior: calm() ? 'auto' : 'smooth' }), 60); return; }
   if (ds.tpldel) { const cid = S.crewView || S.trip?.crewId; if (S.db && cid) S.db.doc('crews/' + cid).update({ templates: { [ds.tpldel]: null } }).then(() => flash('Template deleted.'), e => flash(writeErr(e))); return; }
   if (ds.act === 'repeatClose') { S.repeat = null; return render(); }
@@ -53,6 +53,8 @@ app.addEventListener('click', e => {
   if (ds.undo) return undoChange(ds.undo);
   if (ds.act === 'ackAll') return saveTrip({ changes: Object.fromEntries(logList().filter(x => needsMe(x)).map(x => [x.id, { seen: { [S.uid]: true } }])) });
   if (!S.trip) return;
+  if (ds.jgo) return jGo(ds.jgo);
+  if (ds.jnudge) return jNudge(ds.jnudge);
   if (ds.act === 'repeatOpen') { S.repeat = {}; render(); setTimeout(() => $('#repeat-box')?.scrollIntoView({ block: 'nearest', behavior: calm() ? 'auto' : 'smooth' }), 60); return; }
   if (ds.act === 'tplSave') return saveTemplate();
   if (ds.act === 'applyOutline') return applyOutline();
@@ -66,7 +68,6 @@ app.addEventListener('click', e => {
   if (ds.act === 'setupBack') return setupGo(-1);
   if (ds.act === 'setupLater') { setupSave(); S.setup = null; S.tab = 'overview'; render(); window.scrollTo({ top: 0 }); flash('No problem. Finish it any time in Home › Crew.'); return; }
   if (ds.join) return joinPlan(ds.join);
-  if (ds.act === 'moveNudge') return nudgeMove();
   if (ds.runoff) { const ro = runoffState(); if (!ro || ro.winner) return; return saveTrip({ roVotes: { [ro.key]: { [S.uid]: ds.runoff } } }); }
   if (ds.act === 'startRunoff') return startRunoff();
   if (ds.act === 'endRunoff') return saveTrip({ runoff: null });

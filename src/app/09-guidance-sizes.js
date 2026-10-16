@@ -19,73 +19,34 @@ function inviteCard() {
    there. Nothing is forced; you can go anywhere. Finishing a stage gets a short celebration. */
 const timeKey = t => !t ? '9' : (t < '05:00' ? '2' : '1') + t; // after-midnight plans belong at the end of the night
 const byTime = (a, b) => timeKey(a.time).localeCompare(timeKey(b.time));
+// what to point at next: the journey's focus step for you (see 05n-journey.js)
 function guide() {
-  if (!S.trip) return null;
-  const me = meDoc(), t = S.trip, d = dates();
-  if (isLive()) return null; // live mode has its own quick actions
-  if (d && TODAY > d.end) return { tab: 'wrapped', sel: '.wslide', label: 'Watch your Trip Wrapped' };
-  if (!me || me.status === 'maybe') return { tab: 'overview', sel: showWelcome() ? '.welcome [data-join="in"]' : '.pass-stub [data-status="in"]', label: 'Tell the crew if you’re in' };
-  if (me.status === 'out') return null;
-  const tk = tickets(), items = t.pitches?.items || [];
-  for (const s of steps().filter(x => !x.done)) {
-    if (s.go === 'crew') return S.members.length >= 2 ? { tab: 'crew', sel: '[data-act="copyNudge"]', label: 'Nudge the crew to say they’re in' } : { tab: 'crew', sel: '[data-act="copyInvite"]', label: 'Invite your friends' };
-    if (s.go === 'match') {
-      const ro = runoffState(); if (ro && !ro.mine && !ro.winner) return { tab: 'match', sel: '.runoff', label: 'Vote in the final round' };
-      if (ro && ro.winner) return { tab: 'match', sel: '.runoff [data-lockpitch]', label: `Lock in ${pName(ro.winner)}` };
-      if (!ro && items.length && active().length >= 2 && !matchedPitch() && active().every(m => items.every(p => swipeOf(p.id, m.id)))) return { tab: 'match', sel: '.settle', label: 'No perfect match. Settle it' };
-      if (items.some(x => !swipeOf(x.id, S.uid))) return { tab: 'match', sel: '#pitch', label: 'Swipe on the pitches' };
-      if (!items.length && S.sample) return { tab: 'match', sel: '[data-act="genPitches"]', label: isSmall() ? 'Get AI plan pitches' : 'Get AI trip pitches' };
-      if (!(t.destinations || []).length) return { tab: 'match', sel: '#ad-city', label: isSmall() ? 'Suggest a plan' : 'Suggest a destination' };
-      if (!(me.votes || []).length) return { tab: 'match', sel: '[data-vote]', label: 'Vote on where to go' };
-      return { tab: 'match', sel: '[data-lockdest]', label: isSmall() ? 'Lock the plan' : 'Lock the destination' };
-    }
-    if (s.go === 'dates') {
-      if (!(me.days || []).length) return { tab: 'dates', sel: '.cal', label: 'Tap the days you’re free' };
-      return bestWindows()[0] ? { tab: 'dates', sel: '[data-lockdates]', label: 'Lock the best dates' } : { tab: 'dates', sel: '[data-setnights]', label: 'Find dates that work' };
-    }
-    if (s.go === 'flights' && !tk.tk[S.uid]) {
-      if (!me.home) return { tab: 'crew', sel: '#me-home', label: 'Add where you fly from' };
-      return { tab: 'flights', sel: '.fl-route.mine .btn.primary', label: 'Book your flight' };
-    }
-    if (s.go === 'stays') {
-      const opts = t.stays?.items || [];
-      if (opts.length && !opts.some(o => score(rkey('st' + o.name)).mine)) return { tab: 'stays', sel: '.stay .votes', label: 'Vote on where to stay' };
-      if (opts.length) return { tab: 'stays', sel: '[data-lockstay]', label: 'Lock the stay' };
-      return S.sample ? { tab: 'stays', sel: '[data-act="findStays"]', label: 'Find places to stay' } : { tab: 'stays', sel: '.linkrow .btn', label: 'Search for a place to stay' };
-    }
-    if (s.go === 'plan') return S.sample ? { tab: 'plan', sel: '[data-act="plan"]', label: 'Plan the days' } : { tab: 'plan', sel: '.addItem input[id^="ai-title"]', label: 'Plan the days' };
-  }
-  const left = steps().find(x => !x.done);
-  if (left) return { tab: left.go, wait: true, label: 'Waiting on the crew to ' + left.label.toLowerCase().replace(/^book/, 'book') };
-  if (!me.budget) return { tab: 'crew', sel: '#me-budget', label: 'Set your budget' };
-  return null;
+  if (!S.trip || isLive() || S.demo && !S.trip.pitches) return null;
+  const f = journey().focus; if (!f || f.live) return null;
+  if (!f.mine && f.status === 'waiting') return { tab: f.help?.tab, wait: true, label: f.group || f.title, k: f.k };
+  return { tab: f.help?.tab, sel: f.help?.sel, label: f.mine && f.mineText ? f.mineText : f.title, k: f.k };
 }
-const DONE_TEXT = { 'Pick the plan': 'Plan locked', 'Pick the day': 'Day locked. It’s on', 'Plan the night': 'Night planned', 'Plan the day': 'Day planned', 'Get the crew in': 'The crew’s in', 'Pick where': 'Destination locked', 'Lock the dates': 'Dates locked', 'Book flights': 'Everyone’s booked. Trip is ON', 'Book the stay': 'Stay locked', 'Plan the days': 'Days planned' };
+const DONE_TEXT = { invite: 'The crew’s in', honoree: 'Guest of honor set', rsvp: 'Everyone has answered', dest: 'Decided where', dates: 'Dates locked', confirm: 'Everyone confirmed', venue: 'Place and time set', flights: 'Everyone’s booked', stay: 'Stay locked', plan: 'The plan is sketched', tasks: 'Every to-do done', booked: 'Stay booked', arrivals: 'Arrivals are in', meet: 'Meeting point set', settle: 'All settled up' };
 function checkMilestones() {
   if (!S.trip || S.demo || S.setup) return;
-  const done = steps().filter(s => s.done).map(s => s.label), key = 'outta_done_' + S.tid;
+  const done = journey().done.map(s => s.k), key = 'outta_done2_' + S.tid;
   let seen = null; try { seen = JSON.parse(localStorage.getItem(key) || 'null'); } catch {}
   try { localStorage.setItem(key, JSON.stringify(done)); } catch {}
   if (!seen) return; // first visit to this trip on this device: no fanfare for old progress
   const fresh = done.filter(l => !seen.includes(l));
   if (!fresh.length) return;
   const g = guide();
-  showMilestone(DONE_TEXT[fresh[fresh.length - 1]] || fresh[fresh.length - 1], g && !g.wait ? g : null);
+  const k = fresh[fresh.length - 1]; showMilestone(k === 'dest' && isSmall() ? 'Plan locked' : DONE_TEXT[k] || 'Step done', g && !g.wait ? g : null);
 }
 let msTimer;
 function showMilestone(title, g) {
   document.querySelector('.milestone')?.remove();
   const el = document.createElement('div');
   el.className = 'milestone'; el.setAttribute('role', 'status');
-  el.innerHTML = `<span class="ms-check" aria-hidden="true">✓</span><div style="min-width:0;flex:1"><b>${esc(title)}</b>${g ? `<span class="ms-next">Next: ${esc(g.label)}</span>` : ''}</div>${g ? `<button class="btn sm primary" data-ms-go="${g.tab}">Go</button>` : ''}`;
+  el.innerHTML = `<span class="ms-check" aria-hidden="true">✓</span><div style="min-width:0;flex:1"><b>${esc(title)}</b>${g ? `<span class="ms-next">Next: ${esc(g.label)}</span>` : ''}</div>${g ? `<button class="btn sm primary" data-ms-go="${g.k}">Go</button>` : ''}`;
   document.body.appendChild(el);
-  el.addEventListener('click', e => { const b = e.target.closest('[data-ms-go]'); if (b) { S.tab = b.dataset.msGo; S.secTab[secOf(S.tab).k] = S.tab; S.guideJump = true; render(); window.scrollTo({ top: 0 }); } el.remove(); });
+  el.addEventListener('click', e => { const b = e.target.closest('[data-ms-go]'); if (b) jGo(b.dataset.msGo); el.remove(); });
   clearTimeout(msTimer); msTimer = setTimeout(() => el.remove(), 6500);
-}
-function nextPill(g) {
-  if (!g || S.tab === g.tab && !g.wait) return '';
-  return g.wait ? `<div class="next-pill wait"><span><span class="np-k">Next</span><br>${esc(g.label)}</span></div>`
-    : `<button class="next-pill" data-tab="${g.tab}" data-guide="1"><span><span class="np-k">Your next move</span><br>${esc(g.label)}</span><span class="np-go">Go →</span></button>`;
 }
 function applyBeacon() {
   const g = guide(); if (!g || g.wait || !g.sel || S.tab !== g.tab) { S.guideJump = false; return; }

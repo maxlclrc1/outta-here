@@ -88,7 +88,16 @@ function lockPitch(pid) {
   saveTrip(withLog({ destinations: ds, lockedDest: d.id, lockedDates: { start: p.start, end: p.end } }, { area: 'dest', text: `Locked in: ${p.city}, ${dayRange(p.start, p.end)}`, act: 'all', undo: { k: 'set', patch: { lockedDest: S.trip.lockedDest || null, lockedDates: S.trip.lockedDates || null } } }));
   flash(`Locked: ${p.city}, ${short(p.start)} – ${short(p.end)}. Time to book flights.`);
 }
+// Once a place is locked, lead with it and the next step; the votes and other options
+// are one tap away instead of competing for attention.
 function matchTab() {
+  if (!S.trip.lockedDest || S.demo) return matchBody();
+  const ds = dest(), d = S.trip.lockedDates, p = (S.trip.pitches?.items || []).find(lockedOn);
+  return `<section class="card stack decided-sum"><div class="row" style="justify-content:space-between"><span class="on-pill">Decided</span>${S.readOnly ? '' : '<button class="btn sm ghost" data-act="unlockDest">Change it</button>'}</div>
+    <h2>${esc(ds?.city || '')}</h2><span class="small muted">${[d && dayRange(d.start, d.end), p && p.perPerson && p.perPerson + ' each', p && p.tagline].filter(Boolean).map(esc).join(' · ')}</span></section>
+  <details class="card more-opts"><summary>See the votes and other options</summary><div class="stack" style="margin-top:12px">${matchBody()}</div></details>`;
+}
+function matchBody() {
   const items = S.trip.pitches?.items || [], vs = active(), m = matchedPitch();
   const next = items.find(x => !swipeOf(x.id, S.uid));
   const pitchCard = p => { const [c1, c2] = GRADS[hashStr(p.city) % GRADS.length];
@@ -101,10 +110,10 @@ function matchTab() {
         <span style="color:#fff;font-weight:600">${esc(p.tagline)}</span>
       </div>
       <div class="pitch-body">
-        <div class="facts"><div><span class="label">${p.small ? 'When' : 'Dates'}</span><b>${p.small ? fmt(p.start) + (p.time ? ' · ' + t12(p.time) : '') : short(p.start) + ' → ' + short(p.end)}</b></div><div><span class="label">Per person</span><b>${esc(p.perPerson || '?')}</b></div>${p.weather ? `<div><span class="label">Weather</span><b style="font-family:var(--f-body)">${esc(p.weather)}</b></div>` : ''}</div>
+        <div class="facts"><div><span class="label">${p.small ? 'When' : 'Dates'}</span><b>${p.small ? fmt(p.start) + (p.time ? ' · ' + t12(p.time) : '') : short(p.start) + ' → ' + short(p.end)}</b></div><div><span class="label">Per person</span><b>${esc(p.perPerson || '?')}</b></div></div>
         ${fitChips(p)}
         <p>${esc(p.why)}</p>
-        ${p.highlights.length ? `<ul style="margin:0;padding-left:18px">${p.highlights.map(h => `<li>${esc(h)}</li>`).join('')}</ul>` : ''}
+        ${p.highlights.length || p.weather ? `<details class="p-more"><summary class="small">See details</summary>${p.weather ? `<p class="small" style="margin:6px 0 0"><b>Weather:</b> ${esc(p.weather)}</p>` : ''}${p.highlights.length ? `<ul style="margin:6px 0 0;padding-left:18px">${p.highlights.map(h => `<li>${esc(h)}</li>`).join('')}</ul>` : ''}</details>` : ''}
       </div>
     </article>`; };
   return `${S.sample === null ? whereTab() : ''}<section class="card stack">
@@ -137,7 +146,7 @@ function bindSwipe() {
   const el = document.getElementById('pitch'); if (!el || el._swipe) return; el._swipe = true;
   let x0 = null, dx = 0;
   const yes = document.getElementById('stamp-yes'), no = document.getElementById('stamp-no');
-  el.addEventListener('pointerdown', e => { if (e.button) return; x0 = e.clientX; dx = 0; el.classList.add('dragging'); el.setPointerCapture(e.pointerId); });
+  el.addEventListener('pointerdown', e => { if (e.button || e.target.closest('summary,details')) return; x0 = e.clientX; dx = 0; el.classList.add('dragging'); el.setPointerCapture(e.pointerId); });
   el.addEventListener('pointermove', e => { if (x0 === null) return; dx = e.clientX - x0; el.style.transform = `translateX(${dx}px) rotate(${dx / 18}deg)`; yes.style.opacity = Math.max(0, Math.min(1, dx / 100)); no.style.opacity = Math.max(0, Math.min(1, -dx / 100)); });
   const end = () => {
     if (x0 === null) return; x0 = null; el.classList.remove('dragging');
