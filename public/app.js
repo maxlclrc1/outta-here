@@ -413,7 +413,7 @@ function popIn(els) {
   }
 }
 let lastView = '';
-const viewKey = () => S.tid && S.trip ? `t:${S.tid}:${S.tab}` : `h:${S.loading ? 'load' : ''}:${S.creating && S.creating !== 'newCrew' ? S.creating : ''}:${S.crewView || ''}`;
+const viewKey = () => S.tid && S.trip ? `t:${S.tid}:${S.tab}` : `h:${S.loading ? 'load' : ''}:${S.creating && S.creating !== 'newCrew' ? S.creating : ''}:${S.crewView || ''}:${homeMode}`;
 
 function render() {
   // switching menus cross-fades; going into or out of Live fades slower so the dark mode eases in
@@ -2007,14 +2007,68 @@ function homeView() {
   ${S.creating === 'newCrew' ? `<section class="card stack"><h2>New crew</h2><p class="small muted">A crew is a group you make plans with. You’ll get an invite link for it next.</p>
     <form id="newCrewForm" class="row" style="gap:6px"><input id="nc-name" maxlength="40" required placeholder="The Vegas Six" style="flex:1 1 200px"><button class="btn primary" type="submit">Create crew</button><button class="btn ghost" type="button" data-act="cancelNew">Cancel</button></form></section>` : ''}
   ${!canSave ? '' : !S.tripsLoaded ? '<p class="muted">Loading your plans…</p>' : `
+  <div class="home-bar"><span class="small muted">${[live.length && live.length + ' happening now', upcoming.length && upcoming.length + ' coming up', deciding.length && deciding.length + ' deciding'].filter(Boolean).join(' · ') || 'No plans yet'}</span>${viewSwitch()}</div>
+  ${homeMode === 'cal' ? calView(plans, deciding) : `
   ${live.length ? `<section class="stack"><h2><i class="live-dot" aria-hidden="true"></i> Happening now</h2>${live.map(t => planRow(t)).join('')}</section>` : ''}
   <section class="stack"><div class="row" style="justify-content:space-between"><h2>Coming up</h2><span class="small muted">${upcoming.length} locked in</span></div>
     ${upcoming.length ? upcoming.map(t => planRow(t)).join('') : `<div class="empty"><span>Nothing locked yet. When a plan has a place and a day, it shows up here like a calendar.</span></div>`}</section>
-  ${deciding.length ? `<section class="stack"><h2>Still deciding</h2>${deciding.map(t => planRow(t, { del: true })).join('')}</section>` : ''}
+  ${deciding.length ? `<section class="stack"><h2>Still deciding</h2>${deciding.map(t => planRow(t, { del: true })).join('')}</section>` : ''}`}
   <section class="stack"><div class="row" style="justify-content:space-between"><h2>Your crews</h2><button class="btn sm" data-act="newCrew">New crew</button></div>
     ${crews.length ? `<div class="crew-grid">${crews.map(c => crewCard(c, plans)).join('')}</div>` : `<div class="empty"><span>Crews are the groups you make plans with. Make one, share its invite link, and every plan after that starts with everyone already in.</span><button class="btn sm primary" data-act="newCrew">Make a crew</button></div>`}</section>
-  ${past.length ? `<details class="card past"><summary><b>Past plans</b> <span class="small muted">${past.length}</span></summary><div class="stack" style="margin-top:10px">${past.map(t => planRow(t, { del: true })).join('')}</div></details>` : ''}`}`;
+  ${past.length && homeMode !== 'cal' ? `<details class="card past"><summary><b>Past plans</b> <span class="small muted">${past.length}</span></summary><div class="stack" style="margin-top:10px">${past.map(t => planRow(t, { del: true })).join('')}</div></details>` : ''}`}`;
 }
+/* ---------- home: calendar view ---------- */
+const ICON_LIST = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>';
+const ICON_CAL = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
+let homeMode = 'list'; try { homeMode = localStorage.getItem('outta_homeview') === 'cal' ? 'cal' : 'list'; } catch {}
+const covers = (t, d) => t.lockedDates && t.lockedDates.start <= d && t.lockedDates.end >= d;
+function viewSwitch() {
+  return `<div class="seg" role="group" aria-label="View">${[['list', 'List', ICON_LIST], ['cal', 'Calendar', ICON_CAL]].map(([k, l, i]) => `<button class="${homeMode === k ? 'on' : ''}" data-homeview="${k}" aria-pressed="${homeMode === k}">${i}${l}</button>`).join('')}</div>`;
+}
+function calView(plans, deciding) {
+  const month = S.calMonth || TODAY.slice(0, 7), first = month + '-01';
+  const start = add(first, -((D(first).getUTCDay() + 6) % 7)), grid = Array.from({ length: 42 }, (_, i) => add(start, i));
+  // each plan keeps one lane for its whole stay so multi-day bars line up across the week
+  const evs = plans.filter(t => t.lockedDates).sort((a, b) => a.lockedDates.start < b.lockedDates.start ? -1 : a.lockedDates.start > b.lockedDates.start ? 1 : b.lockedDates.end.localeCompare(a.lockedDates.end) || (a.time || '').localeCompare(b.time || ''));
+  const laneEnd = [], lane = new Map();
+  for (const t of evs) { let l = laneEnd.findIndex(e => e < t.lockedDates.start); if (l < 0) l = laneEnd.length; laneEnd[l] = t.lockedDates.end; lane.set(t, l); }
+  const inMonth = d => d.slice(0, 7) === month;
+  const sel = S.calDay && inMonth(S.calDay) ? S.calDay : inMonth(TODAY) ? TODAY : (evs.find(t => inMonth(t.lockedDates.start))?.lockedDates.start || first);
+  const LANES = 3;
+  const cells = grid.map((d, i) => {
+    const here = evs.filter(t => covers(t, d)), more = here.filter(t => lane.get(t) >= LANES).length;
+    const bars = Array.from({ length: Math.min(LANES, 1 + Math.max(-1, ...here.map(t => Math.min(LANES - 1, lane.get(t))))) }, (_, l) => {
+      const t = here.find(x => lane.get(x) === l); if (!t) return '<span class="mc-ev gap"></span>';
+      const s = d === t.lockedDates.start, e = d === t.lockedDates.end, label = s || i % 7 === 0;
+      // the label runs along the bar until the plan ends or the week does
+      const n = Math.min(span(d, t.lockedDates.end).length, 7 - i % 7);
+      return `<span class="mc-ev ${s ? 's' : ''} ${e ? 'e' : ''} ${t.lockedDates.end < TODAY ? 'past' : ''}" style="--pc:${SIZES[sizeOf(t)].color};--n:${n}">${label ? `<b>${esc(t.name)}</b>` : '&nbsp;'}</span>`;
+    }).join('');
+    return `<button class="mc-day ${inMonth(d) ? '' : 'out'} ${d === TODAY ? 'today' : ''} ${d === sel ? 'sel' : ''}" data-calday="${d}" aria-label="${fmt(d)}${here.length ? ', ' + here.length + ' plan' + (here.length > 1 ? 's' : '') : ''}" aria-pressed="${d === sel}">
+      <span class="mc-n">${D(d).getUTCDate()}</span>${bars}${more ? `<span class="mc-more">+${more}</span>` : ''}</button>`;
+  });
+  const day = evs.filter(t => covers(t, sel)), label = D(first).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const nMonth = evs.filter(t => t.lockedDates.start.slice(0, 7) <= month && t.lockedDates.end.slice(0, 7) >= month).length;
+  return `<section class="card mcal">
+    <div class="mc-head"><div class="stack" style="gap:0"><h2 class="mc-title">${label}</h2><span class="small muted">${nMonth ? `${nMonth} plan${nMonth > 1 ? 's' : ''} this month` : 'Nothing locked this month'}</span></div>
+      <div class="row" style="gap:4px;flex-wrap:nowrap">${month !== TODAY.slice(0, 7) ? '<button class="btn sm ghost" data-calnav="0">Today</button>' : ''}<button class="btn sm icon" data-calnav="-1" aria-label="Previous month"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><button class="btn sm icon" data-calnav="1" aria-label="Next month"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button></div></div>
+    <div class="mc-dows">${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(x => `<span>${x}</span>`).join('')}</div>
+    <div class="mc-grid" data-key="mc-${month}">${cells.join('')}</div>
+  </section>
+  <section class="stack"><div class="row" style="justify-content:space-between"><h2>${sel === TODAY ? 'Today' : fmt(sel, { weekday: 'long', month: 'long', day: 'numeric' })}</h2>${day.length ? `<span class="small muted">${day.length} plan${day.length > 1 ? 's' : ''}</span>` : ''}</div>
+    ${day.length ? day.map(t => planRow(t)).join('') : `<div class="empty"><span>${sel < TODAY ? 'Nothing that day.' : 'Nothing planned yet. Free day.'}</span>${sel >= TODAY && S.db ? '<button class="btn sm primary" data-act="newTrip">Plan something</button>' : ''}</div>`}</section>
+  ${deciding.length ? `<section class="stack"><div class="row" style="justify-content:space-between"><h2>Still deciding</h2><span class="small muted">Shows on the calendar once a day is locked</span></div>
+    <div class="row" style="gap:6px">${deciding.map(t => `<button class="chip dec-chip" style="--pc:${SIZES[sizeOf(t)].color}" data-open="${esc(t.id)}"><i></i>${esc(t.name)}</button>`).join('')}</div></section>` : ''}`;
+}
+function calNav(dir) {
+  const m = S.calMonth || TODAY.slice(0, 7);
+  if (!dir) { S.calMonth = null; S.calDay = null; }
+  else { const d = D(m + '-01'); d.setUTCMonth(d.getUTCMonth() + dir); S.calMonth = iso(d).slice(0, 7); S.calDay = null; }
+  render();
+  const g = $('.mc-grid');
+  if (g && dir && !calm()) g.animate([{ opacity: 0, transform: `translateX(${dir * 24}px)` }, { opacity: 1, transform: 'none' }], { duration: 300, easing: EASE });
+}
+
 function crewCard(c, plans) {
   const ids = crewMembers(c), cp = plans.filter(t => t.crewId === c.id);
   const next = cp.filter(t => t.lockedDates && t.lockedDates.end >= TODAY).sort((a, b) => a.lockedDates.start < b.lockedDates.start ? -1 : 1)[0];
@@ -2297,6 +2351,9 @@ app.addEventListener('click', e => {
   if (ds.act === 'demo') return openDemo();
   if (ds.open) return openTrip(ds.open);
   if (ds.homedel) { S.confirmHome = ds.homedel; return render(); }
+  if (ds.homeview) { homeMode = ds.homeview; try { localStorage.setItem('outta_homeview', homeMode); } catch {} return render(); }
+  if (ds.calnav !== undefined) return calNav(+ds.calnav);
+  if (ds.calday) { S.calDay = ds.calday; render(); if (matchMedia('(max-width:700px)').matches) $('.mcal + section')?.scrollIntoView({ block: 'nearest', behavior: calm() ? 'auto' : 'smooth' }); return; }
   if (ds.share) {
     const t = S.trips.find(x => x.id === ds.share); if (!t) return;
     const w = SIZES[sizeOf(t)].label.toLowerCase();
