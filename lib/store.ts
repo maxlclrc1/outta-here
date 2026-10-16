@@ -108,7 +108,7 @@ export function segments(p: string, parity: 'doc' | 'collection'): string[] {
 }
 
 export class StoreError extends Error {
-  constructor(public code: 'invalid_argument' | 'unavailable' | 'permission_denied', message: string) {
+  constructor(public code: 'invalid_argument' | 'unavailable' | 'permission_denied' | 'conflict', message: string) {
     super(message);
   }
 }

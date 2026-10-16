@@ -1,4 +1,4 @@
-import type { Json } from '@/lib/store';
+import { StoreError, type Json } from '@/lib/store';
 
 // Keeping people's edits when two of them save at the same time.
 //
@@ -56,4 +56,26 @@ export function keepManaged(prev: Json, data: Json): Json {
   const out: Json = { ...data };
   for (const k of MANAGED) { if (k in prev) out[k] = prev[k]; else delete out[k]; }
   return out;
+}
+
+// Undo and Restore send what they expect the plan to still look like (`_expect`), so they only
+// put something back if nobody has changed it since. Keys are a field (`stay`), a path into one
+// (`decide.style`), or one item of a list by id (`itinerary#abc`, null = not in the list).
+// Values compare exactly, with object keys in any order and a missing value the same as null.
+const stable = (v: unknown): string => JSON.stringify(v ?? null, (_k, x) => (isObj(x) ? Object.fromEntries(Object.keys(x).filter(k => x[k] != null).sort().map(k => [k, x[k]])) : x));
+const LABEL: Record<string, string> = { itinerary: 'the itinerary', destinations: 'the destinations', lockedDates: 'the locked dates', lockedDest: 'the locked destination', stay: 'the stay', meet: 'the meeting point', currency: 'the currency', decide: 'the decision rules', costs: 'the costs', time: 'the time', venue: 'the place' };
+function at(prev: Json, key: string): unknown {
+  const item = key.match(/^([A-Za-z]+)#(.+)$/);
+  if (item) { const list = prev[item[1]]; return Array.isArray(list) ? list.find(x => isObj(x) && String(x.id) === item[2]) : undefined; }
+  return key.split('.').reduce<unknown>((o, k) => (isObj(o) ? o[k] : undefined), prev);
+}
+/** Throws a conflict if any expected value no longer matches what's stored. */
+export function checkExpected(prev: Json, expect: unknown) {
+  if (!isObj(expect)) throw new StoreError('invalid_argument', '_expect must be an object.');
+  for (const [key, want] of Object.entries(expect)) {
+    if (stable(at(prev, key)) !== stable(want)) {
+      const name = LABEL[key.split(/[.#]/)[0]] || key.split(/[.#]/)[0];
+      throw new StoreError('conflict', `Couldn’t undo: ${key.includes('#') ? 'a stop in ' : ''}${name} changed since. Nothing was put back, so the newer edit is kept.`);
+    }
+  }
 }

@@ -70,6 +70,7 @@ const rid = (n = 10) => Array.from(crypto.getRandomValues(new Uint8Array(n)), b 
 let toastT;
 function flash(msg) { const t = $('#toast'); t.textContent = msg; t.classList.remove('out'); t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.classList.add('out'); toastT = setTimeout(() => { t.hidden = true; t.classList.remove('out'); }, 260); }, 4200); }
 function writeErr(e) {
+  if (e && e.code === 'conflict') return e.message;
   if (e && e.code === 'invalid_argument' && !IN_CLAUDE) return /256 KiB/.test(e.message || '') ? 'This plan has gotten too big to save more. Remove some old items and try again.' : 'That didn’t save. Try again.';
   if (e && e.code === 'invalid_argument') { S.readOnly = true; return "You can view this plan but not edit it. Ask the owner to share it with you as a Contributor."; }
   if (e && e.code === 'permission_denied') return e.message || 'You don’t have access to change this.';
@@ -263,9 +264,10 @@ function listBase(patch) {
   one('pitches.items', patch.pitches?.items, S.trip.pitches?.items);
   return Object.keys(base).length ? { _base: base } : {};
 }
-async function saveTrip(patch, tid = S.tid) {
+// `expect` (Undo/Restore): the server saves only if those values are unchanged (lib/merge.ts)
+async function saveTrip(patch, tid = S.tid, expect) {
   if (!tid) return false;
-  const here = tid === S.tid && S.trip, send = here ? { ...patch, ...listBase(patch) } : patch;
+  const here = tid === S.tid && S.trip, send = { ...(here ? { ...patch, ...listBase(patch) } : patch), ...(expect && !IN_CLAUDE ? { _expect: expect } : {}) };
   if (here) { S.trip = merge(S.trip, patch); render(); }
   if (S.demo) return true;
   if (!S.db) return false;
@@ -273,7 +275,7 @@ async function saveTrip(patch, tid = S.tid) {
   catch (e) { flash(writeErr(e)); if (here) resync(tid); return false; }
 }
 async function resync(tid) {
-  try { const snap = await S.db.doc('trips/' + tid).get(); if (S.tid === tid && snap.exists) { S.trip = { ...snap.data() }; render(); } } catch {}
+  try { const snap = await S.db.doc('trips/' + tid).get(); if (S.tid === tid && snap.exists) { S.trip = cleanDates({ ...snap.data() }); render(); } } catch {}
 }
 async function putSub(coll, id, data, partial) {
   const tid = S.tid, list = S[coll], i = list.findIndex(x => x.id === id), before = i >= 0 ? list[i] : null;
