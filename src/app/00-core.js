@@ -11,14 +11,22 @@ try { document.documentElement.dataset.theme = localStorage.getItem('outta_theme
 const D = s => new Date(s + 'T00:00:00Z');
 const iso = d => d.toISOString().slice(0, 10);
 const add = (s, n) => { const d = D(s); d.setUTCDate(d.getUTCDate() + n); return iso(d); };
-const span = (a, b) => { const o = []; if (!a || !b) return o; for (let s = a; s <= b && o.length < 92; s = add(s, 1)) o.push(s); return o; };
+const isDay = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(D(s)) && iso(D(s)) === s;
+// A plan saved before dates were checked may hold a value that isn't a date. It's treated as
+// not set (only in this copy; nothing is saved), so the plan still opens and can be fixed.
+const cleanDates = t => { for (const k of ['winStart', 'winEnd', 'rsvpBy']) if (t[k] != null && t[k] !== '' && !isDay(t[k])) delete t[k]; if (t.decide && t.decide.by && !isDay(t.decide.by)) t.decide = { ...t.decide, by: '' };
+  const L = t.lockedDates; if (L != null && !(isDay(L.start) && isDay(L.end) && L.end >= L.start)) delete t.lockedDates;
+  const badDay = v => v != null && !isDay(v), items = t.pitches && Array.isArray(t.pitches.items) ? t.pitches.items : null;
+  if (items && items.some(x => x && (badDay(x.start) || badDay(x.end)))) t.pitches = { ...t.pitches, items: items.map(x => { if (!x || !(badDay(x.start) || badDay(x.end))) return x; const { start, end, ...rest } = x; return rest; }) };
+  return t; };
+const span = (a, b) => { const o = []; if (!isDay(a) || !isDay(b)) return o; for (let s = a; s <= b && o.length < 92; s = add(s, 1)) o.push(s); return o; };
 // Date labels are formatted constantly while drawing; formatters are reused and results kept.
 const DTF = {}, FMT = new Map(), FMT_DEF = { weekday: 'short', month: 'short', day: 'numeric' };
 const fmt = (s, o = FMT_DEF) => {
   const ok = o === FMT_DEF ? 'd' : JSON.stringify(o), key = ok + s;
   let v = FMT.get(key);
   if (v === undefined) {
-    v = (DTF[ok] ||= new Intl.DateTimeFormat('en-US', { ...o, timeZone: 'UTC' })).format(D(s));
+    const d = D(s); v = isNaN(d) ? '' : (DTF[ok] ||= new Intl.DateTimeFormat('en-US', { ...o, timeZone: 'UTC' })).format(d); // a bad stored date shows as nothing, not an error
     if (FMT.size > 3000) FMT.clear();
     FMT.set(key, v);
   }

@@ -100,7 +100,7 @@ function decideCard() {
     <p class="small muted">Everyone sees these rules next to the votes. ${org ? '' : 'Only organizers can change them.'}</p>
     <div class="dec-styles">${Object.entries(STYLES).map(([k, [l, h]]) => `<button class="dec-style ${d.style === k ? 'on' : ''}" data-decide="${k}" aria-pressed="${d.style === k}" ${org ? '' : 'disabled'}><b>${esc(l)}</b><span class="small">${esc(h)}</span></button>`).join('')}</div>
     ${d.style === 'majority' ? `<label class="field" style="flex:none;max-width:240px"><span class="label">Yes votes needed</span><select id="dec-pct" ${org ? '' : 'disabled'}>${[50, 60, 67, 75].map(p => `<option value="${p}" ${d.pct === p ? 'selected' : ''}>${p === 50 ? 'More than half' : p === 67 ? 'Two thirds' : p === 75 ? 'Three quarters' : p + '%'}</option>`).join('')}</select></label>` : ''}
-    ${d.style === 'pick' ? `<label class="field" style="flex:none;max-width:240px"><span class="label">Voting closes</span><input id="dec-by" type="date" value="${d.by || ''}" min="${TODAY}" ${org ? '' : 'disabled'}></label>` : ''}
+    ${d.style === 'pick' ? `<label class="field" style="flex:none;max-width:240px"><span class="label">Voting closes</span><input id="dec-by" type="date" value="${esc(d.by || '')}" min="${TODAY}" ${org ? '' : 'disabled'}></label>` : ''}
     <p class="small"><b>Always:</b> a vote never locks something over someone’s hard budget limit or firm dates. They have to agree to that option first. Set yours in Home › Crew.</p>
   </section>`;
 }

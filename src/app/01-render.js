@@ -234,8 +234,8 @@ function datesBody() {
       <div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:12px">
         <span class="label">${isSmall() ? 'Days that could work' : 'Trip window'}</span>
         <div class="win-edit">
-          <label class="field"><span class="small muted">Earliest</span><input id="win-start" type="date" value="${t.winStart}"></label>
-          <label class="field"><span class="small muted">Latest</span><input id="win-end" type="date" value="${t.winEnd}"></label>
+          <label class="field"><span class="small muted">Earliest</span><input id="win-start" type="date" value="${esc(t.winStart)}"></label>
+          <label class="field"><span class="small muted">Latest</span><input id="win-end" type="date" value="${esc(t.winEnd)}"></label>
           <label class="field" ${isSmall() ? 'hidden' : ''}><span class="small muted">Trip length</span><select id="nights">${(isSmall() ? [0] : [1,2,3,4,5,6,7,10,14]).map(n => `<option value="${n}" ${n === nightsSet(t) ? 'selected' : ''}>${n === 0 ? 'Same day' : n + ' night' + (n === 1 ? '' : 's')}</option>`).join('')}</select></label>
         </div>
         <span class="small muted">Change these any time. Days people already tapped are kept.</span>
