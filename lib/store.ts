@@ -65,7 +65,7 @@ function visible(p: string, user: string) {
 }
 
 const isObj = (v: unknown): v is Json => !!v && typeof v === 'object' && !Array.isArray(v);
-function merge(target: Json, patch: Json): Json {
+export function merge(target: Json, patch: Json): Json {
   const out: Json = { ...target };
   for (const [k, v] of Object.entries(patch)) out[k] = isObj(v) && isObj(out[k]) ? merge(out[k] as Json, v) : v;
   return out;
