@@ -1,7 +1,7 @@
 // Browser regression test, run with: npm run test:ui (needs Playwright, see README › Tests)
 // Deleting a plan from the app is one server request: on success the plan, everything in it and
 // its uploaded files are gone and the app says so; on failure nothing is deleted, the plan stays
-// open and the app says why.
+// open and the app says why. Delete shows for the creator and organizers, matching the server.
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 const { chromium } = await import(process.env.PLAYWRIGHT || 'playwright');
@@ -58,5 +58,26 @@ await p.locator(`[data-homedo="${gone}"]`).dispatchEvent('click'); await p.waitF
 { const m = await toast(); expect('deleting from the home list works and says so', /deleted\./.test(m) && !(await api(uid, 'get', 'trips/' + gone)).exists, m); }
 expect('…the other plan is still there', (await api(uid, 'get', 'trips/' + keep)).exists && (await p.innerText('body')).includes('Porto'));
 await api(uid, 'delete', 'trips/' + keep);
+
+// 4. who sees Delete: a co-organizer does (and can delete), a member doesn't (and can't)
+const joinAs = async (name, t) => {
+  const cx = await b.newContext({ viewport: { width: 390, height: 844 } }); await cx.route('**/api/ai/status', r => r.fulfill({ json: { enabled: false } }));
+  const q = await cx.newPage(); q.on('pageerror', e => errs.push(name + ': ' + e.message));
+  await q.goto(BASE + '/#' + t); await q.fill('#join-name', name); await q.click('.join-card [type=submit]'); await settle(q);
+  await q.waitForSelector('.welcome'); await q.click('[data-join=in]'); await q.waitForTimeout(600);
+  const sk = q.locator('[data-act=setupLater]'); if (await sk.count()) { await sk.click(); await settle(q); }
+  return { q, id: await q.evaluate(() => localStorage.outta_uid) };
+};
+const shared = await newPlan('Madeira');
+const org = await joinAs('Olu', shared), mem = await joinAs('Max', shared);
+await api(uid, 'update', 'trips/' + shared, { orgs: { [org.id]: true } }); await org.q.waitForTimeout(900);
+const settingsOf = async q => { await q.locator('.bottomnav [data-sec=home]').click(); await settle(q); await q.locator('.subtab[data-tab=settings]').click(); await settle(q); return q; };
+await settingsOf(mem.q);
+expect('a member doesn’t see Delete, and is told only organizers can', !(await mem.q.locator('[data-act=askDelete]').count()) && /Only organizers can delete it/.test(await mem.q.innerText('body')));
+{ const x = await fetch(BASE + '/api/plans/' + shared, { method: 'DELETE', headers: { 'x-outta-user': mem.id } }); expect('…and the server refuses a member who calls it anyway (403)', x.status === 403 && (await api(uid, 'get', 'trips/' + shared)).exists); }
+await settingsOf(org.q);
+expect('a co-organizer (not the creator) sees Delete', (await org.q.locator('[data-act=askDelete]').count()) === 1);
+await org.q.locator('[data-act=askDelete]').dispatchEvent('click'); await settle(org.q); await org.q.locator('[data-act=doDelete]').dispatchEvent('click'); await org.q.waitForTimeout(1200);
+{ const m = (await org.q.locator('#toast').innerText().catch(() => '')).trim(); expect('…and can delete it', /deleted\./.test(m) && !(await api(uid, 'get', 'trips/' + shared)).exists, m); }
 console.log('errors', errs); await b.close();
 process.exit(fails ? 1 : 0);

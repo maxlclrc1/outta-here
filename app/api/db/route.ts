@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { checkPlanDates } from '@/lib/planDates';
+import { checkMemberDays, checkPlanDates } from '@/lib/planDates';
 import { deletePlan } from '@/lib/deletePlan';
 import { deleteDoc, getDoc, listCollection, merge, rawDoc, segments, setDoc, StoreError, updateDoc, type Json } from '@/lib/store';
 import { boundLog } from '@/lib/changelog';
@@ -43,6 +43,7 @@ export async function POST(req: Request) {
         if (isPlan && data && typeof data === 'object' && '_expect' in data) { const { _expect, ...rest } = data as Json; if (op === 'update' && prev) checkExpected(prev, _expect); data = rest; }
         // the plan's dates must be real dates (lib/planDates.ts); checked on what was sent
         if (isPlan && op !== 'delete' && data && typeof data === 'object') checkPlanDates(data);
+        if (/^trips\/[^/]+\/members\/[^/]+$/.test(path) && op !== 'delete' && data && typeof data === 'object') checkMemberDays(data);
         // what will actually be written: lists merged with others' edits, surprises kept,
         // and a member's whole-record save never changing what organizers manage
         if (isPlan && op === 'update' && prev) data = honoreeItinerary(prev, mergeListsIn(prev, data), user);

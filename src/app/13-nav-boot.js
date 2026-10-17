@@ -18,7 +18,7 @@ function openTrip(id, tab) {
   }, () => flash('Lost the connection to this trip. Reload to reconnect.')));
   S.unsub.push(S.db.collection(`trips/${id}/members`).onSnapshot(snap => {
     const local = meDoc();
-    S.members = snap.docs.map(d => ({ id: d.id, ...d.data() })); S.membersIn = true; budgetReset(); meSaved = S.members.some(m => m.id === S.uid);
+    S.members = snap.docs.map(d => cleanMember({ id: d.id, ...d.data() })); S.membersIn = true; budgetReset(); meSaved = S.members.some(m => m.id === S.uid);
     // while your own edits are still saving, show them on top of what the server has
     if (S.meDirty && local) { const i = S.members.findIndex(m => m.id === S.uid), mine = Object.fromEntries([...meFields, ...meSending].map(k => [k, local[k]])); i >= 0 ? S.members[i] = { ...S.members[i], ...mine } : S.members.push(local); }
     S.members.sort((a, b) => (a.updatedAt || 0) - (b.updatedAt || 0));

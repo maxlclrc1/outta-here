@@ -28,6 +28,7 @@ const SERVER = [
   ['changelog', 'tests/changelog.mjs', ['--experimental-strip-types', '--no-warnings']],
   ['ai-uploads', 'tests/ai-uploads.mjs'],
   ['plan-dates', 'tests/plan-dates.mjs'],
+  ['plan-values', 'tests/plan-values.mjs'],
   ['undo', 'tests/undo.mjs'],
   ['plan-delete', 'tests/plan-delete.mjs'],
   ['storage', 'tests/storage.mjs'],

@@ -449,7 +449,8 @@ function packTab() {
   </section>`;
 }
 
-const canDelete = t => S.demo || S.isOwner || (t && t.createdBy && t.createdBy === S.uid);
+// mirrors the server rule (lib/access.ts isOrg): the creator or an organizer. The server decides.
+const canDelete = t => S.demo || S.isOwner || !!(t && (t.createdBy === S.uid || (t.orgs || {})[S.uid]));
 async function deleteTrip(tid) {
   if (S.demo) { goHome(); return; }
   if (!S.db || !tid) return;

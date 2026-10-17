@@ -18,7 +18,15 @@ const cleanDates = t => { for (const k of ['winStart', 'winEnd', 'rsvpBy']) if (
   const L = t.lockedDates; if (L != null && !(isDay(L.start) && isDay(L.end) && L.end >= L.start)) delete t.lockedDates;
   const badDay = v => v != null && !isDay(v), items = t.pitches && Array.isArray(t.pitches.items) ? t.pitches.items : null;
   if (items && items.some(x => x && (badDay(x.start) || badDay(x.end)))) t.pitches = { ...t.pitches, items: items.map(x => { if (!x || !(badDay(x.start) || badDay(x.end))) return x; const { start, end, ...rest } = x; return rest; }) };
+  // other shared values a wrong type would crash on
+  if (Array.isArray(t.itinerary) && t.itinerary.some(i => i && ((i.date && !isDay(i.date)) || (i.time && !hhmm(i.time)) || typeof (i.time ?? '') !== 'string'))) t.itinerary = t.itinerary.map(i => !i ? i : { ...i, ...(i.date && !isDay(i.date) ? { date: '' } : {}), ...(i.time && (typeof i.time !== 'string' || !hhmm(i.time)) ? { time: '' } : {}) });
+  if (Array.isArray(t.destinations) && t.destinations.some(d => d && ((d.code && !(typeof d.code === 'string' && isCode(d.code))) || (d.city != null && typeof d.city !== 'string')))) t.destinations = t.destinations.map(d => !d ? d : { ...d, code: typeof d.code === 'string' && isCode(d.code) ? d.code : '', city: d.city == null ? d.city : String(d.city) });
+  if (t.nights != null && !(Number.isInteger(t.nights) && t.nights >= 0 && t.nights <= 90)) delete t.nights;
+  if (t.tasks && typeof t.tasks === 'object' && Object.values(t.tasks).some(x => x && x.due && !isDay(x.due))) t.tasks = Object.fromEntries(Object.entries(t.tasks).map(([k, x]) => [k, x && x.due && !isDay(x.due) ? { ...x, due: '' } : x]));
   return t; };
+// A member's days: only real dates count (a bad stored list is read as no days picked).
+const cleanMember = m => { for (const k of ['days', 'pref']) if (m[k] != null && !(Array.isArray(m[k]) && m[k].every(isDay))) m[k] = Array.isArray(m[k]) ? m[k].filter(isDay) : []; return m; };
+const hhmm = v => { const m = String(v ?? '').trim().match(/^(\d{1,2}):(\d{2})$/); return m && +m[1] < 24 && +m[2] < 60 ? m[1].padStart(2, '0') + ':' + m[2] : ''; };
 const span = (a, b) => { const o = []; if (!isDay(a) || !isDay(b)) return o; for (let s = a; s <= b && o.length < 92; s = add(s, 1)) o.push(s); return o; };
 // Date labels are formatted constantly while drawing; formatters are reused and results kept.
 const DTF = {}, FMT = new Map(), FMT_DEF = { weekday: 'short', month: 'short', day: 'numeric' };
@@ -449,7 +457,7 @@ Reply with only JSON: {"days":[{"date":"YYYY-MM-DD","items":[{"time":"HH:MM","ti
     const days = Array.isArray(data?.days) ? data.days : [];
     const valid = new Set(span(d.start, d.end));
     const items = [];
-    for (const day of days) for (const it of (day.items || [])) if (valid.has(day.date) && it.title) items.push({ id: rid(6), date: day.date, time: String(it.time || '').slice(0, 5), title: String(it.title).slice(0, 120), kind: it.kind || 'activity', note: String(it.note || '').slice(0, 200), ai: true });
+    for (const day of days) for (const it of (day.items || [])) if (valid.has(day.date) && it.title) items.push({ id: rid(6), date: day.date, time: hhmm(it.time), title: String(it.title).slice(0, 120), kind: it.kind || 'activity', note: String(it.note || '').slice(0, 200), ai: true });
     if (!items.length) { flash('No plan came back. Try again.'); return; }
     const keep = (S.trip.itinerary || []).filter(i => !i.ai);
     return saveTrip({ itinerary: [...keep, ...items] });
