@@ -179,6 +179,5 @@ function saveItemEdit(id) {
   const moved = date !== old.date || time !== (old.time || '');
   const text = moved ? `${old.title} moved to ${when(date, time)}` : `${old.title} is now ${title}`;
   const fx = [moved ? `Was ${dow(old.date)} ${old.time ? t12(old.time) : 'with no set time'}` : '', title !== old.title && moved ? `Now called ${title}` : ''].filter(Boolean);
-  saveTrip(withLog({ itinerary: (S.trip.itinerary || []).map(i => i.id === id ? { ...i, date, time, title } : i) }, { area: 'plan', text, fx, act: old.secret ? '' : 'all', undo: { k: 'item', item: old } }));
-  flash(`${text}. The crew sees it now.`);
+  saveTrip(withLog({ itinerary: (S.trip.itinerary || []).map(i => i.id === id ? { ...i, date, time, title } : i) }, { area: 'plan', text, fx, act: old.secret ? '' : 'all', undo: { k: 'item', item: old } })).then(ok => ok && flash(`${text}. The crew sees it now.`));
 }

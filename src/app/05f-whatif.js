@@ -79,7 +79,6 @@ function whatifApply(i) {
   if (sc.start || sc.nights != null) patch.lockedDates = { start: r.start, end: r.end };
   if (sc.dest) patch.lockedDest = sc.dest;
   if (!Object.keys(patch).length) { flash('That’s the same as the plan now.'); return; }
-  S.whatif = null; saveTrip(patch);
-  flash(`Done. The plan is now ${[r.dest?.city, isSmall() ? fmt(r.start) : dayRange(r.start, r.end)].filter(Boolean).join(', ')}.`);
+  S.whatif = null; saveTrip(patch).then(ok => ok && flash(`Done. The plan is now ${[r.dest?.city, isSmall() ? fmt(r.start) : dayRange(r.start, r.end)].filter(Boolean).join(', ')}.`));
 }
 

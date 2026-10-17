@@ -135,6 +135,5 @@ function condLines() {
 }
 function toggleConsent(key) {
   const on = !((S.trip.consent || {})[key] || {})[S.uid];
-  saveTrip({ consent: { [key]: { [S.uid]: on || null } } });
-  flash(on ? 'Noted. The crew can lock it now, as far as your limit goes.' : 'Taken back. It’s off the table unless your limit changes.');
+  saveTrip({ consent: { [key]: { [S.uid]: on || null } } }).then(ok => ok && flash(on ? 'Noted. The crew can lock it now, as far as your limit goes.' : 'Taken back. It’s off the table unless your limit changes.'));
 }
