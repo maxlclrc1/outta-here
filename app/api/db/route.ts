@@ -6,7 +6,7 @@ import { boundLog } from '@/lib/changelog';
 import { checkWrite, listable, readable } from '@/lib/access';
 import { honoreeItinerary } from '@/lib/privacy';
 import { checkExpected, keepManaged, mergeListsIn } from '@/lib/merge';
-import { userOf } from '@/lib/user';
+import { crossSite, CROSS_SITE, unverified, UNVERIFIED, userOf } from '@/lib/user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,6 +14,7 @@ export const dynamic = 'force-dynamic';
 type Body = { op: 'get' | 'set' | 'update' | 'delete' | 'list'; path: string; data?: Json };
 
 export async function POST(req: Request) {
+  if (crossSite(req)) return NextResponse.json(CROSS_SITE, { status: 403 });
   const user = userOf(req), ctx = { user, invite: (req.headers.get('x-outta-invite') || '').slice(0, 40) };
   let body: Body;
   try {
@@ -34,6 +35,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ docs });
       }
       case 'set': case 'update': case 'delete': {
+        if (user === 'anonymous') return NextResponse.json(unverified(req) ? UNVERIFIED : { code: 'unauthenticated', message: 'Say who you are (x-outta-user) to change anything.' }, { status: 401 });
         segments(path, 'doc');
         // a whole plan is only ever deleted together with everything in it (lib/deletePlan.ts)
         if (op === 'delete' && /^trips\/[^/]+$/.test(path)) { deletePlan(path.slice(6), user); return NextResponse.json({ ok: true }); }

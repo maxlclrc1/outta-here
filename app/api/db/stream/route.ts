@@ -1,5 +1,6 @@
 import { onChange } from '@/lib/store';
 import { notifiable } from '@/lib/access';
+import { unverified, UNVERIFIED, userOf } from '@/lib/user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -8,8 +9,10 @@ export const dynamic = 'force-dynamic';
 // so its subscriptions re-read just what they need. Each tab only hears about plans and
 // crews it's in, so plan ids aren't broadcast to everyone.
 export async function GET(req: Request) {
+  // the id in ?u= only counts with this browser's cookie for it (lib/identity.ts)
   const u = new URL(req.url).searchParams.get('u') || '';
-  const user = /^[A-Za-z0-9_\-]{4,64}$/.test(u) ? u : 'anonymous';
+  if (unverified(req, u)) return Response.json(UNVERIFIED, { status: 401 });
+  const user = userOf(req, u);
   const enc = new TextEncoder();
   let cleanup = () => {};
   const stream = new ReadableStream({

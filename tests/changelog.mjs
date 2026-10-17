@@ -2,6 +2,7 @@
 // BASE=http://localhost:3000 node --experimental-strip-types tests/changelog.mjs
 // (uses node --experimental-strip-types to load lib/changelog.ts for the legacy-plan checks)
 // The change log stays bounded without breaking recent undo or losing plan data (finding #11).
+import { install } from './_identity.mjs'; install(); // act as the test's people (see the file)
 import { boundLog, LOG_LIMITS } from '../lib/changelog.ts';
 const BASE = process.env.BASE || 'http://localhost:3000';
 const db = (u, op, path, data) => fetch(BASE + '/api/db', { method: 'POST', headers: { 'content-type': 'application/json', 'x-outta-user': u }, body: JSON.stringify({ op, path, data }) }).then(async r => ({ status: r.status, ...(await r.json()) }));

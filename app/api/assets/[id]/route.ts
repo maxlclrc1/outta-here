@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { deleteAsset, readAsset } from '@/lib/assets';
-import { userOf } from '@/lib/user';
+import { guard, userOf } from '@/lib/user';
 import { rawDoc } from '@/lib/store';
 
 export const runtime = 'nodejs';
@@ -23,6 +23,7 @@ export async function GET(_req: Request, { params }: Ctx) {
 }
 
 export async function DELETE(req: Request, { params }: Ctx) {
+  const no = guard(req); if (no) return no;
   const r = deleteAsset((await params).id, userOf(req));
   if (r === 'ok') return NextResponse.json({ ok: true });
   return NextResponse.json({ code: r, message: r === 'not_uploader' ? 'Only the person who uploaded this can delete it.' : 'Not found' }, { status: r === 'not_uploader' ? 403 : 404 });

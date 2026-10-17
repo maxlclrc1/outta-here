@@ -292,6 +292,7 @@ function journeyCard() {
       <div class="j-do"><span class="label">Here’s what to do</span><b>${esc(f.todo)}</b></div>
       ${f.who && f.who.filter(x => x.id !== S.uid).length ? `<div class="avs">${f.who.filter(x => x.id !== S.uid).slice(0, 8).map(x => `<span class="av-sm" title="${esc(x.nick || 'Someone')}" style="background:${colorFor(x.id)}">${esc((x.nick || '?')[0].toUpperCase())}</span>`).join('')}</div>` : ''}
       <div class="j-acts">${f.act()}${f.help && !f.live ? `<button class="linkbtn small j-help" data-jgo="${f.k}">Help me finish this step</button>` : ''}</div>
+      ${f.k === 'invite' && S.copyText ? `<textarea aria-label="Text to copy" id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
       ${f.after ? `<p class="j-after"><span class="label">After this</span> ${esc(f.after)}</p>` : ''}
     </div>`
     : `<div class="j-focus done"><span class="j-eyebrow">${esc(JSTAGE_LABEL[j.stage])}</span><h2>${j.stage === 'after' ? 'All wrapped up' : 'You’re all set'}</h2><p class="j-why">${(() => { const c = countdown(); return c && j.stage !== 'after' ? `${c.text} to go. Nothing needs doing right now.` : 'Nothing needs doing right now.'; })()}</p></div>`;

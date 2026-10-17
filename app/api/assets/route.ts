@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { MAX_BYTES, saveAsset } from '@/lib/assets';
 import { inTrip } from '@/lib/access';
 import { allow, retryAfter } from '@/lib/limits';
-import { userOf } from '@/lib/user';
+import { guard, userOf } from '@/lib/user';
 
 export const runtime = 'nodejs';
 
@@ -10,6 +10,7 @@ const fail = (code: string, message: string, status: number, headers?: Record<st
 
 // Uploads (boarding passes, trip photos) belong to a plan, and only people in it can add them.
 export async function POST(req: Request) {
+  const no = guard(req); if (no) return no;
   const user = userOf(req), tid = req.headers.get('x-outta-plan') || '';
   if (!/^[A-Za-z0-9_\-]{4,40}$/.test(tid)) return fail('invalid_argument', 'Say which plan this upload is for.', 400);
   if (!inTrip(tid, user)) return fail('permission_denied', 'Only people in this plan can add files to it.', 403);

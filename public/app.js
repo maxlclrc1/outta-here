@@ -78,7 +78,7 @@ const rid = (n = 10) => Array.from(crypto.getRandomValues(new Uint8Array(n)), b 
 let toastT;
 function flash(msg) { const t = $('#toast'); t.textContent = msg; t.classList.remove('out'); t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.classList.add('out'); toastT = setTimeout(() => { t.hidden = true; t.classList.remove('out'); }, 260); }, 4200); }
 function writeErr(e) {
-  if (e && e.code === 'conflict') return e.message;
+  if (e && (e.code === 'conflict' || e.code === 'unauthenticated')) return e.message;
   if (e && e.code === 'invalid_argument' && !IN_CLAUDE) return /256 KiB/.test(e.message || '') ? 'This plan has gotten too big to save more. Remove some old items and try again.' : 'That didn’t save. Try again.';
   if (e && e.code === 'invalid_argument') { S.readOnly = true; return "You can view this plan but not edit it. Ask the owner to share it with you as a Contributor."; }
   if (e && e.code === 'permission_denied') return e.message || 'You don’t have access to change this.';
@@ -276,15 +276,30 @@ function listBase(patch) {
 async function saveTrip(patch, tid = S.tid, expect) {
   if (!tid) return false;
   const here = tid === S.tid && S.trip, send = { ...(here ? { ...patch, ...listBase(patch) } : patch), ...(expect && !IN_CLAUDE ? { _expect: expect } : {}) };
+  const before = here ? S.trip : null;
   if (here) { S.trip = merge(S.trip, patch); render(); }
+  const shown = here ? S.trip : null;
   if (S.demo) return true;
   if (!S.db) return false;
   try { await S.db.doc('trips/' + tid).update(send); return true; }
-  catch (e) { flash(writeErr(e)); if (here) resync(tid); return false; }
+  catch (e) {
+    flash(writeErr(e));
+    // take the unsaved change off the screen now (even offline), unless something newer is showing
+    if (here && S.tid === tid && S.trip === shown) { S.trip = before; render(); }
+    if (here) resync(tid);
+    return false;
+  }
 }
+// what's saved, read again; if that can't be reached either, it's read again once back online
+let resyncTid = null;
 async function resync(tid) {
-  try { const snap = await S.db.doc('trips/' + tid).get(); if (S.tid === tid && snap.exists) { S.trip = cleanDates({ ...snap.data() }); render(); } } catch {}
+  try { const snap = await S.db.doc('trips/' + tid).get(); resyncTid = null; if (S.tid === tid && snap.exists) { S.trip = cleanDates({ ...snap.data() }); render(); } }
+  catch { resyncTid = tid; }
 }
+window.addEventListener('online', () => {
+  if (resyncTid && resyncTid === S.tid) resync(resyncTid);
+  if (S.tid && meFields.size) flushMe(); // your own details that didn't save: send them again
+});
 async function putSub(coll, id, data, partial) {
   const tid = S.tid, list = S[coll], i = list.findIndex(x => x.id === id), before = i >= 0 ? list[i] : null;
   if (i >= 0) list[i] = partial ? { ...list[i], ...data } : { id, ...data }; else list.push({ id, ...data });
@@ -2475,7 +2490,8 @@ function accessState() {
   if (me && me.removed) return 'removed';
   if (me || (t.people || {})[S.uid] || t.createdBy === S.uid || (t.crewId && myCrews().some(c => c.id === t.crewId))) return 'ok';
   if (t.invitesOff) return 'off';
-  if (t.inviteKey && S.linkKey !== t.inviteKey) return 'stale';
+  // the server says whether this link still works (it doesn't send the key itself)
+  if (t.inviteOk === false || (t.inviteKey && S.linkKey !== t.inviteKey)) return 'stale';
   return 'ok';
 }
 function blockedView(st) {
@@ -3427,6 +3443,7 @@ function journeyCard() {
       <div class="j-do"><span class="label">Here’s what to do</span><b>${esc(f.todo)}</b></div>
       ${f.who && f.who.filter(x => x.id !== S.uid).length ? `<div class="avs">${f.who.filter(x => x.id !== S.uid).slice(0, 8).map(x => `<span class="av-sm" title="${esc(x.nick || 'Someone')}" style="background:${colorFor(x.id)}">${esc((x.nick || '?')[0].toUpperCase())}</span>`).join('')}</div>` : ''}
       <div class="j-acts">${f.act()}${f.help && !f.live ? `<button class="linkbtn small j-help" data-jgo="${f.k}">Help me finish this step</button>` : ''}</div>
+      ${f.k === 'invite' && S.copyText ? `<textarea aria-label="Text to copy" id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
       ${f.after ? `<p class="j-after"><span class="label">After this</span> ${esc(f.after)}</p>` : ''}
     </div>`
     : `<div class="j-focus done"><span class="j-eyebrow">${esc(JSTAGE_LABEL[j.stage])}</span><h2>${j.stage === 'after' ? 'All wrapped up' : 'You’re all set'}</h2><p class="j-why">${(() => { const c = countdown(); return c && j.stage !== 'after' ? `${c.text} to go. Nothing needs doing right now.` : 'Nothing needs doing right now.'; })()}</p></div>`;

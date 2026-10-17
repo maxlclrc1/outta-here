@@ -1,6 +1,7 @@
 // Browser regression test, run with: npm run test:ui (needs Playwright, see README › Tests)
+import { claim, install, trackBrowser } from '../_identity.mjs'; install(); // act as the test's people (see the file)
 const { chromium } = await import(process.env.PLAYWRIGHT || 'playwright');
-const b = await chromium.launch(process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {}); const errs = [];
+const b = await chromium.launch(process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {}); trackBrowser(b); const errs = [];
 const expect = (label, ok, detail = '') => console.log(`${ok ? 'ok  ' : 'FAIL'} ${label}${detail ? ' · ' + detail : ''}`);
 const settle = p => p.waitForFunction(() => !document.documentElement.dataset.vt).then(() => p.waitForTimeout(500));
 const db = (p, op, path, data) => p.evaluate(async ([op, path, data]) => (await fetch('/api/db', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-outta-user': localStorage.outta_uid }, body: JSON.stringify({ op, path, data }) })).json(), [op, path, data]);
@@ -12,6 +13,8 @@ await p.click('[data-act=newTrip]'); await settle(p); await p.click('[data-size=
 await p.evaluate(() => { const d = document.querySelector('.more-opts-inline'); if (d) d.open = true; }); await p.selectOption('#nt-cur', 'EUR'); await p.fill('#nt-name', 'Summer'); await p.click('#newTrip [type=submit]'); await p.waitForSelector('.setup'); await p.click('[data-act=setupLater]'); await settle(p);
 const tid = (await p.evaluate(() => location.hash)).slice(1);
 const mem = (id, nick, x = {}) => db(p, 'set', `trips/${tid}/members/${id}`, { nick, home: 'Berlin', budget: 0, status: 'in', days: [], votes: [], updatedAt: Date.now(), ...x });
+// Jay and Sam vote from their own "browsers" below: claim their ids before anyone mentions them, as a new browser does
+await claim('u_two00', 'u_three0');
 await mem('u_two00', 'Jay'); await mem('u_three0', 'Sam', { budget: 500, hard: { budget: true } });
 await db(p, 'update', 'trips/' + tid, { people: { u_two00: true, u_three0: true }, pitches: { at: 1, items: [
   { id: 'pA', city: 'Lisbon', code: 'LIS', start: '2026-11-20', end: '2026-11-23', tagline: 'x', why: 'x', perPerson: '€650–800', vibeMatch: 80, highlights: [], weather: '' },

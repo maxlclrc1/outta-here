@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { deletePlan } from '@/lib/deletePlan';
 import { StoreError } from '@/lib/store';
-import { userOf } from '@/lib/user';
+import { guard, userOf } from '@/lib/user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -11,6 +11,7 @@ type Ctx = { params: Promise<{ id: string }> };
 // Deletes a whole plan in one step (lib/deletePlan.ts). Safe to repeat: deleting a plan that's
 // already gone answers ok with deleted: false.
 export async function DELETE(req: Request, { params }: Ctx) {
+  const no = guard(req); if (no) return no;
   try {
     return NextResponse.json({ ok: true, ...deletePlan((await params).id, userOf(req)) });
   } catch (e) {

@@ -1,6 +1,7 @@
 // Part of npm test / npm run test:server (runs against a throwaway server). To run alone against
 // your own running app instead (writes to its data/): BASE=http://localhost:3000 node <this file>
 // Undo/Restore saves only if what it would put back is unchanged (`_expect`, lib/merge.ts).
+import { install } from './_identity.mjs'; install(); // act as the test's people (see the file)
 const BASE = process.env.BASE || 'http://localhost:3000';
 const call = (u, op, path, data) => fetch(BASE + '/api/db', { method: 'POST', headers: { 'content-type': 'application/json', 'x-outta-user': u }, body: JSON.stringify({ op, path, data }) }).then(async r => ({ status: r.status, ...(await r.json()) }));
 const r = Math.random().toString(36).slice(2, 8), A = 'u_ana00' + r, B = 'u_bea00' + r, T = 'undo' + r, P = 'trips/' + T;

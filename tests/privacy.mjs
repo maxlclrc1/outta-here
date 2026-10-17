@@ -1,6 +1,7 @@
 // Part of npm test / npm run test:server (runs against a throwaway server). To run alone against
 // your own running app instead (writes to its data/): BASE=http://localhost:3000 node <this file>
 // Private parts of a plan are removed by the server, not just hidden by the app.
+import { install } from './_identity.mjs'; install(); // act as the test's people (see the file)
 const BASE = process.env.BASE || 'http://localhost:3000';
 const db = (u, op, path, data) => fetch(BASE + '/api/db', { method: 'POST', headers: { 'content-type': 'application/json', 'x-outta-user': u }, body: JSON.stringify({ op, path, data }) }).then(async r => ({ status: r.status, ...(await r.json()) }));
 // collect the paths one person's live-update stream announces while `during` runs

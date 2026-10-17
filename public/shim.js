@@ -13,7 +13,46 @@
   };
   const randomId = (n = 20) => Array.from(crypto.getRandomValues(new Uint8Array(n)), b => 'abcdefghijkmnpqrstuvwxyz23456789'[b % 32]).join('');
   let uid = store.get(LS_ID);
-  if (!uid || !/^u_[a-z0-9]{8,40}$/.test(uid)) { uid = 'u_' + randomId(); store.set(LS_ID, uid); }
+  // no id yet: make one now, as before (it may be swapped for one this browser already owns, below)
+  const fresh = !uid || !/^u_[a-z0-9]{8,40}$/.test(uid);
+  if (fresh) { uid = 'u_' + randomId(); store.set(LS_ID, uid); }
+
+  // The server has to recognise this browser as the owner of its id (lib/identity.ts): it keeps
+  // a secret for each id in an HttpOnly cookie. Before anything else:
+  // - a sign-in link (#claim=…) from whoever runs the app puts you back in your own identity;
+  // - if this browser forgot its id but still has its cookie, the server says which id it owns;
+  // - otherwise the id is claimed: fine if it's this browser's or brand new. If it belongs to
+  //   someone (your sign-in was cleared, or you're from before this existed), you're told how to
+  //   get back in, rather than quietly becoming someone new.
+  let idProblem = null;
+  const me = (method, body) => fetch('/api/me', { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined })
+    .then(async r => ({ status: r.status, ...(await r.json().catch(() => ({}))) }));
+  const ready = (async () => {
+    const link = (location.hash || '').match(/^#claim=([A-Za-z0-9_\-]{20,80})$/);
+    if (link) {
+      history.replaceState(null, '', location.pathname + location.search);
+      const r = await me('POST', { code: link[1] }).catch(() => ({}));
+      if (r.ok && r.id) { uid = r.id; store.set(LS_ID, uid); return; }
+      idProblem = r.message || 'That sign-in link didn’t work. Ask for a new one.';
+    }
+    if (fresh && !link) { const r = await me('GET').catch(() => ({})); if (Array.isArray(r.ids) && r.ids.length) { uid = r.ids[0]; store.set(LS_ID, uid); } }
+    const r = await me('POST', { id: uid }).catch(() => ({ message: 'Couldn’t reach the app to check who you are. Is it still running?' }));
+    if (!r.ok) idProblem = r.message || 'This browser can’t prove who you are.';
+  })();
+  ready.then(() => {
+    if (!idProblem) return;
+    const show = () => {
+      const wrap = document.createElement('div');
+      wrap.className = 'join-screen';
+      wrap.innerHTML = `<div class="join-card"><span class="label">Outta Here</span><h1>Sign back in</h1><p class="muted"></p>
+          <button class="btn big" type="button" data-new>Start as someone new</button></div>`;
+      wrap.querySelector('p').textContent = idProblem;
+      // only on purpose: your existing plans stay with your old identity
+      wrap.querySelector('[data-new]').addEventListener('click', () => { store.set(LS_ID, 'u_' + randomId()); location.reload(); });
+      document.body.appendChild(wrap);
+    };
+    document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', show) : show();
+  });
 
   // First visit on this browser: ask for a name before the app loads its data.
   const nameReady = new Promise(resolve => {
@@ -66,8 +105,8 @@
   }
 
   const user = Object.freeze({
-    id: async () => { await nameReady; return uid; },
-    me: async () => ({ id: uid, name: await nameReady, avatarUrl: '', color: '', email: null, isOwner: false, canEdit: true }),
+    id: async () => { await nameReady; await ready; return uid; },
+    me: async () => ({ id: (await ready, uid), name: await nameReady, avatarUrl: '', color: '', email: null, isOwner: false, canEdit: true }),
     // Everyone who can open the page can edit, but nobody is the page's owner:
     // only the person who made a plan or crew can delete it.
     isOwner: async () => false,
@@ -87,6 +126,7 @@
   noteInvite(); window.addEventListener('hashchange', noteInvite);
   const err = (code, message) => Object.assign(new Error(message || code), { code, message: message || code });
   async function call(op, path, data) {
+    await ready;
     let res;
     try {
       const tid = (String(path).match(/^trips\/([^/]+)/) || [])[1], key = tid && inviteKeys[tid];
@@ -110,6 +150,10 @@
   let es = null;
   function ensureStream() {
     if (es) return;
+    es = { close() {} }; // placeholder until the id is checked
+    ready.then(() => openStream());
+  }
+  function openStream() {
     es = new EventSource('/api/db/stream?u=' + encodeURIComponent(uid));
     es.onmessage = e => {
       let path; try { ({ path } = JSON.parse(e.data)); } catch { return; }
@@ -120,7 +164,11 @@
       const crew = /^crews\/[^/]+$/.test(path);
       for (const s of subs) if (s.matches(path) || (scope && s.under(scope)) || (crew && s.base === 'trips')) s.refresh();
     };
-    es.onerror = () => { for (const s of subs) s.refresh(); }; // catch up after a reconnect
+    // catch up after a dropped connection: now, and again once it's back (reads made while
+    // offline fail, so the first catch-up alone can leave the page out of date)
+    let dropped = false;
+    es.onerror = () => { dropped = true; for (const s of subs) s.refresh(); };
+    es.onopen = () => { if (!dropped) return; dropped = false; for (const s of subs) s.refresh(); };
   }
   function subscribe(matches, read, next, error, base = '') {
     let timer = null, alive = true;
@@ -206,6 +254,7 @@
   }
   async function sample(input, opts = {}) {
     let res;
+    await ready;
     try {
       res = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-outta-user': uid }, body: JSON.stringify({ input, ...(opts.tid ? { tid: opts.tid } : {}) }), signal: opts.signal });
     } catch (e) {
@@ -227,6 +276,7 @@
   /* ---------- uploads (assets) ---------- */
   const assets = Object.freeze({
     async upload(blob, options = {}) {
+      await ready;
       const type = options.type || blob.type;
       const res = await fetch('/api/assets', { method: 'POST', headers: { 'Content-Type': type, 'x-outta-user': uid, ...(options.tid ? { 'x-outta-plan': options.tid } : {}) }, body: blob });
       const body = await res.json().catch(() => ({}));
@@ -234,6 +284,7 @@
       return body;
     },
     async delete(ref) {
+      await ready;
       const id = typeof ref === 'string' ? ref : ref?.id;
       const res = await fetch('/api/assets/' + encodeURIComponent(id), { method: 'DELETE', headers: { 'x-outta-user': uid } });
       if (!res.ok) { const body = await res.json().catch(() => ({})); throw err(body.code || 'store_unavailable', body.message); }
@@ -254,7 +305,7 @@
 
   /* ---------- window.claude.use ---------- */
   const caps = {
-    db: async () => (await nameReady, db),
+    db: async () => (await nameReady, await ready, db),
     user: async () => user,
     sample: async () => ((await aiStatus).enabled ? sample : null),
     assets: async () => assets,

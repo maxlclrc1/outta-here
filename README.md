@@ -51,7 +51,18 @@ To test as two different people on one computer, use a normal window and a priva
 
 ## How people are identified
 
-There are no accounts yet. The first time someone opens the app, it asks for their name and remembers them in that browser. That's fine on your own computer and Wi-Fi, but anyone who can reach the server could act as anyone else, so don't put this version on the public internet. Real accounts come with the next step.
+There are no accounts yet. The first time someone opens the app, it asks for their name and the browser makes up an id for them. The server then gives that browser a secret for its id (an HttpOnly, SameSite=Strict cookie) and keeps only a hash of it in `data/keys.json`. Every request has to carry the cookie that matches the id it claims, so knowing someone's id is no longer enough to act as them. Requests from other websites are refused.
+
+**People from before this existed** (ids already in your data, with no secret yet) can't take their id back by just opening the app, because anyone who knows an id could do that. Their browser shows "Sign back in". Whoever runs the app makes them a one-time sign-in link on this computer and gives it to them in person or a chat you trust:
+
+```bash
+node scripts/claim-link.mjs Ana                          # find Ana's id
+node scripts/claim-link.mjs u_abc123… --host 192.168.1.23:3000
+```
+
+The link works once, for 24 hours. The same link puts someone back in after they cleared their cookies, or on a new phone. If only the browser's storage was cleared (not its cookies), the app finds its id again by itself. "Start as someone new" on that screen is always a deliberate choice; the app never switches identity on its own.
+
+This proves "the same browser as before", not who a person is: anyone with access to that browser, or watching the Wi-Fi traffic (it isn't encrypted on plain http), can still act as them. So don't put this version on the public internet; real accounts and HTTPS come with the next step. If you run it with `npm start` on plain http on your Wi-Fi, set `OUTTA_INSECURE_COOKIES=1` (production otherwise marks the cookie Secure, which only works over https). Only `1` or `true` turn it off; any other value, like `0` or `false`, keeps Secure on. `npm run test:prod` checks this against a real production build.
 
 ## Who can see and change what
 
@@ -59,7 +70,7 @@ The server checks every request (`lib/access.ts`), not just the app:
 
 - Your home page only lists plans and crews you're in, and live updates only go to people in that plan.
 - An invite link opens a plan. Before joining you see who's in and whether they're coming, nothing else about them.
-- Joining adds only yourself, only while invites are on, only with the current link if the organizer made a new one, and never after being removed.
+- Joining adds only yourself, only while invites are on, only with the current link if the organizer made a new one, and never after being removed. The invite key itself is only sent to organizers, and to members when anyone in the plan may invite (their links carry it). Someone who only has a link learns just whether it still works.
 - Only people in a plan can change it or read its expenses, photos, packing list and so on. Only organizers can delete it or change who can invite and lock.
 - The change log can't grow until a plan stops saving (`lib/changelog.ts`): it keeps the newest 100 entries within 64 KB, older entries lose their undo copy first, and undo always stays available for the 10 newest changes that can be undone. Older plans are trimmed the next time they're saved. If a plan's own data is still over the 256 KB limit, the save is refused with a clear message and nothing is dropped.
 - Two people saving at once don't undo each other (`lib/merge.ts`): lists like the itinerary are merged with anyone else's edits instead of replaced, and saving your own details only sends what you changed, so it can't undo an organizer counting you out. `npm run test:ui:concurrency` reproduces both in real browsers.
@@ -70,11 +81,11 @@ The server checks every request (`lib/access.ts`), not just the app:
 - Private parts of a plan are removed by the server before anything is sent (`lib/privacy.ts`): needs shared "Only organizers" (the AI still plans around them, unnamed), where someone checked in if they chose to hide it (an SOS is always shared), and surprise stops and planners-only chat for the guest of honor.
 - Budgets stay with their owner. Other members only learn whether you've set one. Budget fit ("fits 4/5 budgets", hard limits) is worked out on the server (`lib/budget.ts`) and comes back as counts, naming only people who chose to be named. The crew-wide figure is a band ("€300–400"), never the lowest budget itself. Pitch checks use the pitch's price from the plan; any other price is snapped to a ~10% grid, and each person gets a limited number of distinct prices per plan per hour. If a budget check is refused for being too frequent, the app keeps showing the last confirmed answer marked "earlier check" (or "Budget check unavailable right now"), asks again when the server allows it, and won't offer to lock a priced option until a check succeeds. The server's hard-limit rule applies either way.
 - AI requests (`app/api/ai/route.ts`) only work for someone in the plan they're for, are size-checked (up to 20 turns, 64 KB of text, 128 KB per request) and rate-limited per person (6 a minute, 40 an hour, 2 at once) and per plan (120 an hour), all before the API key is used. Prompts and keys are never logged. AI picks in the offline demo (no real plan) are refused.
-- Uploads (`lib/assets.ts`) must belong to a plan you're in, be a photo (PNG, JPEG, GIF, WebP, HEIC/AVIF) or PDF under 20 MB whose actual contents match its type (SVG and HTML are refused), and stay within quotas: 120 files / 250 MB per person per plan, 1,000 files / 1 GB per plan, 60 uploads per 10 minutes. A refused upload leaves nothing on disk. **Uploaded files are not private:** anyone with a file's link can open it (the link is 128 random bits and isn't listed anywhere, but it can be forwarded). Files stop opening once their plan is deleted. Limits are kept in memory, so they reset when the server restarts.
+- Uploads (`lib/assets.ts`) must belong to a plan you're in, be a photo (PNG, JPEG, GIF, WebP, HEIC/AVIF) or PDF under 20 MB whose actual contents match its type (SVG and HTML are refused), and stay within quotas: 120 files / 250 MB per person per plan, 1,000 files / 1 GB per plan, 60 uploads per 10 minutes. A refused upload leaves nothing on disk. **Uploaded files are not private:** anyone with a file's link can open it (the link is 128 random bits and isn't listed anywhere, but it can be forwarded). Files stop opening once their plan is deleted. A boarding pass's link is only ever sent to the person who uploaded it (others see just that they've booked), and the photo album only to people in the plan. Limits are kept in memory, so they reset when the server restarts.
 - Everything people or the AI type is shown as text, never as markup: the app escapes it before it reaches the page. Links in chat become links only for http(s) addresses, and a stay's listing link opens only if it is http(s); anything else (like `javascript:`) isn't shown as a link.
 - A plan's dates must be real dates (`lib/planDates.ts`): the window people pick days in, the RSVP deadline, the voting deadline, the locked dates (`{ start, end }`, or none) and each pitch's dates are refused with a 400 unless they're a real day written YYYY-MM-DD (deadlines can be cleared; pitches may have no dates). A plan saved earlier with a bad date still opens: the app treats that date as not set until someone picks a new one.
 
-`npm test` checks these rules (see Tests below). Until real accounts exist these rules rely on each browser's id, so they keep a plan private from everyone except someone who copies another person's browser data.
+`npm test` checks these rules (see Tests below). `tests/identity.mjs` also lists, as `gap` lines, the confirmed ways someone can act as another person today; they fail with `OUTTA_IDENTITY_STRICT=1`, for when identity is fixed. Until real accounts exist these rules rely on each browser's id, so they keep a plan private from everyone except someone who copies another person's browser data.
 
 ## Tests
 
@@ -83,8 +94,8 @@ Every test command starts its own copy of the app on a free port with a throwawa
 | Command | What it runs | Needs |
 |---|---|---|
 | `npm test` | The core suite: TypeScript check, app build, then every server suite below | Nothing extra |
-| `npm run test:server` | The server suites only: `access`, `budget-privacy`, `privacy`, `decisions`, `concurrency`, `changelog`, `ai-uploads`, `plan-dates`, `plan-values`, `undo`, `plan-delete`, `storage` (in `tests/`) | Nothing extra |
-| `npm run test:ui` | Browser tests in `tests/ui/`: setup, joining, crews, decisions, personal needs and the change log, budget, itinerary, pitches, recovery and undo, reliability, keyboard, journey, own picks, stays, bad stored dates and values (`dates`), undo next to someone else's edits (`undo`), deleting a plan (`delete`), budget guidance while checks are rate-limited (`budget-busy`), script injection (`xss`: every text field filled with a harmless payload, every tab opened), and a broad feature walk | Playwright |
+| `npm run test:server` | The server suites only: `access`, `budget-privacy`, `privacy`, `decisions`, `concurrency`, `changelog`, `ai-uploads`, `plan-dates`, `plan-values`, `undo`, `plan-delete`, `invite-key`, `identity`, `identity-claims`, `files-access`, `storage` (in `tests/`) | Nothing extra |
+| `npm run test:ui` | Browser tests in `tests/ui/`: setup, joining, crews, decisions, personal needs and the change log, budget, itinerary, pitches, recovery and undo, reliability, keyboard, journey, own picks, stays, bad stored dates and values (`dates`), undo next to someone else's edits (`undo`), deleting a plan (`delete`), old and new invite links (`invite`), keeping your identity after cleared storage or cookies and with sign-in links (`identity`), inviting without a share sheet or clipboard and saves that fail offline (`offline`), budget guidance while checks are rate-limited (`budget-busy`), script injection (`xss`: every text field filled with a harmless payload, every tab opened), and a broad feature walk | Playwright |
 | `npm run test:ui:concurrency` | `tests/ui-concurrency.mjs`: two real browsers saving at once | Playwright |
 
 Add `--only=<name>` to run one suite, e.g. `npm test -- --only=privacy` or `npm run test:ui -- --only=decide`.

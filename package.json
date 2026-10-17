@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node scripts/test.mjs",
     "test:server": "node scripts/test.mjs --server",
+    "test:prod": "node tests/prod-cookie.mjs",
     "test:ui": "node scripts/test.mjs --ui",
     "test:ui:concurrency": "node scripts/test.mjs --concurrency"
   },

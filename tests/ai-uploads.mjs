@@ -1,6 +1,7 @@
 // Part of npm test / npm run test:server (runs against a throwaway server, with AI switched off
 // and a per-person upload quota of 8 files so the quota can be reached quickly).
 // AI and upload endpoints: who may call them, what they accept, and how often.
+import { install } from './_identity.mjs'; install(); // act as the test's people (see the file)
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 const BASE = process.env.BASE || 'http://localhost:3000', DATA = process.env.OUTTA_TEST_DATA;

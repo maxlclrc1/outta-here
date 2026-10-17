@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { budgetBandOf, budgetCheck, normalize, rateCheck, type Check } from '@/lib/budget';
 import { inTrip } from '@/lib/access';
-import { userOf } from '@/lib/user';
+import { guard, userOf } from '@/lib/user';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -10,6 +10,7 @@ const fail = (code: string, message: string, status: number) => NextResponse.jso
 
 // Budget fit for a plan, without sending or giving away anyone's budget (see lib/budget.ts).
 export async function POST(req: Request) {
+  const no = guard(req); if (no) return no;
   const user = userOf(req);
   let body: { tid?: unknown; checks?: unknown };
   try { body = await req.json(); } catch { return fail('invalid_argument', 'Body must be JSON', 400); }
