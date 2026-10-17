@@ -2,11 +2,12 @@
 // Deleting a plan from the app is one server request: on success the plan, everything in it and
 // its uploaded files are gone and the app says so; on failure nothing is deleted, the plan stays
 // open and the app says why. Delete shows for the creator and organizers, matching the server.
+import { install, trackBrowser } from '../_identity.mjs'; install(); // act as the test's people (see the file)
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 const { chromium } = await import(process.env.PLAYWRIGHT || 'playwright');
 const BASE = process.env.BASE || 'http://localhost:3000', UP = process.env.OUTTA_TEST_DATA ? join(process.env.OUTTA_TEST_DATA, 'uploads') : null;
-const b = await chromium.launch(process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {}); const errs = [];
+const b = await chromium.launch(process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {}); trackBrowser(b); const errs = [];
 let fails = 0; const expect = (label, ok, detail = '') => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${label}${detail ? ' · ' + detail : ''}`); if (!ok) fails++; };
 const settle = p => p.waitForFunction(() => !document.documentElement.dataset.vt).then(() => p.waitForTimeout(400));
 const api = (u, op, path, data) => fetch(BASE + '/api/db', { method: 'POST', headers: { 'content-type': 'application/json', 'x-outta-user': u }, body: JSON.stringify({ op, path, data }) }).then(r => r.json());

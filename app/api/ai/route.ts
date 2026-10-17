@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { aiClient, AI_MODEL, SYSTEM } from '@/lib/ai';
 import { inTrip } from '@/lib/access';
 import { hiddenNeedsText } from '@/lib/privacy';
-import { userOf } from '@/lib/user';
+import { guard, userOf } from '@/lib/user';
 import { allow, enter, retryAfter } from '@/lib/limits';
 
 export const runtime = 'nodejs';
@@ -18,6 +18,7 @@ const fail = (code: string, message: string, status: number) => NextResponse.jso
 const LIMITS = { bodyBytes: 128 * 1024, promptChars: 64 * 1024, turns: 20, perMinute: 6, perHour: 40, planPerHour: 120, atOnce: 2 };
 
 export async function POST(req: Request) {
+  const no = guard(req); if (no) return no;
   if (Number(req.headers.get('content-length') || 0) > LIMITS.bodyBytes) return fail('prompt_too_large', 'That request is too large.', 413);
   let raw: string;
   try { raw = await req.text(); } catch { return fail('invalid_request', 'Couldn’t read the request.', 400); }

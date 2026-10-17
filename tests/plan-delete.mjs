@@ -1,6 +1,7 @@
 // Part of npm test / npm run test:server (runs against a throwaway server; needs OUTTA_TEST_DATA
 // to look at its files). Deleting a plan is one server step: everything in it and its uploaded
 // files go together, or nothing does; other plans and files they still use are never touched.
+import { install } from './_identity.mjs'; install(); // act as the test's people (see the file)
 import { readFileSync, readdirSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 const BASE = process.env.BASE || 'http://localhost:3000', DATA = process.env.OUTTA_TEST_DATA;

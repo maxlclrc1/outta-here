@@ -2,6 +2,7 @@
 // your own running app instead (writes to its data/): BASE=http://localhost:3000 node <this file>
 // Plan values shared screens rely on (stop dates and times, destination codes, nights, size,
 // task due dates, members' days) are refused with a 400 naming the field when malformed.
+import { install } from './_identity.mjs'; install(); // act as the test's people (see the file)
 const BASE = process.env.BASE || 'http://localhost:3000';
 const call = (u, op, path, data) => fetch(BASE + '/api/db', { method: 'POST', headers: { 'content-type': 'application/json', 'x-outta-user': u }, body: JSON.stringify({ op, path, data }) }).then(async r => ({ status: r.status, ...(await r.json()) }));
 const r = Math.random().toString(36).slice(2, 8), A = 'u_ana00' + r, T = 'vals' + r, P = 'trips/' + T, M = `${P}/members/${A}`;

@@ -51,7 +51,18 @@ To test as two different people on one computer, use a normal window and a priva
 
 ## How people are identified
 
-There are no accounts yet. The first time someone opens the app, it asks for their name and remembers them in that browser. That's fine on your own computer and Wi-Fi, but anyone who can reach the server could act as anyone else, so don't put this version on the public internet. Real accounts come with the next step.
+There are no accounts yet. The first time someone opens the app, it asks for their name and the browser makes up an id for them. The server then gives that browser a secret for its id (an HttpOnly, SameSite=Strict cookie) and keeps only a hash of it in `data/keys.json`. Every request has to carry the cookie that matches the id it claims, so knowing someone's id is no longer enough to act as them. Requests from other websites are refused.
+
+**People from before this existed** (ids already in your data, with no secret yet) can't take their id back by just opening the app, because anyone who knows an id could do that. Their browser shows "Sign back in". Whoever runs the app makes them a one-time sign-in link on this computer and gives it to them in person or a chat you trust:
+
+```bash
+node scripts/claim-link.mjs Ana                          # find Ana's id
+node scripts/claim-link.mjs u_abc123… --host 192.168.1.23:3000
+```
+
+The link works once, for 24 hours. The same link puts someone back in after they cleared their cookies, or on a new phone. If only the browser's storage was cleared (not its cookies), the app finds its id again by itself. "Start as someone new" on that screen is always a deliberate choice; the app never switches identity on its own.
+
+This proves "the same browser as before", not who a person is: anyone with access to that browser, or watching the Wi-Fi traffic (it isn't encrypted on plain http), can still act as them. So don't put this version on the public internet; real accounts and HTTPS come with the next step. If you run it with `npm start` on plain http on your Wi-Fi, set `OUTTA_INSECURE_COOKIES=1` (production otherwise marks the cookie Secure, which only works over https).
 
 ## Who can see and change what
 

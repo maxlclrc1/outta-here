@@ -2,6 +2,7 @@
 // your own running app instead (writes to its data/): BASE=http://localhost:3000 node <this file>
 // The invite key is a secret: organizers always get it, members only when anyone in the plan may
 // invite, and people who only have a link learn just whether their link still works.
+import { install } from './_identity.mjs'; install(); // act as the test's people (see the file)
 const BASE = process.env.BASE || 'http://localhost:3000';
 const call = (u, op, path, data, invite) => fetch(BASE + '/api/db', { method: 'POST', headers: { 'content-type': 'application/json', 'x-outta-user': u, ...(invite ? { 'x-outta-invite': invite } : {}) }, body: JSON.stringify({ op, path, data }) }).then(async r => ({ status: r.status, ...(await r.json()) }));
 const r = Math.random().toString(36).slice(2, 8), A = 'u_org00' + r, B = 'u_bea00' + r, X = 'u_link00' + r, Y = 'u_late00' + r, T = 'ik' + r, P = 'trips/' + T;
