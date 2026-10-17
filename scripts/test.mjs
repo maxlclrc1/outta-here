@@ -9,7 +9,7 @@
 //
 // Every suite runs even if an earlier one fails; the command exits 1 if any failed.
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, readdirSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,6 +33,7 @@ const SERVER = [
   ['plan-delete', 'tests/plan-delete.mjs'],
   ['invite-key', 'tests/invite-key.mjs'],
   ['identity', 'tests/identity.mjs'],
+  ['identity-claims', 'tests/identity-claims.mjs'],
   ['storage', 'tests/storage.mjs'],
 ];
 const UI = readdirSync(join(root, 'tests/ui')).filter(f => f.endsWith('.mjs') && !f.startsWith('_')).sort().map(f => [f.replace(/\.mjs$/, ''), 'tests/ui/' + f]);
@@ -59,7 +60,9 @@ const restoreTsconfig = () => { try { if (readFileSync(tsconfig, 'utf8') !== tsc
 const freePort = () => new Promise(res => { const s = net.createServer().listen(0, () => { const p = s.address().port; s.close(() => res(p)); }); });
 const port = await freePort(), data = mkdtempSync(join(tmpdir(), 'outta-test-')), dist = `.next-test-${port}`;
 const server = spawn(process.execPath, [join(root, 'node_modules/next/dist/bin/next'), 'dev', '-p', String(port)], { cwd: root, env: { ...process.env, OUTTA_DATA_DIR: data, OUTTA_DIST_DIR: dist, NEXT_TELEMETRY_DISABLED: '1', OUTTA_INSECURE_COOKIES: '1', OUTTA_AI_OFF: '1', OUTTA_UPLOAD_FILES_PER_PERSON: '8' }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
-let serverLog = ''; server.stdout.on('data', d => { serverLog += d; }); server.stderr.on('data', d => { serverLog += d; });
+// the server's output is also kept in the throwaway folder, so suites can check what it logs
+let serverLog = ''; const keepLog = d => { serverLog += d; try { appendFileSync(join(data, 'server.log'), d); } catch {} };
+server.stdout.on('data', keepLog); server.stderr.on('data', keepLog);
 let cleaned = false, exited = false;
 server.on('exit', () => { exited = true; });
 const remove = () => { for (const d of [data, join(root, dist)]) try { rmSync(d, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch {} restoreTsconfig(); };
