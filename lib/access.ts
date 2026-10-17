@@ -66,8 +66,18 @@ const ORG_FIELDS = ['orgs', 'perm', 'inviteKey', 'invitesOff', 'createdBy'];
 // The invite key is a secret: organizers always get it, and members only when anyone in the
 // plan may invite (the links they share carry it). Everyone else (someone with a link who
 // hasn't joined, or was removed) gets only whether their own link still works.
+// Boarding passes: everyone sees who has booked (and the flight), but the file itself is only
+// sent to its owner, so its link (/_blob/<id>) never reaches anyone else.
+function ticketsFor(t: Json, user: string): Json {
+  if (!isObj(t.tickets)) return t;
+  const tickets = Object.fromEntries(Object.entries(t.tickets).map(([id, x]) => {
+    if (id === user || !isObj(x)) return [id, x];
+    const { asset: _a, type: _t, ...rest } = x; return [id, rest];
+  }));
+  return { ...t, tickets };
+}
 function planFor(p: string, data: Json, ctx: Ctx): Json {
-  const out = tripFor(data, ctx.user);
+  const out = ticketsFor(tripFor(data, ctx.user), ctx.user);
   if (!('inviteKey' in out)) return out;
   const tid = p.split('/')[1];
   if (isOrg(data, ctx.user)) return out;

@@ -11,8 +11,12 @@ export const dynamic = 'force-dynamic';
 //   POST { code } → open a one-time sign-in link from scripts/claim-link.mjs (sets the cookie)
 // The secret only ever travels in the HttpOnly cookie; responses never include it.
 
+// Secure (sent only over https) whenever the request came over https, and always in production
+// unless OUTTA_INSECURE_COOKIES is exactly 1 or true (for running on plain http on your Wi-Fi):
+// any other value, like 0 or false, keeps it on.
+const insecureOk = () => ['1', 'true'].includes(String(process.env.OUTTA_INSECURE_COOKIES || '').trim().toLowerCase());
 const secure = (req: Request) => new URL(req.url).protocol === 'https:' || req.headers.get('x-forwarded-proto') === 'https'
-  || (process.env.NODE_ENV === 'production' && !process.env.OUTTA_INSECURE_COOKIES);
+  || (process.env.NODE_ENV === 'production' && !insecureOk());
 const cookie = (req: Request, id: string, secret: string) =>
   `${cookieName(id)}=${secret}; Path=/; HttpOnly; SameSite=Strict; Max-Age=315360000${secure(req) ? '; Secure' : ''}`;
 
