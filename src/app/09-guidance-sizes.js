@@ -130,7 +130,7 @@ Reply with only JSON: {"pitches":[{"title":"the plan in 2-5 words","tagline":"pu
   askAI('pitch', prompt, data => {
     const valid = new Map(opts.map(o => [o.start, o]));
     const items = (Array.isArray(data?.pitches) ? data.pitches : []).filter(p => p && p.title).slice(0, 8).map(p => {
-      const o = valid.get(p.date) || opts[0], steps = arr(p.steps).slice(0, 5).map(s => ({ time: String(s.time || '').slice(0, 5), title: String(s.title || '').slice(0, 80) })).filter(s => s.title);
+      const o = valid.get(p.date) || opts[0], steps = arr(p.steps).slice(0, 5).map(s => ({ time: hhmm(s.time), title: String(s.title || '').slice(0, 80) })).filter(s => s.title);
       return { id: rid(6), small: true, title: String(p.title).slice(0, 50), city: String(p.title).slice(0, 50), code: '', start: o.start, end: o.start, time: /^\d\d:\d\d$/.test(p.time) ? p.time : '',
         where: String(p.where || '').slice(0, 60), tagline: String(p.tagline || '').slice(0, 80), why: String(p.why || '').slice(0, 300), perPerson: String(p.perPerson || '').slice(0, 30),
         vibeMatch: Math.max(0, Math.min(100, Math.round(+p.vibeMatch || 0))), highlights: steps.map(s => (s.time ? t12(s.time) + ' · ' : '') + s.title), steps, weather: String(p.weather || '').slice(0, 60) };

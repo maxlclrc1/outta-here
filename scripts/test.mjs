@@ -28,6 +28,9 @@ const SERVER = [
   ['changelog', 'tests/changelog.mjs', ['--experimental-strip-types', '--no-warnings']],
   ['ai-uploads', 'tests/ai-uploads.mjs'],
   ['plan-dates', 'tests/plan-dates.mjs'],
+  ['plan-values', 'tests/plan-values.mjs'],
+  ['undo', 'tests/undo.mjs'],
+  ['plan-delete', 'tests/plan-delete.mjs'],
   ['storage', 'tests/storage.mjs'],
 ];
 const UI = readdirSync(join(root, 'tests/ui')).filter(f => f.endsWith('.mjs') && !f.startsWith('_')).sort().map(f => [f.replace(/\.mjs$/, ''), 'tests/ui/' + f]);

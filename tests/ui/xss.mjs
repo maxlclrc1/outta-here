@@ -94,10 +94,12 @@ for (const size of ['trip', 'hangout']) {
 {
   const c = await mk(), uid = await c.evaluate(() => localStorage.outta_uid), tid = 'xss' + Math.random().toString(36).slice(2, 8);
   const db = (op, path, data) => c.evaluate(async ([op, path, data, uid]) => (await fetch('/api/db', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-outta-user': uid }, body: JSON.stringify({ op, path, data }) })).json(), [op, path, data, uid]);
-  await db('set', 'trips/' + tid, { name: 'Plan' + P, createdBy: uid, createdAt: Date.now(), people: { [uid]: true }, size: 'trip', mode: 'friends', destinations: [{ id: 'd1', city: 'Porto' + P, code: 'OPO' + P }], lockedDest: 'd1', lockedDates: { start: '2026-12-04', end: '2026-12-06' },
+  await db('set', 'trips/' + tid, { name: 'Plan' + P, createdBy: uid, createdAt: Date.now(), people: { [uid]: true }, size: 'trip', mode: 'friends', destinations: [{ id: 'd1', city: 'Porto' + P, code: 'OPO' }], lockedDest: 'd1', lockedDates: { start: '2026-12-04', end: '2026-12-06' },
     myStays: { s1: { name: 'Flat' + P, kind: 'rental', url: BAD_URL, by: uid, at: Date.now() } }, stay: { name: 'Hotel' + P, url: 'https://example.com/stay?a=1&b=2' } });
   await db('set', `trips/${tid}/members/${uid}`, { nick: 'Ali' + P, status: 'in', home: 'JFK' });
   await db('set', 'crews/c' + tid, { name: 'Crew' + P, people: { [uid]: true }, profiles: { [uid]: { nick: 'Ali' + P } }, by: uid, at: Date.now() });
+  // the server now refuses a code like this, but an older plan may still hold one: add it to what the server sends
+  await c.context().route('**/api/db', async r => { const q = JSON.parse(r.request().postData() || '{}'), res = await r.fetch(); if (q.op !== 'get' || q.path !== 'trips/' + tid) return r.fulfill({ response: res }); const j = await res.json(); if (j.exists) j.data.destinations = [{ id: 'd1', city: 'Porto' + P, code: 'OPO' + P }]; r.fulfill({ response: res, json: j }); });
   await c.reload(); await settle(c); await c.waitForTimeout(800);
   { const s = await scan(c); expect('home screen: plan and crew names stay inert', !s.hits && !s.injected && s.text.includes('Plan' + P.slice(0, 8)), `ran ${s.hits}, injected ${s.injected}`); }
   await c.goto(BASE + '/#' + tid); await settle(c); await c.waitForTimeout(800);

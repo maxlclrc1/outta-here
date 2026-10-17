@@ -95,7 +95,7 @@ function crewTemplates(c) {
 function applyOutline() {
   const d = dates(), tpl = S.trip.itinTpl; if (!d || !tpl) return;
   const days = span(d.start, d.end);
-  const items = tpl.map(i => ({ id: rid(6), date: days[Math.min(i.day, days.length - 1)], time: i.time, title: i.title, kind: i.kind, note: i.note }));
+  const items = tpl.map(i => ({ id: rid(6), date: days[Math.min(i.day, days.length - 1)], time: hhmm(i.time), title: i.title, kind: i.kind, note: i.note }));
   saveTrip({ itinerary: [...(S.trip.itinerary || []), ...items], itinTpl: null });
   flash(`Added ${items.length} stop${items.length === 1 ? '' : 's'} from last time. Change anything that doesn’t fit.`);
 }

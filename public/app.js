@@ -18,7 +18,15 @@ const cleanDates = t => { for (const k of ['winStart', 'winEnd', 'rsvpBy']) if (
   const L = t.lockedDates; if (L != null && !(isDay(L.start) && isDay(L.end) && L.end >= L.start)) delete t.lockedDates;
   const badDay = v => v != null && !isDay(v), items = t.pitches && Array.isArray(t.pitches.items) ? t.pitches.items : null;
   if (items && items.some(x => x && (badDay(x.start) || badDay(x.end)))) t.pitches = { ...t.pitches, items: items.map(x => { if (!x || !(badDay(x.start) || badDay(x.end))) return x; const { start, end, ...rest } = x; return rest; }) };
+  // other shared values a wrong type would crash on
+  if (Array.isArray(t.itinerary) && t.itinerary.some(i => i && ((i.date && !isDay(i.date)) || (i.time && !hhmm(i.time)) || typeof (i.time ?? '') !== 'string'))) t.itinerary = t.itinerary.map(i => !i ? i : { ...i, ...(i.date && !isDay(i.date) ? { date: '' } : {}), ...(i.time && (typeof i.time !== 'string' || !hhmm(i.time)) ? { time: '' } : {}) });
+  if (Array.isArray(t.destinations) && t.destinations.some(d => d && ((d.code && !(typeof d.code === 'string' && isCode(d.code))) || (d.city != null && typeof d.city !== 'string')))) t.destinations = t.destinations.map(d => !d ? d : { ...d, code: typeof d.code === 'string' && isCode(d.code) ? d.code : '', city: d.city == null ? d.city : String(d.city) });
+  if (t.nights != null && !(Number.isInteger(t.nights) && t.nights >= 0 && t.nights <= 90)) delete t.nights;
+  if (t.tasks && typeof t.tasks === 'object' && Object.values(t.tasks).some(x => x && x.due && !isDay(x.due))) t.tasks = Object.fromEntries(Object.entries(t.tasks).map(([k, x]) => [k, x && x.due && !isDay(x.due) ? { ...x, due: '' } : x]));
   return t; };
+// A member's days: only real dates count (a bad stored list is read as no days picked).
+const cleanMember = m => { for (const k of ['days', 'pref']) if (m[k] != null && !(Array.isArray(m[k]) && m[k].every(isDay))) m[k] = Array.isArray(m[k]) ? m[k].filter(isDay) : []; return m; };
+const hhmm = v => { const m = String(v ?? '').trim().match(/^(\d{1,2}):(\d{2})$/); return m && +m[1] < 24 && +m[2] < 60 ? m[1].padStart(2, '0') + ':' + m[2] : ''; };
 const span = (a, b) => { const o = []; if (!isDay(a) || !isDay(b)) return o; for (let s = a; s <= b && o.length < 92; s = add(s, 1)) o.push(s); return o; };
 // Date labels are formatted constantly while drawing; formatters are reused and results kept.
 const DTF = {}, FMT = new Map(), FMT_DEF = { weekday: 'short', month: 'short', day: 'numeric' };
@@ -70,6 +78,7 @@ const rid = (n = 10) => Array.from(crypto.getRandomValues(new Uint8Array(n)), b 
 let toastT;
 function flash(msg) { const t = $('#toast'); t.textContent = msg; t.classList.remove('out'); t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.classList.add('out'); toastT = setTimeout(() => { t.hidden = true; t.classList.remove('out'); }, 260); }, 4200); }
 function writeErr(e) {
+  if (e && e.code === 'conflict') return e.message;
   if (e && e.code === 'invalid_argument' && !IN_CLAUDE) return /256 KiB/.test(e.message || '') ? 'This plan has gotten too big to save more. Remove some old items and try again.' : 'That didn’t save. Try again.';
   if (e && e.code === 'invalid_argument') { S.readOnly = true; return "You can view this plan but not edit it. Ask the owner to share it with you as a Contributor."; }
   if (e && e.code === 'permission_denied') return e.message || 'You don’t have access to change this.';
@@ -263,9 +272,10 @@ function listBase(patch) {
   one('pitches.items', patch.pitches?.items, S.trip.pitches?.items);
   return Object.keys(base).length ? { _base: base } : {};
 }
-async function saveTrip(patch, tid = S.tid) {
+// `expect` (Undo/Restore): the server saves only if those values are unchanged (lib/merge.ts)
+async function saveTrip(patch, tid = S.tid, expect) {
   if (!tid) return false;
-  const here = tid === S.tid && S.trip, send = here ? { ...patch, ...listBase(patch) } : patch;
+  const here = tid === S.tid && S.trip, send = { ...(here ? { ...patch, ...listBase(patch) } : patch), ...(expect && !IN_CLAUDE ? { _expect: expect } : {}) };
   if (here) { S.trip = merge(S.trip, patch); render(); }
   if (S.demo) return true;
   if (!S.db) return false;
@@ -273,7 +283,7 @@ async function saveTrip(patch, tid = S.tid) {
   catch (e) { flash(writeErr(e)); if (here) resync(tid); return false; }
 }
 async function resync(tid) {
-  try { const snap = await S.db.doc('trips/' + tid).get(); if (S.tid === tid && snap.exists) { S.trip = { ...snap.data() }; render(); } } catch {}
+  try { const snap = await S.db.doc('trips/' + tid).get(); if (S.tid === tid && snap.exists) { S.trip = cleanDates({ ...snap.data() }); render(); } } catch {}
 }
 async function putSub(coll, id, data, partial) {
   const tid = S.tid, list = S[coll], i = list.findIndex(x => x.id === id), before = i >= 0 ? list[i] : null;
@@ -447,7 +457,7 @@ Reply with only JSON: {"days":[{"date":"YYYY-MM-DD","items":[{"time":"HH:MM","ti
     const days = Array.isArray(data?.days) ? data.days : [];
     const valid = new Set(span(d.start, d.end));
     const items = [];
-    for (const day of days) for (const it of (day.items || [])) if (valid.has(day.date) && it.title) items.push({ id: rid(6), date: day.date, time: String(it.time || '').slice(0, 5), title: String(it.title).slice(0, 120), kind: it.kind || 'activity', note: String(it.note || '').slice(0, 200), ai: true });
+    for (const day of days) for (const it of (day.items || [])) if (valid.has(day.date) && it.title) items.push({ id: rid(6), date: day.date, time: hhmm(it.time), title: String(it.title).slice(0, 120), kind: it.kind || 'activity', note: String(it.note || '').slice(0, 200), ai: true });
     if (!items.length) { flash('No plan came back. Try again.'); return; }
     const keep = (S.trip.itinerary || []).filter(i => !i.ai);
     return saveTrip({ itinerary: [...keep, ...items] });
@@ -964,10 +974,25 @@ function packTab() {
   </section>`;
 }
 
-const canDelete = t => S.demo || S.isOwner || (t && t.createdBy && t.createdBy === S.uid);
+// mirrors the server rule (lib/access.ts isOrg): the creator or an organizer. The server decides.
+const canDelete = t => S.demo || S.isOwner || !!(t && (t.createdBy === S.uid || (t.orgs || {})[S.uid]));
 async function deleteTrip(tid) {
   if (S.demo) { goHome(); return; }
   if (!S.db || !tid) return;
+  // on the app's own server: one request deletes the plan, everything in it and its files, or
+  // nothing at all (lib/deletePlan.ts). The plan stays open until that has succeeded.
+  if (!IN_CLAUDE) {
+    const t = (S.tid === tid && S.trip) || S.trips.find(x => x.id === tid) || {}, word = SIZES[t.size] ? SIZES[t.size].label : 'Trip';
+    let r, j = {};
+    try { r = await fetch('/api/plans/' + encodeURIComponent(tid), { method: 'DELETE', headers: { 'x-outta-user': S.uid } }); j = await r.json().catch(() => ({})); }
+    catch { flash('Couldn’t reach the app, so nothing was deleted. Try again.'); return; }
+    if (!r.ok) { flash(j.message || 'Couldn’t delete it, so nothing was deleted. Try again.'); return; }
+    S.confirmHome = null; S.confirm = null;
+    if (S.tid === tid) goHome(); else render();
+    flash(word + ' deleted.' + (j.filesLeft ? ' A few of its files couldn’t be removed yet; they’ll be cleared the next time a plan is deleted.' : ''));
+    return;
+  }
+  // in Claude there is no app server, so the pieces are deleted one by one
   if (S.tid === tid) stop();
   try {
     const t = (await S.db.doc('trips/' + tid).get()).data() || {};
@@ -1225,9 +1250,10 @@ function groupFit(p) {
   const vs = active(), out = [], r = moneyRange(p.perPerson);
   const nB = vs.filter(m => +m.budget > 0 || m.budgetSet).length, f = r && nB ? (p.id && (S.trip.pitches?.items || []).some(x => x.id === p.id) ? bq({ pitch: p.id }) || NO_FIT : budgetFit({ low: r[0], high: r[1] })) : null;
   if (f && f.pending) out.push({ ok: 'meh', text: 'Checking budgets…' });
+  else if (f && f.unavailable) out.push({ ok: 'meh', text: 'Budget check unavailable right now' });
   else if (f && f.n) {
-    const { over, stretch } = f;
-    out.push(over.length ? { ok: false, text: `Over budget for ${budgetWho(over)}` } : stretch.length ? { ok: 'meh', text: `A stretch for ${budgetWho(stretch)}` } : { ok: true, text: f.n === vs.length ? `Fits ${vs.length}/${vs.length} budgets` : `Fits every budget set (${f.n} of ${vs.length})` });
+    const { over, stretch } = f, was = f.stale ? ' (earlier check)' : '';
+    out.push(over.length ? { ok: false, text: `Over budget for ${budgetWho(over)}${was}` } : stretch.length ? { ok: 'meh', text: `A stretch for ${budgetWho(stretch)}${was}` } : { ok: f.stale ? 'meh' : true, text: (f.n === vs.length ? `Fits ${vs.length}/${vs.length} budgets` : `Fits every budget set (${f.n} of ${vs.length})`) + was });
   } else out.push({ ok: 'meh', text: nB ? 'No price to check yet' : 'Nobody set a budget yet' });
   const days = span(p.start, p.end), can = vs.filter(m => fitOf(m, days)), cant = vs.filter(m => !fitOf(m, days)), picked = vs.filter(m => (m.days || []).length);
   if (picked.length) out.push(cant.filter(m => (m.days || []).length).length ? { ok: false, text: `${listNames(cant.filter(m => (m.days || []).length))} can’t make ${p.start === p.end ? 'that day' : 'those dates'}` } : { ok: true, text: `Free: ${can.length}/${vs.length}` });
@@ -1989,13 +2015,16 @@ function costSummary(t = S.trip, who = 'crew') {
    /api/budget, which answers with counts and only names people who chose to be named (or
    you). Answers are kept until the crew's details change. The demo and the Claude version
    have no server of their own, so there it's worked out here from the data the page has.
-   Budget ≥ high fits, between low and high is a stretch, below low is over. */
-const BQ = { tid: null, cache: new Map(), queue: new Map(), cap: undefined, t: 0 };
+   Budget ≥ high fits, between low and high is a stretch, below low is over.
+   If a check can't be answered (too many checks, say), the last confirmed answer is shown
+   marked `stale` ("earlier check"), or `unavailable` if there was none, never "no budgets".
+   It's asked again once the server says it can be. */
+const BQ = { tid: null, cache: new Map(), queue: new Map(), cap: undefined, t: 0, good: new Map(), retry: 0 };
 const NO_FIT = { n: 0, unknown: 0, fits: [], stretch: [], over: [], hard: [], hardOpen: [], pending: true };
 const budgetsHere = () => S.demo || IN_CLAUDE;
 function budgetReset() { BQ.cache.clear(); BQ.cap = undefined; }
 function bq(check) {
-  if (BQ.tid !== S.tid) { BQ.tid = S.tid; budgetReset(); BQ.queue.clear(); }
+  if (BQ.tid !== S.tid) { BQ.tid = S.tid; budgetReset(); BQ.queue.clear(); BQ.good.clear(); BQ.goodCap = undefined; }
   if (budgetsHere()) return budgetLocal(check);
   // only people in the plan can ask, so wait until joining has actually been saved
   const me = meDoc(); if (!me || !(me.updatedAt || (S.trip.people || {})[S.uid] || S.trip.createdBy === S.uid)) return { ...NO_FIT, pending: false };
@@ -2007,15 +2036,17 @@ function bq(check) {
 async function budgetFetch() {
   const tid = S.tid, items = [...BQ.queue]; BQ.queue.clear();
   if (!tid || !items.length) return;
-  let data = null;
+  let data = null, wait = 30;
   try {
     const r = await fetch('/api/budget', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-outta-user': S.uid }, body: JSON.stringify({ tid, checks: items.map(([, c]) => c) }) });
-    if (r.ok) data = await r.json();
+    if (r.ok) data = await r.json(); else wait = +r.headers.get('Retry-After') || wait;
   } catch {}
   if (S.tid !== tid) return;
-  // a failed check counts as "no budgets to compare" rather than retrying in a loop
-  items.forEach(([k], i) => BQ.cache.set(k, data ? budgetShape(data.results[i]) : { ...NO_FIT, pending: false }));
-  if (data) BQ.cap = data.band; else if (BQ.cap === undefined) BQ.cap = null;
+  if (data) items.forEach(([k], i) => { const v = budgetShape(data.results[i]); BQ.cache.set(k, v); BQ.good.set(k, v); });
+  // not answered: keep the last confirmed answer, marked as earlier, and ask again later
+  else items.forEach(([k]) => BQ.cache.set(k, BQ.good.has(k) ? { ...BQ.good.get(k), stale: true } : { ...NO_FIT, pending: false, unavailable: true }));
+  if (data) BQ.cap = BQ.goodCap = data.band; else if (BQ.cap === undefined) BQ.cap = BQ.goodCap ?? null;
+  if (!data && !BQ.retry) BQ.retry = setTimeout(() => { BQ.retry = 0; if (S.tid !== tid) return; for (const [k, v] of BQ.cache) if (v.stale || v.unavailable) BQ.cache.delete(k); render(); }, Math.min(60, Math.max(5, wait)) * 1000);
   render();
 }
 // counts from the server → lists the UI can use: named people, then anonymous stand-ins
@@ -2058,7 +2089,8 @@ function costTab() {
       : S.sample === null ? `<span class="small muted">AI estimates are off ${IN_CLAUDE ? 'for you right now' : 'until you add your Anthropic API key'}. Type in numbers below.</span>` : ''}
     ${sum.missing.length ? `<div class="cost-flag"><b>Not included yet:</b> ${sum.missing.map(r => esc(r.label.toLowerCase())).join(', ')}. The real total is higher than this.</div>` : ''}
     ${sum.estimates.length ? `<div class="cost-flag soft">${sum.estimates.length === 1 ? `${esc(sum.estimates[0].label)} is an estimate` : `${sum.estimates.length} lines are estimates`}, not live prices. Swap in a real quote when you have one.</div>` : ''}
-    ${fit.n && sum.any ? `<div class="row" style="gap:6px">${fit.fits.length ? `<span class="pill lvl-in">Fits ${fit.fits.length}/${fit.n} budget${fit.n === 1 ? '' : 's'}</span>` : ''}${fit.stretch.length ? `<span class="pill lvl-maybe">A stretch for ${esc(budgetWho(fit.stretch))}</span>` : ''}${fit.over.length ? `<span class="pill out" style="color:#D63B3B">Over budget for ${esc(budgetWho(fit.over))}</span>` : ''}${fit.unknown ? `<span class="pill out">${fit.unknown} without a budget</span>` : ''}</div>` : ''}
+    ${sum.any && fit.unavailable ? '<div class="row" style="gap:6px"><span class="pill maybe">Budget check unavailable right now</span></div>' : ''}
+    ${fit.n && sum.any ? `<div class="row" style="gap:6px">${fit.stale ? '<span class="pill maybe">Earlier check, updating…</span>' : ''}${fit.fits.length ? `<span class="pill lvl-in">Fits ${fit.fits.length}/${fit.n} budget${fit.n === 1 ? '' : 's'}</span>` : ''}${fit.stretch.length ? `<span class="pill lvl-maybe">A stretch for ${esc(budgetWho(fit.stretch))}</span>` : ''}${fit.over.length ? `<span class="pill out" style="color:#D63B3B">Over budget for ${esc(budgetWho(fit.over))}</span>` : ''}${fit.unknown ? `<span class="pill out">${fit.unknown} without a budget</span>` : ''}</div>` : ''}
     <div class="cost-rows">${sum.rows.map(r => { const m = me.rows.find(x => x.k === r.k), shown = m && m.v && m.v.src === 'booked' ? m : r;
       return `<div class="cost-row ${shown.v || m?.booked ? '' : 'empty-line'}">
       <div class="cost-what"><b>${esc(r.label)}${r.major && !shown.v && !m?.booked ? ' <span class="small" style="color:#D63B3B">· missing</span>' : ''}</b>
@@ -2422,7 +2454,7 @@ Reply with only JSON: {"options":[{"title":"place or activity","why":"one senten
 function swapItem(title) {
   title = String(title || '').trim().slice(0, 80); if (!title) return;
   const id = (S.rc || {}).item, old = (S.trip.itinerary || []).find(i => i.id === id); if (!old) return;
-  saveTrip({ itinerary: (S.trip.itinerary || []).map(i => i.id === id ? { ...i, title, note: `Instead of ${old.title}`, ai: false } : i), ...withLog({}, { area: 'plan', text: `${old.title} swapped for ${title}`, act: 'all', undo: { k: 'item', item: old } }) });
+  saveTrip(withLog({ itinerary: (S.trip.itinerary || []).map(i => i.id === id ? { ...i, title, note: `Instead of ${old.title}`, ai: false } : i) }, { area: 'plan', text: `${old.title} swapped for ${title}`, act: 'all', undo: { k: 'item', item: old } }));
   S.alts = null; S.recover = null; S.rc = null;
   flash(`Swapped in ${title}.`);
 }
@@ -2589,7 +2621,7 @@ function crewTemplates(c) {
 function applyOutline() {
   const d = dates(), tpl = S.trip.itinTpl; if (!d || !tpl) return;
   const days = span(d.start, d.end);
-  const items = tpl.map(i => ({ id: rid(6), date: days[Math.min(i.day, days.length - 1)], time: i.time, title: i.title, kind: i.kind, note: i.note }));
+  const items = tpl.map(i => ({ id: rid(6), date: days[Math.min(i.day, days.length - 1)], time: hhmm(i.time), title: i.title, kind: i.kind, note: i.note }));
   saveTrip({ itinerary: [...(S.trip.itinerary || []), ...items], itinTpl: null });
   flash(`Added ${items.length} stop${items.length === 1 ? '' : 's'} from last time. Change anything that doesn’t fit.`);
 }
@@ -2659,12 +2691,16 @@ function lockGate(kind, id) {
   if (S.demo) return { ok: true };
   const o = optOf(kind, id); if (!o) return { ok: true };
   const r = ruleCheck(o); if (!r.ok) return r;
-  if (budgetHits(o).pending) return { ok: false, why: 'Checking everyone’s budget limits. Try again in a second.' };
+  const bh = budgetHits(o);
+  if (bh.pending) return { ok: false, why: 'Checking everyone’s budget limits. Try again in a second.' };
+  if (bh.unavailable) return { ok: false, why: 'Couldn’t check everyone’s budget limits just now. Try again in a minute.' };
   const hits = hardHits(o);
   if (hits.length) {
     const me = hits.find(m => m.id === S.uid);
     return { ok: false, why: me && hits.length === 1 ? 'This breaks your own hard limit. Tap “I’m okay with this one” first.' : `This is over a hard limit for ${limitWho(hits, o)}. They have to agree to it first.` };
   }
+  // an earlier answer can warn, but can't clear a lock
+  if (bh.stale) return { ok: false, why: 'Couldn’t confirm everyone’s budget limits just now. Try again in a minute.' };
   return { ok: true };
 }
 // budgets stay private, so budget limits are counted unless someone chose to be named
@@ -2676,8 +2712,9 @@ function limitWho(ms, o) {
 // small line under an option: can it be locked right now, and if not, why
 function ruleChip(kind, id) {
   const o = optOf(kind, id); if (!o || S.demo) return '';
-  const r = ruleCheck(o), hits = hardHits(o), soft = softHits(o), out = [];
-  if (hits.length) out.push(`<span class="fit-c n">✕ Over a hard limit for ${esc(limitWho(hits, o))}</span>`);
+  const r = ruleCheck(o), hits = hardHits(o), soft = softHits(o), out = [], bh = budgetHits(o);
+  if (hits.length) out.push(`<span class="fit-c n">✕ Over a hard limit for ${esc(limitWho(hits, o))}${bh.stale ? ' (earlier check)' : ''}</span>`);
+  else if (bh.unavailable || bh.stale) out.push('<span class="fit-c m">~ Budget limits can’t be checked right now</span>');
   else out.push(`<span class="fit-c ${r.ok ? 'y' : 'm'}">${r.ok ? '✓ Can lock' : '~ ' + esc(r.why.split('.')[0])}</span>`);
   if (soft.length) out.push(`<span class="fit-c m">~ ${esc(listNames(soft))} ${soft.length === 1 ? 'is' : 'are'} only in under ${esc(money(Math.min(...soft.map(m => +m.cond.under))))}</span>`);
   const mine = hardHitsAll(o).find(m => m.id === S.uid);
@@ -2822,10 +2859,17 @@ const dnaSave = (cid, patch) => S.db && S.db.doc('crews/' + cid).update({ dna: p
 // People it affects see it straight away (a toast and a banner until they tap "Got it"),
 // and the author or an organizer can undo it or restore the earlier choice.
 //   entry = { text, area, by, at, act: 'all' | 'some' | '', who: [uids], fx: [lines],
-//             undo: { k: 'set', patch, clear } | { k: 'item', item } | { k: 'status', uid, status },
+//             undo: { k: 'set', patch, clear, after } | { k: 'item', item, after } | { k: 'status', uid, status },
 //             seen: { uid: true }, undone: { by, at } }
+// `after` is what the change left behind. Undo only puts back what still looks exactly like
+// that, so it never erases an edit someone made since (see undoPlan below).
+const afterOf = (cur, p) => Array.isArray(p) ? p : isObj(p) && isObj(cur) ? merge(cur, p) : p;
 function withLog(patch, e) {
-  const id = rid(6);
+  const id = rid(6), u = e.undo;
+  if (u && !('after' in u) && S.trip) {
+    if (u.k === 'set') e = { ...e, undo: { ...u, after: Object.fromEntries(Object.keys(u.patch).map(k => [k, (k in patch ? afterOf(S.trip[k], patch[k]) : S.trip[k]) ?? null])) } };
+    if (u.k === 'item') e = { ...e, undo: { ...u, after: (Array.isArray(patch.itinerary) ? patch.itinerary : S.trip.itinerary || []).find(i => i.id === u.item.id) || null } };
+  }
   return { ...patch, changes: { ...(patch.changes || {}), [id]: { by: S.uid, at: Date.now(), act: '', ...e, seen: { [S.uid]: true } } } };
 }
 const logList = (t = S.trip) => Object.entries(t.changes || {}).filter(([, x]) => x && x.text).map(([id, x]) => ({ id, ...x })).sort((a, b) => b.at - a.at);
@@ -2833,10 +2877,92 @@ const affects = (x, uid = S.uid) => x.act === 'all' || (x.act === 'some' && (x.w
 const needsMe = (x, uid = S.uid) => !x.undone && x.by !== uid && affects(x, uid) && !(x.seen || {})[uid];
 const canUndo = x => x.undo && !x.undone && !S.readOnly && (x.by === S.uid || isOrganizer());
 const logWho = x => x.by === S.uid ? 'You' : nameOf(x.by);
+// Same value, whatever the key order; a missing value counts as null (as on the server).
+const stableOf = v => JSON.stringify(v ?? null, (k, x) => isObj(x) ? Object.fromEntries(Object.keys(x).filter(y => x[y] != null).sort().map(y => [y, x[y]])) : x);
+const same = (a, b) => stableOf(a) === stableOf(b);
+const getPath = (o, path) => path.split('.').reduce((x, k) => isObj(x) ? x[k] : undefined, o);
+// the values an undo patch sets, as paths: { decide: { style } } → 'decide.style'
+const leaves = (v, pre) => isObj(v) && Object.keys(v).length ? Object.entries(v).flatMap(([k, x]) => leaves(x, pre + '.' + k)) : [[pre, v]];
+// an object put back whole: keys added since the change are cleared too
+const revertTo = (cur, old) => !isObj(old) || !isObj(cur) ? old : Object.fromEntries([...Object.keys(cur).filter(k => !(k in old)).map(k => [k, null]), ...Object.entries(old).map(([k, v]) => [k, revertTo(cur[k], v)])]);
+const AREA_NAME = { itinerary: 'the itinerary', lockedDates: 'the locked dates', lockedDest: 'the locked destination', stay: 'the stay', meet: 'the meeting point', currency: 'the currency', decide: 'the decision rules', costs: 'the costs', time: 'the time', venue: 'the place' };
+const changedSince = what => `Couldn’t undo: ${what} changed since. Nothing was put back, so the newer edit is kept.`;
+// What undoing this change would write, and what must still be true when it's written.
+function undoPlan(x, id) {
+  const u = x.undo, t = S.trip, patch = {}, expect = {}, list = t.itinerary || [];
+  // made before undo could check: only if nothing in the same area was logged since
+  if (!('after' in u)) {
+    if (u.k === 'set' && Object.values(u.patch).some(Array.isArray)) return { error: 'This change is from before Undo could check for newer edits, and it covers the whole itinerary, so it can’t be undone safely. Change it back by hand.' };
+    if (logList().some(y => y.id !== id && y.at > x.at && y.area === x.area)) return { error: changedSince('something in the same part of the plan') };
+    return { legacy: true };
+  }
+  if (u.k === 'item') {
+    const key = 'itinerary#' + u.item.id, cur = list.find(i => i.id === u.item.id);
+    if (u.after) {
+      if (!cur) return { error: changedSince(`“${u.item.title}”`).replace('changed since', 'was removed since') };
+      if (same(cur, u.item)) return { error: 'That’s already back the way it was.' };
+      if (!same(cur, u.after)) return { error: changedSince(`“${cur.title}”`) };
+      patch.itinerary = list.map(i => i.id === u.item.id ? u.item : i);
+    } else {
+      if (cur) return { error: `“${u.item.title}” is already back in the plan.` };
+      patch.itinerary = [...list, u.item];
+    }
+    expect[key] = u.after; return { patch, expect };
+  }
+  const clear = new Set(u.clear || []), hit = [];
+  for (const [k, old] of Object.entries(u.patch)) {
+    const cur = t[k], aft = u.after[k];
+    if (Array.isArray(old) || Array.isArray(aft)) {
+      // a whole list (the itinerary shifted with new dates): put back only the items the change
+      // touched that nobody has changed since; keep items added since; leave deletions alone
+      const oldBy = new Map((old || []).map(i => [i.id, i])), aftBy = new Map((aft || []).map(i => [i.id, i])), curBy = new Map((cur || []).map(i => [i.id, i]));
+      const edited = [...aftBy.values()].filter(i => curBy.has(i.id) && !same(curBy.get(i.id), i) && !same(curBy.get(i.id), oldBy.get(i.id)));
+      if (edited.length) { hit.push(`${edited.length === 1 ? `“${curBy.get(edited[0].id).title}”` : edited.length + ' stops'} in ${AREA_NAME[k] || k}`); continue; }
+      const next = [];
+      for (const i of cur || []) {
+        if (!aftBy.has(i.id) || !same(i, aftBy.get(i.id))) { next.push(i); continue; }
+        if (oldBy.has(i.id)) { next.push(oldBy.get(i.id)); if (!same(i, oldBy.get(i.id))) expect[`${k}#${i.id}`] = i; } else expect[`${k}#${i.id}`] = i; // added by the change: removed again
+      }
+      for (const i of old || []) if (!aftBy.has(i.id) && !curBy.has(i.id)) { next.push(i); expect[`${k}#${i.id}`] = null; } // removed by the change: back
+      if (!same(next, cur || [])) patch[k] = next;
+      continue;
+    }
+    if (clear.has(k)) {
+      if (same(cur, old)) continue;
+      if (!same(cur, aft)) { hit.push(AREA_NAME[k] || k); continue; }
+      patch[k] = revertTo(cur, old); expect[k] = aft; continue;
+    }
+    const paths = leaves(old, k).map(([p]) => p.slice(k.length + 1));
+    const val = (o, p) => p ? getPath(o, p) : o;
+    if (paths.every(p => same(val(cur, p), val(old, p)))) continue;
+    if (paths.some(p => !same(val(cur, p), val(aft, p)))) { hit.push(AREA_NAME[k] || k); continue; }
+    patch[k] = old; for (const p of paths) expect[p ? k + '.' + p : k] = val(aft, p);
+  }
+  if (hit.length) return { error: changedSince(hit.join(' and ')) };
+  if (!Object.keys(patch).length) return { error: 'That’s already back the way it was.' };
+  return { patch, expect };
+}
 function undoChange(id) {
   const x = (S.trip.changes || {})[id]; if (!x || !canUndo(x)) return;
   const u = x.undo, done = { changes: { [id]: { undone: { by: S.uid, at: Date.now() } } } };
   const note = e => withLog(done, { text: `Undone: ${x.text}`, area: x.area, act: x.act, who: x.who || [], ...e });
+  if (u.k === 'status') {
+    const m = S.members.find(z => z.id === u.uid); if (!m) return;
+    // a drop-out set them to out; if their status changed since, that newer answer stands
+    if (m.status !== 'out') return flash(m.status === u.status ? `${m.nick || 'They'} ${u.uid === S.uid ? 'are' : 'is'} already back.` : changedSince(`${m.nick || 'Their'} status`.replace(/^(.+?) status$/, '$1’s status')));
+    if (u.uid === S.uid) saveMe({ status: u.status }, true); else if (!S.demo) S.db.doc(`trips/${S.tid}/members/${u.uid}`).update({ status: u.status }).catch(e => flash(writeErr(e)));
+    flash(`${m.nick || 'They'} ${u.uid === S.uid ? 'are' : 'is'} back in.`);
+    return saveTrip(note({ text: `${m.nick || 'Someone'} is back in` }));
+  }
+  const plan = undoPlan(x, id);
+  if (plan.error) return flash(plan.error);
+  if (plan.legacy) return legacyUndo(x, u, note);
+  const text = u.k === 'item' ? (u.after ? `${u.item.title} moved back to ${dow(u.item.date)} ${u.item.time ? t12(u.item.time) : ''}`.trim() : `${u.item.title} is back in the plan`) : undefined;
+  // the note and the change back are one save, made only if nothing changed in between
+  return saveTrip({ ...plan.patch, ...note(text ? { text } : {}) }, S.tid, plan.expect).then(ok => ok && flash(u.k === 'item' ? (u.after ? 'Moved back.' : 'Put back in the plan.') : 'Put back the way it was.'));
+}
+// entries saved before undo recorded what it changed (the earlier behavior)
+function legacyUndo(x, u, note) {
   if (u.k === 'set') {
     const clear = Object.fromEntries((u.clear || []).filter(k => S.trip[k]).map(k => [k, null]));
     const go = () => saveTrip(note({})).then(() => saveTrip(u.patch));
@@ -2846,12 +2972,6 @@ function undoChange(id) {
     const list = S.trip.itinerary || [], has = list.some(i => i.id === u.item.id);
     flash(has ? 'Moved back.' : 'Put back in the plan.');
     return saveTrip({ ...note({ text: has ? `${u.item.title} moved back to ${dow(u.item.date)} ${u.item.time ? t12(u.item.time) : ''}`.trim() : `${u.item.title} is back in the plan` }), itinerary: has ? list.map(i => i.id === u.item.id ? u.item : i) : [...list, u.item] });
-  }
-  if (u.k === 'status') {
-    const m = S.members.find(z => z.id === u.uid); if (!m) return;
-    if (u.uid === S.uid) saveMe({ status: u.status }, true); else if (!S.demo) S.db.doc(`trips/${S.tid}/members/${u.uid}`).update({ status: u.status }).catch(e => flash(writeErr(e)));
-    flash(`${m.nick || 'They'} ${u.uid === S.uid ? 'are' : 'is'} back in.`);
-    return saveTrip(note({ text: `${m.nick || 'Someone'} is back in` }));
   }
 }
 const ackChange = id => saveTrip({ changes: { [id]: { seen: { [S.uid]: true } } } });
@@ -3686,7 +3806,7 @@ ${items.map(i => `${i.time || '?'} ${i.title}${i.note ? ' (' + i.note + ')' : ''
 Rewrite today so it's gentler: start later, add a recovery meal and chill time, swap exhausting things for easy ones, but keep the best evening plan if it's still realistic. Keep it fun.
 Reply with only JSON: {"note":"one funny sentence about the state of the crew","items":[{"time":"HH:MM","title":"","kind":"food|activity|nightlife|chill","note":""}]}`;
   askAI('hang', prompt, data => {
-    const its = (data?.items || []).filter(i => i && i.title).slice(0, 8).map(i => ({ time: String(i.time || '').slice(0, 5), title: String(i.title).slice(0, 120), kind: i.kind || 'chill', note: String(i.note || '').slice(0, 200) }));
+    const its = (data?.items || []).filter(i => i && i.title).slice(0, 8).map(i => ({ time: hhmm(i.time), title: String(i.title).slice(0, 120), kind: i.kind || 'chill', note: String(i.note || '').slice(0, 200) }));
     if (!its.length) { flash('No plan came back. Try again.'); return; }
     S.hangPlan = { day, note: String(data.note || '').slice(0, 200), items: its };
   });
@@ -3915,7 +4035,7 @@ const SETTINGS_HTML = () => `  ${crewSection()}
     ${S.demo ? '' : `<label class="check-line"><input type="checkbox" id="mute-plan" ${isMuted(S.tid) ? 'checked' : ''}> Mute reminders for this ${planWord()}</label>`}
     ${S.confirm === 'delete' ? `<div class="banner"><span><b>Delete “${esc(S.trip.name)}” for everyone?</b> The crew, votes, expenses and packing list all go. This can’t be undone.</span><div class="row" style="gap:6px"><button class="btn sm danger-fill" data-act="doDelete">Delete ${planWord()}</button><button class="btn sm" data-act="cancelConfirm">Cancel</button></div></div>`
     : S.confirm === 'leave' ? `<div class="banner"><span><b>Leave this ${planWord()}?</b> ${size() === 'trip' ? 'Your days, votes and boarding pass are removed.' : 'Your days and votes are removed.'} It disappears from your plans.</span><div class="row" style="gap:6px"><button class="btn sm danger-fill" data-act="doLeave">Leave ${planWord()}</button><button class="btn sm" data-act="cancelConfirm">Cancel</button></div></div>`
-    : `<div class="row" style="gap:8px">${meDoc() && !S.demo ? `<button class="btn sm danger" data-act="askLeave">Leave ${planWord()}</button>` : ''}${canDelete(S.trip) ? `<button class="btn sm danger" data-act="askDelete">Delete ${planWord()}</button>` : `<span class="small muted">Only the person who created it can delete it.</span>`}</div>`}
+    : `<div class="row" style="gap:8px">${meDoc() && !S.demo ? `<button class="btn sm danger" data-act="askLeave">Leave ${planWord()}</button>` : ''}${canDelete(S.trip) ? `<button class="btn sm danger" data-act="askDelete">Delete ${planWord()}</button>` : `<span class="small muted">Only organizers can delete it.</span>`}</div>`}
   </section>`;
 
 /* ---------- live quick actions + mobile gestures ---------- */
@@ -4173,7 +4293,7 @@ Reply with only JSON: {"pitches":[{"title":"the plan in 2-5 words","tagline":"pu
   askAI('pitch', prompt, data => {
     const valid = new Map(opts.map(o => [o.start, o]));
     const items = (Array.isArray(data?.pitches) ? data.pitches : []).filter(p => p && p.title).slice(0, 8).map(p => {
-      const o = valid.get(p.date) || opts[0], steps = arr(p.steps).slice(0, 5).map(s => ({ time: String(s.time || '').slice(0, 5), title: String(s.title || '').slice(0, 80) })).filter(s => s.title);
+      const o = valid.get(p.date) || opts[0], steps = arr(p.steps).slice(0, 5).map(s => ({ time: hhmm(s.time), title: String(s.title || '').slice(0, 80) })).filter(s => s.title);
       return { id: rid(6), small: true, title: String(p.title).slice(0, 50), city: String(p.title).slice(0, 50), code: '', start: o.start, end: o.start, time: /^\d\d:\d\d$/.test(p.time) ? p.time : '',
         where: String(p.where || '').slice(0, 60), tagline: String(p.tagline || '').slice(0, 80), why: String(p.why || '').slice(0, 300), perPerson: String(p.perPerson || '').slice(0, 30),
         vibeMatch: Math.max(0, Math.min(100, Math.round(+p.vibeMatch || 0))), highlights: steps.map(s => (s.time ? t12(s.time) + ' · ' : '') + s.title), steps, weather: String(p.weather || '').slice(0, 60) };
@@ -4535,7 +4655,7 @@ ${context()}
 Spots the crew likes: ${spots || 'none yet, suggest real places'}
 Reply with only JSON: {"items":[{"time":"HH:MM","title":"short title with the place name","kind":"food|activity|nightlife|chill","note":"one short line"}]}`;
   askAI('plan', prompt, data => {
-    const items = (data?.items || []).filter(i => i && i.title).slice(0, 6).map(i => ({ id: rid(6), date: d.start, time: String(i.time || '').slice(0, 5), title: String(i.title).slice(0, 120), kind: i.kind || 'plan', note: String(i.note || '').slice(0, 200), ai: true }));
+    const items = (data?.items || []).filter(i => i && i.title).slice(0, 6).map(i => ({ id: rid(6), date: d.start, time: hhmm(i.time), title: String(i.title).slice(0, 120), kind: i.kind || 'plan', note: String(i.note || '').slice(0, 200), ai: true }));
     if (!items.length) { flash('No plan came back. Try again.'); return; }
     return saveTrip({ itinerary: [...(S.trip.itinerary || []).filter(i => !i.ai), ...items] });
   });
@@ -4936,7 +5056,7 @@ app.addEventListener('submit', async e => {
     return saveMe({ arrive, arrAirport: isCode(apt) ? apt.toUpperCase() : apt.slice(0, 3).toUpperCase(), flight: $('#arr-flight').value.trim().slice(0, 20) }, true);
   }
   if (f.id === 'editItemForm') return saveItemEdit(f.dataset.id);
-  if (f.id === 'meetForm') { const text = $('#meet-where').value.trim(), time = $('#meet-time').value; if (!text) return; const old = S.trip.meet; return saveTrip(withLog({ ...(old ? { meet: null } : {}) }, { area: 'meet', text: `Meet ${old ? 'moved to' : 'at'} ${text.slice(0, 80)}${time ? ', ' + t12(time) : ''}`, act: 'all', undo: { k: 'set', patch: { meet: old || null }, clear: ['meet'] } })).then(() => saveTrip({ meet: { text: text.slice(0, 80), time, by: S.uid, at: Date.now() } })); }
+  if (f.id === 'meetForm') { const text = $('#meet-where').value.trim(), time = $('#meet-time').value; if (!text) return; const old = S.trip.meet, meet = { text: text.slice(0, 80), time, by: S.uid, at: Date.now() }; return saveTrip(withLog({ ...(old ? { meet: null } : {}) }, { area: 'meet', text: `Meet ${old ? 'moved to' : 'at'} ${text.slice(0, 80)}${time ? ', ' + t12(time) : ''}`, act: 'all', undo: { k: 'set', patch: { meet: old || null }, clear: ['meet'], after: { meet } } })).then(() => saveTrip({ meet })); }
   if (f.id === 'ciForm') { const text = $('#ci-text').value.trim(); if (!text) return; const c = { text: text.slice(0, 60), at: Date.now() }; return saveMe({ checkin: c, checkins: [...(meDoc()?.checkins || []), c].slice(-40) }, true); }
   if (f.id === 'feedForm') return postFeed($('#fd-text').value, $('#fd-secret')?.checked);
   if (f.id === 'bkForm') { const text = $('#bk-text').value.trim(); if (!text) return; return putSub('bucket', rid(8), { text: text.slice(0, 80), points: +$('#bk-pts').value || 1, doneBy: [], by: S.uid, at: Date.now() }); }
@@ -4989,7 +5109,7 @@ function openTrip(id, tab) {
   }, () => flash('Lost the connection to this trip. Reload to reconnect.')));
   S.unsub.push(S.db.collection(`trips/${id}/members`).onSnapshot(snap => {
     const local = meDoc();
-    S.members = snap.docs.map(d => ({ id: d.id, ...d.data() })); S.membersIn = true; budgetReset(); meSaved = S.members.some(m => m.id === S.uid);
+    S.members = snap.docs.map(d => cleanMember({ id: d.id, ...d.data() })); S.membersIn = true; budgetReset(); meSaved = S.members.some(m => m.id === S.uid);
     // while your own edits are still saving, show them on top of what the server has
     if (S.meDirty && local) { const i = S.members.findIndex(m => m.id === S.uid), mine = Object.fromEntries([...meFields, ...meSending].map(k => [k, local[k]])); i >= 0 ? S.members[i] = { ...S.members[i], ...mine } : S.members.push(local); }
     S.members.sort((a, b) => (a.updatedAt || 0) - (b.updatedAt || 0));

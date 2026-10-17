@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
-import { checkPlanDates } from '@/lib/planDates';
+import { checkMemberDays, checkPlanDates } from '@/lib/planDates';
+import { deletePlan } from '@/lib/deletePlan';
 import { deleteDoc, getDoc, listCollection, merge, rawDoc, segments, setDoc, StoreError, updateDoc, type Json } from '@/lib/store';
 import { boundLog } from '@/lib/changelog';
 import { checkWrite, listable, readable } from '@/lib/access';
 import { honoreeItinerary } from '@/lib/privacy';
-import { keepManaged, mergeListsIn } from '@/lib/merge';
+import { checkExpected, keepManaged, mergeListsIn } from '@/lib/merge';
 import { userOf } from '@/lib/user';
 
 export const runtime = 'nodejs';
@@ -34,10 +35,15 @@ export async function POST(req: Request) {
       }
       case 'set': case 'update': case 'delete': {
         segments(path, 'doc');
+        // a whole plan is only ever deleted together with everything in it (lib/deletePlan.ts)
+        if (op === 'delete' && /^trips\/[^/]+$/.test(path)) { deletePlan(path.slice(6), user); return NextResponse.json({ ok: true }); }
         const prev = rawDoc(path), isPlan = /^trips\/[^/]+$/.test(path), isMine = path === `${path.split('/').slice(0, 3).join('/')}/${user}` && /^trips\/[^/]+\/members\//.test(path);
         let data = body.data ?? {};
+        // Undo/Restore: only if what it would put back hasn't changed since (lib/merge.ts)
+        if (isPlan && data && typeof data === 'object' && '_expect' in data) { const { _expect, ...rest } = data as Json; if (op === 'update' && prev) checkExpected(prev, _expect); data = rest; }
         // the plan's dates must be real dates (lib/planDates.ts); checked on what was sent
         if (isPlan && op !== 'delete' && data && typeof data === 'object') checkPlanDates(data);
+        if (/^trips\/[^/]+\/members\/[^/]+$/.test(path) && op !== 'delete' && data && typeof data === 'object') checkMemberDays(data);
         // what will actually be written: lists merged with others' edits, surprises kept,
         // and a member's whole-record save never changing what organizers manage
         if (isPlan && op === 'update' && prev) data = honoreeItinerary(prev, mergeListsIn(prev, data), user);
@@ -54,7 +60,7 @@ export async function POST(req: Request) {
       default: return NextResponse.json({ code: 'invalid_argument', message: 'Unknown op' }, { status: 400 });
     }
   } catch (e) {
-    if (e instanceof StoreError) return NextResponse.json({ code: e.code, message: e.message }, { status: e.code === 'permission_denied' ? 403 : e.code === 'unavailable' ? 503 : 400 });
+    if (e instanceof StoreError) return NextResponse.json({ code: e.code, message: e.message }, { status: e.code === 'permission_denied' ? 403 : e.code === 'unavailable' ? 503 : e.code === 'conflict' ? 409 : 400 });
     console.error(e);
     return NextResponse.json({ code: 'unavailable', message: 'Store error' }, { status: 500 });
   }

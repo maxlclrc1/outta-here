@@ -56,7 +56,7 @@ ${items.map(i => `${i.time || '?'} ${i.title}${i.note ? ' (' + i.note + ')' : ''
 Rewrite today so it's gentler: start later, add a recovery meal and chill time, swap exhausting things for easy ones, but keep the best evening plan if it's still realistic. Keep it fun.
 Reply with only JSON: {"note":"one funny sentence about the state of the crew","items":[{"time":"HH:MM","title":"","kind":"food|activity|nightlife|chill","note":""}]}`;
   askAI('hang', prompt, data => {
-    const its = (data?.items || []).filter(i => i && i.title).slice(0, 8).map(i => ({ time: String(i.time || '').slice(0, 5), title: String(i.title).slice(0, 120), kind: i.kind || 'chill', note: String(i.note || '').slice(0, 200) }));
+    const its = (data?.items || []).filter(i => i && i.title).slice(0, 8).map(i => ({ time: hhmm(i.time), title: String(i.title).slice(0, 120), kind: i.kind || 'chill', note: String(i.note || '').slice(0, 200) }));
     if (!its.length) { flash('No plan came back. Try again.'); return; }
     S.hangPlan = { day, note: String(data.note || '').slice(0, 200), items: its };
   });

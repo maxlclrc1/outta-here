@@ -63,12 +63,16 @@ function lockGate(kind, id) {
   if (S.demo) return { ok: true };
   const o = optOf(kind, id); if (!o) return { ok: true };
   const r = ruleCheck(o); if (!r.ok) return r;
-  if (budgetHits(o).pending) return { ok: false, why: 'Checking everyone’s budget limits. Try again in a second.' };
+  const bh = budgetHits(o);
+  if (bh.pending) return { ok: false, why: 'Checking everyone’s budget limits. Try again in a second.' };
+  if (bh.unavailable) return { ok: false, why: 'Couldn’t check everyone’s budget limits just now. Try again in a minute.' };
   const hits = hardHits(o);
   if (hits.length) {
     const me = hits.find(m => m.id === S.uid);
     return { ok: false, why: me && hits.length === 1 ? 'This breaks your own hard limit. Tap “I’m okay with this one” first.' : `This is over a hard limit for ${limitWho(hits, o)}. They have to agree to it first.` };
   }
+  // an earlier answer can warn, but can't clear a lock
+  if (bh.stale) return { ok: false, why: 'Couldn’t confirm everyone’s budget limits just now. Try again in a minute.' };
   return { ok: true };
 }
 // budgets stay private, so budget limits are counted unless someone chose to be named
@@ -80,8 +84,9 @@ function limitWho(ms, o) {
 // small line under an option: can it be locked right now, and if not, why
 function ruleChip(kind, id) {
   const o = optOf(kind, id); if (!o || S.demo) return '';
-  const r = ruleCheck(o), hits = hardHits(o), soft = softHits(o), out = [];
-  if (hits.length) out.push(`<span class="fit-c n">✕ Over a hard limit for ${esc(limitWho(hits, o))}</span>`);
+  const r = ruleCheck(o), hits = hardHits(o), soft = softHits(o), out = [], bh = budgetHits(o);
+  if (hits.length) out.push(`<span class="fit-c n">✕ Over a hard limit for ${esc(limitWho(hits, o))}${bh.stale ? ' (earlier check)' : ''}</span>`);
+  else if (bh.unavailable || bh.stale) out.push('<span class="fit-c m">~ Budget limits can’t be checked right now</span>');
   else out.push(`<span class="fit-c ${r.ok ? 'y' : 'm'}">${r.ok ? '✓ Can lock' : '~ ' + esc(r.why.split('.')[0])}</span>`);
   if (soft.length) out.push(`<span class="fit-c m">~ ${esc(listNames(soft))} ${soft.length === 1 ? 'is' : 'are'} only in under ${esc(money(Math.min(...soft.map(m => +m.cond.under))))}</span>`);
   const mine = hardHitsAll(o).find(m => m.id === S.uid);

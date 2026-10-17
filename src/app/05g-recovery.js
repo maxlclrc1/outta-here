@@ -217,7 +217,7 @@ Reply with only JSON: {"options":[{"title":"place or activity","why":"one senten
 function swapItem(title) {
   title = String(title || '').trim().slice(0, 80); if (!title) return;
   const id = (S.rc || {}).item, old = (S.trip.itinerary || []).find(i => i.id === id); if (!old) return;
-  saveTrip({ itinerary: (S.trip.itinerary || []).map(i => i.id === id ? { ...i, title, note: `Instead of ${old.title}`, ai: false } : i), ...withLog({}, { area: 'plan', text: `${old.title} swapped for ${title}`, act: 'all', undo: { k: 'item', item: old } }) });
+  saveTrip(withLog({ itinerary: (S.trip.itinerary || []).map(i => i.id === id ? { ...i, title, note: `Instead of ${old.title}`, ai: false } : i) }, { area: 'plan', text: `${old.title} swapped for ${title}`, act: 'all', undo: { k: 'item', item: old } }));
   S.alts = null; S.recover = null; S.rc = null;
   flash(`Swapped in ${title}.`);
 }
