@@ -1250,9 +1250,10 @@ function groupFit(p) {
   const vs = active(), out = [], r = moneyRange(p.perPerson);
   const nB = vs.filter(m => +m.budget > 0 || m.budgetSet).length, f = r && nB ? (p.id && (S.trip.pitches?.items || []).some(x => x.id === p.id) ? bq({ pitch: p.id }) || NO_FIT : budgetFit({ low: r[0], high: r[1] })) : null;
   if (f && f.pending) out.push({ ok: 'meh', text: 'Checking budgets…' });
+  else if (f && f.unavailable) out.push({ ok: 'meh', text: 'Budget check unavailable right now' });
   else if (f && f.n) {
-    const { over, stretch } = f;
-    out.push(over.length ? { ok: false, text: `Over budget for ${budgetWho(over)}` } : stretch.length ? { ok: 'meh', text: `A stretch for ${budgetWho(stretch)}` } : { ok: true, text: f.n === vs.length ? `Fits ${vs.length}/${vs.length} budgets` : `Fits every budget set (${f.n} of ${vs.length})` });
+    const { over, stretch } = f, was = f.stale ? ' (earlier check)' : '';
+    out.push(over.length ? { ok: false, text: `Over budget for ${budgetWho(over)}${was}` } : stretch.length ? { ok: 'meh', text: `A stretch for ${budgetWho(stretch)}${was}` } : { ok: f.stale ? 'meh' : true, text: (f.n === vs.length ? `Fits ${vs.length}/${vs.length} budgets` : `Fits every budget set (${f.n} of ${vs.length})`) + was });
   } else out.push({ ok: 'meh', text: nB ? 'No price to check yet' : 'Nobody set a budget yet' });
   const days = span(p.start, p.end), can = vs.filter(m => fitOf(m, days)), cant = vs.filter(m => !fitOf(m, days)), picked = vs.filter(m => (m.days || []).length);
   if (picked.length) out.push(cant.filter(m => (m.days || []).length).length ? { ok: false, text: `${listNames(cant.filter(m => (m.days || []).length))} can’t make ${p.start === p.end ? 'that day' : 'those dates'}` } : { ok: true, text: `Free: ${can.length}/${vs.length}` });
@@ -2014,13 +2015,16 @@ function costSummary(t = S.trip, who = 'crew') {
    /api/budget, which answers with counts and only names people who chose to be named (or
    you). Answers are kept until the crew's details change. The demo and the Claude version
    have no server of their own, so there it's worked out here from the data the page has.
-   Budget ≥ high fits, between low and high is a stretch, below low is over. */
-const BQ = { tid: null, cache: new Map(), queue: new Map(), cap: undefined, t: 0 };
+   Budget ≥ high fits, between low and high is a stretch, below low is over.
+   If a check can't be answered (too many checks, say), the last confirmed answer is shown
+   marked `stale` ("earlier check"), or `unavailable` if there was none, never "no budgets".
+   It's asked again once the server says it can be. */
+const BQ = { tid: null, cache: new Map(), queue: new Map(), cap: undefined, t: 0, good: new Map(), retry: 0 };
 const NO_FIT = { n: 0, unknown: 0, fits: [], stretch: [], over: [], hard: [], hardOpen: [], pending: true };
 const budgetsHere = () => S.demo || IN_CLAUDE;
 function budgetReset() { BQ.cache.clear(); BQ.cap = undefined; }
 function bq(check) {
-  if (BQ.tid !== S.tid) { BQ.tid = S.tid; budgetReset(); BQ.queue.clear(); }
+  if (BQ.tid !== S.tid) { BQ.tid = S.tid; budgetReset(); BQ.queue.clear(); BQ.good.clear(); BQ.goodCap = undefined; }
   if (budgetsHere()) return budgetLocal(check);
   // only people in the plan can ask, so wait until joining has actually been saved
   const me = meDoc(); if (!me || !(me.updatedAt || (S.trip.people || {})[S.uid] || S.trip.createdBy === S.uid)) return { ...NO_FIT, pending: false };
@@ -2032,15 +2036,17 @@ function bq(check) {
 async function budgetFetch() {
   const tid = S.tid, items = [...BQ.queue]; BQ.queue.clear();
   if (!tid || !items.length) return;
-  let data = null;
+  let data = null, wait = 30;
   try {
     const r = await fetch('/api/budget', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-outta-user': S.uid }, body: JSON.stringify({ tid, checks: items.map(([, c]) => c) }) });
-    if (r.ok) data = await r.json();
+    if (r.ok) data = await r.json(); else wait = +r.headers.get('Retry-After') || wait;
   } catch {}
   if (S.tid !== tid) return;
-  // a failed check counts as "no budgets to compare" rather than retrying in a loop
-  items.forEach(([k], i) => BQ.cache.set(k, data ? budgetShape(data.results[i]) : { ...NO_FIT, pending: false }));
-  if (data) BQ.cap = data.band; else if (BQ.cap === undefined) BQ.cap = null;
+  if (data) items.forEach(([k], i) => { const v = budgetShape(data.results[i]); BQ.cache.set(k, v); BQ.good.set(k, v); });
+  // not answered: keep the last confirmed answer, marked as earlier, and ask again later
+  else items.forEach(([k]) => BQ.cache.set(k, BQ.good.has(k) ? { ...BQ.good.get(k), stale: true } : { ...NO_FIT, pending: false, unavailable: true }));
+  if (data) BQ.cap = BQ.goodCap = data.band; else if (BQ.cap === undefined) BQ.cap = BQ.goodCap ?? null;
+  if (!data && !BQ.retry) BQ.retry = setTimeout(() => { BQ.retry = 0; if (S.tid !== tid) return; for (const [k, v] of BQ.cache) if (v.stale || v.unavailable) BQ.cache.delete(k); render(); }, Math.min(60, Math.max(5, wait)) * 1000);
   render();
 }
 // counts from the server → lists the UI can use: named people, then anonymous stand-ins
@@ -2083,7 +2089,8 @@ function costTab() {
       : S.sample === null ? `<span class="small muted">AI estimates are off ${IN_CLAUDE ? 'for you right now' : 'until you add your Anthropic API key'}. Type in numbers below.</span>` : ''}
     ${sum.missing.length ? `<div class="cost-flag"><b>Not included yet:</b> ${sum.missing.map(r => esc(r.label.toLowerCase())).join(', ')}. The real total is higher than this.</div>` : ''}
     ${sum.estimates.length ? `<div class="cost-flag soft">${sum.estimates.length === 1 ? `${esc(sum.estimates[0].label)} is an estimate` : `${sum.estimates.length} lines are estimates`}, not live prices. Swap in a real quote when you have one.</div>` : ''}
-    ${fit.n && sum.any ? `<div class="row" style="gap:6px">${fit.fits.length ? `<span class="pill lvl-in">Fits ${fit.fits.length}/${fit.n} budget${fit.n === 1 ? '' : 's'}</span>` : ''}${fit.stretch.length ? `<span class="pill lvl-maybe">A stretch for ${esc(budgetWho(fit.stretch))}</span>` : ''}${fit.over.length ? `<span class="pill out" style="color:#D63B3B">Over budget for ${esc(budgetWho(fit.over))}</span>` : ''}${fit.unknown ? `<span class="pill out">${fit.unknown} without a budget</span>` : ''}</div>` : ''}
+    ${sum.any && fit.unavailable ? '<div class="row" style="gap:6px"><span class="pill maybe">Budget check unavailable right now</span></div>' : ''}
+    ${fit.n && sum.any ? `<div class="row" style="gap:6px">${fit.stale ? '<span class="pill maybe">Earlier check, updating…</span>' : ''}${fit.fits.length ? `<span class="pill lvl-in">Fits ${fit.fits.length}/${fit.n} budget${fit.n === 1 ? '' : 's'}</span>` : ''}${fit.stretch.length ? `<span class="pill lvl-maybe">A stretch for ${esc(budgetWho(fit.stretch))}</span>` : ''}${fit.over.length ? `<span class="pill out" style="color:#D63B3B">Over budget for ${esc(budgetWho(fit.over))}</span>` : ''}${fit.unknown ? `<span class="pill out">${fit.unknown} without a budget</span>` : ''}</div>` : ''}
     <div class="cost-rows">${sum.rows.map(r => { const m = me.rows.find(x => x.k === r.k), shown = m && m.v && m.v.src === 'booked' ? m : r;
       return `<div class="cost-row ${shown.v || m?.booked ? '' : 'empty-line'}">
       <div class="cost-what"><b>${esc(r.label)}${r.major && !shown.v && !m?.booked ? ' <span class="small" style="color:#D63B3B">· missing</span>' : ''}</b>
@@ -2684,12 +2691,16 @@ function lockGate(kind, id) {
   if (S.demo) return { ok: true };
   const o = optOf(kind, id); if (!o) return { ok: true };
   const r = ruleCheck(o); if (!r.ok) return r;
-  if (budgetHits(o).pending) return { ok: false, why: 'Checking everyone’s budget limits. Try again in a second.' };
+  const bh = budgetHits(o);
+  if (bh.pending) return { ok: false, why: 'Checking everyone’s budget limits. Try again in a second.' };
+  if (bh.unavailable) return { ok: false, why: 'Couldn’t check everyone’s budget limits just now. Try again in a minute.' };
   const hits = hardHits(o);
   if (hits.length) {
     const me = hits.find(m => m.id === S.uid);
     return { ok: false, why: me && hits.length === 1 ? 'This breaks your own hard limit. Tap “I’m okay with this one” first.' : `This is over a hard limit for ${limitWho(hits, o)}. They have to agree to it first.` };
   }
+  // an earlier answer can warn, but can't clear a lock
+  if (bh.stale) return { ok: false, why: 'Couldn’t confirm everyone’s budget limits just now. Try again in a minute.' };
   return { ok: true };
 }
 // budgets stay private, so budget limits are counted unless someone chose to be named
@@ -2701,8 +2712,9 @@ function limitWho(ms, o) {
 // small line under an option: can it be locked right now, and if not, why
 function ruleChip(kind, id) {
   const o = optOf(kind, id); if (!o || S.demo) return '';
-  const r = ruleCheck(o), hits = hardHits(o), soft = softHits(o), out = [];
-  if (hits.length) out.push(`<span class="fit-c n">✕ Over a hard limit for ${esc(limitWho(hits, o))}</span>`);
+  const r = ruleCheck(o), hits = hardHits(o), soft = softHits(o), out = [], bh = budgetHits(o);
+  if (hits.length) out.push(`<span class="fit-c n">✕ Over a hard limit for ${esc(limitWho(hits, o))}${bh.stale ? ' (earlier check)' : ''}</span>`);
+  else if (bh.unavailable || bh.stale) out.push('<span class="fit-c m">~ Budget limits can’t be checked right now</span>');
   else out.push(`<span class="fit-c ${r.ok ? 'y' : 'm'}">${r.ok ? '✓ Can lock' : '~ ' + esc(r.why.split('.')[0])}</span>`);
   if (soft.length) out.push(`<span class="fit-c m">~ ${esc(listNames(soft))} ${soft.length === 1 ? 'is' : 'are'} only in under ${esc(money(Math.min(...soft.map(m => +m.cond.under))))}</span>`);
   const mine = hardHitsAll(o).find(m => m.id === S.uid);
