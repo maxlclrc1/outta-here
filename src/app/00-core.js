@@ -276,15 +276,30 @@ function listBase(patch) {
 async function saveTrip(patch, tid = S.tid, expect) {
   if (!tid) return false;
   const here = tid === S.tid && S.trip, send = { ...(here ? { ...patch, ...listBase(patch) } : patch), ...(expect && !IN_CLAUDE ? { _expect: expect } : {}) };
+  const before = here ? S.trip : null;
   if (here) { S.trip = merge(S.trip, patch); render(); }
+  const shown = here ? S.trip : null;
   if (S.demo) return true;
   if (!S.db) return false;
   try { await S.db.doc('trips/' + tid).update(send); return true; }
-  catch (e) { flash(writeErr(e)); if (here) resync(tid); return false; }
+  catch (e) {
+    flash(writeErr(e));
+    // take the unsaved change off the screen now (even offline), unless something newer is showing
+    if (here && S.tid === tid && S.trip === shown) { S.trip = before; render(); }
+    if (here) resync(tid);
+    return false;
+  }
 }
+// what's saved, read again; if that can't be reached either, it's read again once back online
+let resyncTid = null;
 async function resync(tid) {
-  try { const snap = await S.db.doc('trips/' + tid).get(); if (S.tid === tid && snap.exists) { S.trip = cleanDates({ ...snap.data() }); render(); } } catch {}
+  try { const snap = await S.db.doc('trips/' + tid).get(); resyncTid = null; if (S.tid === tid && snap.exists) { S.trip = cleanDates({ ...snap.data() }); render(); } }
+  catch { resyncTid = tid; }
 }
+window.addEventListener('online', () => {
+  if (resyncTid && resyncTid === S.tid) resync(resyncTid);
+  if (S.tid && meFields.size) flushMe(); // your own details that didn't save: send them again
+});
 async function putSub(coll, id, data, partial) {
   const tid = S.tid, list = S[coll], i = list.findIndex(x => x.id === id), before = i >= 0 ? list[i] : null;
   if (i >= 0) list[i] = partial ? { ...list[i], ...data } : { id, ...data }; else list.push({ id, ...data });

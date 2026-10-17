@@ -164,7 +164,11 @@
       const crew = /^crews\/[^/]+$/.test(path);
       for (const s of subs) if (s.matches(path) || (scope && s.under(scope)) || (crew && s.base === 'trips')) s.refresh();
     };
-    es.onerror = () => { for (const s of subs) s.refresh(); }; // catch up after a reconnect
+    // catch up after a dropped connection: now, and again once it's back (reads made while
+    // offline fail, so the first catch-up alone can leave the page out of date)
+    let dropped = false;
+    es.onerror = () => { dropped = true; for (const s of subs) s.refresh(); };
+    es.onopen = () => { if (!dropped) return; dropped = false; for (const s of subs) s.refresh(); };
   }
   function subscribe(matches, read, next, error, base = '') {
     let timer = null, alive = true;
