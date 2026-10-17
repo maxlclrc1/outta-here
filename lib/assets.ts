@@ -84,3 +84,21 @@ export function deleteAsset(id: string, by: string) {
   fs.rmSync(metaPath(id), { force: true });
   return 'ok';
 }
+
+/** Every upload's details (for cleaning up after a deleted plan). */
+export function listAssets(): Meta[] {
+  let names: string[] = []; try { names = fs.readdirSync(DIR).filter(n => n.endsWith('.json')); } catch { return []; }
+  const out: Meta[] = [];
+  for (const n of names) { try { out.push(JSON.parse(fs.readFileSync(path.join(DIR, n), 'utf8')) as Meta); } catch {} }
+  return out;
+}
+/** Marks an older upload (saved before uploads recorded their plan) as belonging to this plan. */
+export function claimAsset(id: string, tid: string) {
+  if (!validId(id)) return;
+  try { const m = JSON.parse(fs.readFileSync(metaPath(id), 'utf8')) as Meta; if (!m.tid) fs.writeFileSync(metaPath(id), JSON.stringify({ ...m, tid })); } catch {}
+}
+/** Removes an upload's file, then its details. True if it's gone (or was already). */
+export function removeAssetFiles(id: string) {
+  if (!validId(id)) return false;
+  try { fs.rmSync(filePath(id), { force: true }); fs.rmSync(metaPath(id), { force: true }); return true; } catch { return false; }
+}

@@ -184,3 +184,26 @@ export function onChange(fn: (p: string) => void) {
   bus.on('change', fn);
   return () => bus.off('change', fn);
 }
+
+/** Every stored path, with no access checks (for whole-plan operations). */
+export function allPaths(): string[] {
+  return [...state().docs.keys()];
+}
+
+/**
+ * Removes these documents together: they go from memory and the database file is written in
+ * the same step. If that write fails, every one of them is put back and nothing changes.
+ * Live updates are sent only once the removal is safely on disk.
+ */
+export function removeDocs(paths: string[]): number {
+  writable();
+  const s = state(), saved = paths.map((p) => [p, s.docs.get(p)] as const).filter((x): x is readonly [string, Doc] => !!x[1]);
+  for (const [p] of saved) s.docs.delete(p);
+  try { flushNow(); }
+  catch (e) {
+    for (const [p, d] of saved) s.docs.set(p, d);
+    throw e instanceof StoreError ? e : new StoreError('unavailable', 'Couldn’t save the deletion, so nothing was deleted. Try again.');
+  }
+  for (const [p] of saved) s.bus.emit('change', p);
+  return saved.length;
+}

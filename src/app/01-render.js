@@ -453,6 +453,20 @@ const canDelete = t => S.demo || S.isOwner || (t && t.createdBy && t.createdBy =
 async function deleteTrip(tid) {
   if (S.demo) { goHome(); return; }
   if (!S.db || !tid) return;
+  // on the app's own server: one request deletes the plan, everything in it and its files, or
+  // nothing at all (lib/deletePlan.ts). The plan stays open until that has succeeded.
+  if (!IN_CLAUDE) {
+    const t = (S.tid === tid && S.trip) || S.trips.find(x => x.id === tid) || {}, word = SIZES[t.size] ? SIZES[t.size].label : 'Trip';
+    let r, j = {};
+    try { r = await fetch('/api/plans/' + encodeURIComponent(tid), { method: 'DELETE', headers: { 'x-outta-user': S.uid } }); j = await r.json().catch(() => ({})); }
+    catch { flash('Couldn’t reach the app, so nothing was deleted. Try again.'); return; }
+    if (!r.ok) { flash(j.message || 'Couldn’t delete it, so nothing was deleted. Try again.'); return; }
+    S.confirmHome = null; S.confirm = null;
+    if (S.tid === tid) goHome(); else render();
+    flash(word + ' deleted.' + (j.filesLeft ? ' A few of its files couldn’t be removed yet; they’ll be cleared the next time a plan is deleted.' : ''));
+    return;
+  }
+  // in Claude there is no app server, so the pieces are deleted one by one
   if (S.tid === tid) stop();
   try {
     const t = (await S.db.doc('trips/' + tid).get()).data() || {};

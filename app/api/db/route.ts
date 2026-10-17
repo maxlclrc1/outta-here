@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { checkPlanDates } from '@/lib/planDates';
+import { deletePlan } from '@/lib/deletePlan';
 import { deleteDoc, getDoc, listCollection, merge, rawDoc, segments, setDoc, StoreError, updateDoc, type Json } from '@/lib/store';
 import { boundLog } from '@/lib/changelog';
 import { checkWrite, listable, readable } from '@/lib/access';
@@ -34,6 +35,8 @@ export async function POST(req: Request) {
       }
       case 'set': case 'update': case 'delete': {
         segments(path, 'doc');
+        // a whole plan is only ever deleted together with everything in it (lib/deletePlan.ts)
+        if (op === 'delete' && /^trips\/[^/]+$/.test(path)) { deletePlan(path.slice(6), user); return NextResponse.json({ ok: true }); }
         const prev = rawDoc(path), isPlan = /^trips\/[^/]+$/.test(path), isMine = path === `${path.split('/').slice(0, 3).join('/')}/${user}` && /^trips\/[^/]+\/members\//.test(path);
         let data = body.data ?? {};
         // Undo/Restore: only if what it would put back hasn't changed since (lib/merge.ts)
