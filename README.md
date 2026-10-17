@@ -74,7 +74,7 @@ The server checks every request (`lib/access.ts`), not just the app:
 - Everything people or the AI type is shown as text, never as markup: the app escapes it before it reaches the page. Links in chat become links only for http(s) addresses, and a stay's listing link opens only if it is http(s); anything else (like `javascript:`) isn't shown as a link.
 - A plan's dates must be real dates (`lib/planDates.ts`): the window people pick days in, the RSVP deadline, the voting deadline, the locked dates (`{ start, end }`, or none) and each pitch's dates are refused with a 400 unless they're a real day written YYYY-MM-DD (deadlines can be cleared; pitches may have no dates). A plan saved earlier with a bad date still opens: the app treats that date as not set until someone picks a new one.
 
-`npm test` checks these rules (see Tests below). Until real accounts exist these rules rely on each browser's id, so they keep a plan private from everyone except someone who copies another person's browser data.
+`npm test` checks these rules (see Tests below). `tests/identity.mjs` also lists, as `gap` lines, the confirmed ways someone can act as another person today; they fail with `OUTTA_IDENTITY_STRICT=1`, for when identity is fixed. Until real accounts exist these rules rely on each browser's id, so they keep a plan private from everyone except someone who copies another person's browser data.
 
 ## Tests
 
@@ -83,7 +83,7 @@ Every test command starts its own copy of the app on a free port with a throwawa
 | Command | What it runs | Needs |
 |---|---|---|
 | `npm test` | The core suite: TypeScript check, app build, then every server suite below | Nothing extra |
-| `npm run test:server` | The server suites only: `access`, `budget-privacy`, `privacy`, `decisions`, `concurrency`, `changelog`, `ai-uploads`, `plan-dates`, `plan-values`, `undo`, `plan-delete`, `storage` (in `tests/`) | Nothing extra |
+| `npm run test:server` | The server suites only: `access`, `budget-privacy`, `privacy`, `decisions`, `concurrency`, `changelog`, `ai-uploads`, `plan-dates`, `plan-values`, `undo`, `plan-delete`, `identity`, `storage` (in `tests/`) | Nothing extra |
 | `npm run test:ui` | Browser tests in `tests/ui/`: setup, joining, crews, decisions, personal needs and the change log, budget, itinerary, pitches, recovery and undo, reliability, keyboard, journey, own picks, stays, bad stored dates and values (`dates`), undo next to someone else's edits (`undo`), deleting a plan (`delete`), budget guidance while checks are rate-limited (`budget-busy`), script injection (`xss`: every text field filled with a harmless payload, every tab opened), and a broad feature walk | Playwright |
 | `npm run test:ui:concurrency` | `tests/ui-concurrency.mjs`: two real browsers saving at once | Playwright |
 
