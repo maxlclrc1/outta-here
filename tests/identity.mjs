@@ -37,9 +37,10 @@ check('a request with no id can’t write the plan', (await call('', 'update', P
 
 // —— how ids get out ——
 const seen = (await call(X, 'get', P)).data || {}, ids = (await call(X, 'list', `${P}/members`)).docs?.map(d => d.id) || [];
-gap('anyone with the plan’s link (not joined) reads the organizer’s id, everyone’s ids and the current invite key from the plan', seen.createdBy === A && !!seen.people?.[C] && seen.inviteKey === 'k2', `createdBy, people, inviteKey: ${seen.inviteKey}`);
+check('someone with the link (not joined) doesn’t get the invite key, only whether their link works', !('inviteKey' in seen) && seen.inviteOk === false);
+gap('anyone with the plan’s link (not joined) reads the organizer’s id and everyone’s ids from the plan', seen.createdBy === A && !!seen.people?.[C], 'createdBy, people');
 gap('…and every member’s id from the member list', ids.includes(A) && ids.includes(C), ids.length + ' ids');
-gap('the invite key read from the plan lets an old-link holder join after the reset', (await call(X, 'set', `${P}/members/${X}`, { nick: 'Xan' }, seen.inviteKey)).ok);
+check('…so an old-link holder can’t use what they read to join after the reset', !(await call(X, 'set', `${P}/members/${X}`, { nick: 'Xan' }, seen.inviteKey)).ok);
 
 // —— acting as the organizer, using the id read above (no joining needed) ——
 const ORG = seen.createdBy;

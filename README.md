@@ -59,7 +59,7 @@ The server checks every request (`lib/access.ts`), not just the app:
 
 - Your home page only lists plans and crews you're in, and live updates only go to people in that plan.
 - An invite link opens a plan. Before joining you see who's in and whether they're coming, nothing else about them.
-- Joining adds only yourself, only while invites are on, only with the current link if the organizer made a new one, and never after being removed.
+- Joining adds only yourself, only while invites are on, only with the current link if the organizer made a new one, and never after being removed. The invite key itself is only sent to organizers, and to members when anyone in the plan may invite (their links carry it). Someone who only has a link learns just whether it still works.
 - Only people in a plan can change it or read its expenses, photos, packing list and so on. Only organizers can delete it or change who can invite and lock.
 - The change log can't grow until a plan stops saving (`lib/changelog.ts`): it keeps the newest 100 entries within 64 KB, older entries lose their undo copy first, and undo always stays available for the 10 newest changes that can be undone. Older plans are trimmed the next time they're saved. If a plan's own data is still over the 256 KB limit, the save is refused with a clear message and nothing is dropped.
 - Two people saving at once don't undo each other (`lib/merge.ts`): lists like the itinerary are merged with anyone else's edits instead of replaced, and saving your own details only sends what you changed, so it can't undo an organizer counting you out. `npm run test:ui:concurrency` reproduces both in real browsers.
@@ -83,8 +83,8 @@ Every test command starts its own copy of the app on a free port with a throwawa
 | Command | What it runs | Needs |
 |---|---|---|
 | `npm test` | The core suite: TypeScript check, app build, then every server suite below | Nothing extra |
-| `npm run test:server` | The server suites only: `access`, `budget-privacy`, `privacy`, `decisions`, `concurrency`, `changelog`, `ai-uploads`, `plan-dates`, `plan-values`, `undo`, `plan-delete`, `identity`, `storage` (in `tests/`) | Nothing extra |
-| `npm run test:ui` | Browser tests in `tests/ui/`: setup, joining, crews, decisions, personal needs and the change log, budget, itinerary, pitches, recovery and undo, reliability, keyboard, journey, own picks, stays, bad stored dates and values (`dates`), undo next to someone else's edits (`undo`), deleting a plan (`delete`), budget guidance while checks are rate-limited (`budget-busy`), script injection (`xss`: every text field filled with a harmless payload, every tab opened), and a broad feature walk | Playwright |
+| `npm run test:server` | The server suites only: `access`, `budget-privacy`, `privacy`, `decisions`, `concurrency`, `changelog`, `ai-uploads`, `plan-dates`, `plan-values`, `undo`, `plan-delete`, `invite-key`, `identity`, `storage` (in `tests/`) | Nothing extra |
+| `npm run test:ui` | Browser tests in `tests/ui/`: setup, joining, crews, decisions, personal needs and the change log, budget, itinerary, pitches, recovery and undo, reliability, keyboard, journey, own picks, stays, bad stored dates and values (`dates`), undo next to someone else's edits (`undo`), deleting a plan (`delete`), old and new invite links (`invite`), budget guidance while checks are rate-limited (`budget-busy`), script injection (`xss`: every text field filled with a harmless payload, every tab opened), and a broad feature walk | Playwright |
 | `npm run test:ui:concurrency` | `tests/ui-concurrency.mjs`: two real browsers saving at once | Playwright |
 
 Add `--only=<name>` to run one suite, e.g. `npm test -- --only=privacy` or `npm run test:ui -- --only=decide`.

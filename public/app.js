@@ -2475,7 +2475,8 @@ function accessState() {
   if (me && me.removed) return 'removed';
   if (me || (t.people || {})[S.uid] || t.createdBy === S.uid || (t.crewId && myCrews().some(c => c.id === t.crewId))) return 'ok';
   if (t.invitesOff) return 'off';
-  if (t.inviteKey && S.linkKey !== t.inviteKey) return 'stale';
+  // the server says whether this link still works (it doesn't send the key itself)
+  if (t.inviteOk === false || (t.inviteKey && S.linkKey !== t.inviteKey)) return 'stale';
   return 'ok';
 }
 function blockedView(st) {

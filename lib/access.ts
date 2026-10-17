@@ -63,6 +63,19 @@ const OTHERS_MAY = ['status', 'droppedAt', 'countedOut', 'removed', 'updatedAt']
 // org-only fields on a plan
 const ORG_FIELDS = ['orgs', 'perm', 'inviteKey', 'invitesOff', 'createdBy'];
 
+// The invite key is a secret: organizers always get it, and members only when anyone in the
+// plan may invite (the links they share carry it). Everyone else (someone with a link who
+// hasn't joined, or was removed) gets only whether their own link still works.
+function planFor(p: string, data: Json, ctx: Ctx): Json {
+  const out = tripFor(data, ctx.user);
+  if (!('inviteKey' in out)) return out;
+  const tid = p.split('/')[1];
+  if (isOrg(data, ctx.user)) return out;
+  const member = inTrip(tid, ctx.user, data);
+  if (member && !(isObj(data.perm) && data.perm.invite === 'org')) return out;
+  const { inviteKey: _k, ...rest } = out;
+  return member ? rest : { ...rest, inviteOk: !data.inviteKey || data.inviteKey === ctx.invite };
+}
 /** What a single read returns: the data as stored, a trimmed copy, or nothing. */
 export function readable(p: string, data: Json, ctx: Ctx): Json | null {
   const s = p.split('/');
@@ -73,13 +86,13 @@ export function readable(p: string, data: Json, ctx: Ctx): Json | null {
     if (s[2] === 'feed' && s.length === 4) return feedFor(t, data, ctx.user);
     return data;
   }
-  if (s[0] === 'trips' && s.length === 2) return tripFor(data, ctx.user);
+  if (s[0] === 'trips' && s.length === 2) return planFor(p, data, ctx);
   return data; // a plan or crew by its id, and everything else, is open to the link holder
 }
 /** Whether a document shows up when listing its collection. */
 export function listable(p: string, data: Json, ctx: Ctx): Json | null {
   const s = p.split('/');
-  if (s[0] === 'trips' && s.length === 2) return inTrip(s[1], ctx.user, data) ? tripFor(data, ctx.user) : null;
+  if (s[0] === 'trips' && s.length === 2) return inTrip(s[1], ctx.user, data) ? planFor(p, data, ctx) : null;
   if (s[0] === 'crews' && s.length === 2) return flag(data.people, ctx.user) || data.by === ctx.user ? data : null;
   return readable(p, data, ctx);
 }
