@@ -85,6 +85,7 @@ input[type=file]::file-selector-button:hover{border-color:var(--ink)}
 .facts>div{display:flex;flex-direction:column;gap:2px}
 .facts b{font-family:var(--f-mono);font-size:15px;font-weight:600}
 .facts .p-total b{font-size:19px}
+.facts .p-na b{font-size:15px;color:var(--muted)}
 .pay-who{display:block;color:var(--muted);font-weight:600}
 @media (max-width:560px){.pass{grid-template-columns:1fr}.pass-stub{border-left:0;border-top:2px dashed var(--line);flex-direction:row;align-items:center}}
 
