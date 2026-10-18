@@ -1,5 +1,7 @@
 # Working on Outta Here
 
+**Product promise:** Outta/Here is the easiest way to make plans with friends actually happen. The invite is the growth engine, AI should remove work (a few honest options, never made-up prices), and most features stay hidden until a plan needs them. A dinner shouldn't look like a four-day trip.
+
 How to work in this repo (the owner's standing preferences):
 
 - **One improvement per prompt.** Work on the specific thing asked. No giant refactors, and no 30-minute task turning into an hour-long detour. Don't audit the whole app unless asked.

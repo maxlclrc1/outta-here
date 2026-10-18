@@ -45,6 +45,7 @@ function homeView() {
   if (S.creating === 'size') return pickSizeStep();
   if (S.creating === 'mode') return modePicker();
   if (S.creating === 'form') return newTripForm();
+  if (S.creating === 'shape' && S.shape) return shapeStep();
   if (S.crewView) return crewPage(S.crewView);
   const canSave = !!S.db, plans = myPlans(), crews = myCrews();
   const live = plans.filter(t => t.lockedDates && t.lockedDates.start <= TODAY && t.lockedDates.end >= TODAY);
@@ -185,7 +186,8 @@ function openCrew(cid) {
 /* new-plan flow: crew → size → (type) → basics */
 function startNewPlan(cid) {
   S.newCrew = cid || null; S.newSize = null; S.newMode = null; S.newPays = null;
-  for (const k of ['nt-name', 'nt-start', 'nt-end']) delete DRAFT[k]; // a fresh plan starts with a blank form
+  for (const k of ['nt-name', 'nt-start', 'nt-end', 'nd-text']) delete DRAFT[k]; // a fresh plan starts with a blank form
+  S.shape = null; S.shapeText = ''; S.shapeEdit = null;
   S.creating = cid || !myCrews().length ? 'size' : 'crew'; S.cameFromCrewStep = !cid && !!myCrews().length;
   if (cid) { S.crewView = null; setHash(''); }
   render(); window.scrollTo({ top: 0 });
@@ -231,8 +233,8 @@ function pickCrewStep() {
 }
 function pickSizeStep() {
   const crew = S.crews.find(c => c.id === S.newCrew);
-  return flowStep(1, { eyebrow: crew ? `New plan with ${esc(crew.name)}` : 'New plan', title: 'What are we planning?', sub: 'Pick a size. You can change it later.', back: S.cameFromCrewStep ? 'backCrew' : 'cancelNew' },
-    `<div class="nf-sizes">${Object.entries(SIZES).map(([k, v]) => `<button class="nf-size" data-size="${k}" style="--pc:${v.color}"><span class="nf-ic">${svgI(SIZE_ICON[k])}</span><b>${esc(v.label)}</b><span class="nf-d">${esc(v.desc)}</span><span class="nf-eg">${esc(SIZE_EG[k])}</span></button>`).join('')}</div>`);
+  return flowStep(1, { eyebrow: crew ? `New plan with ${esc(crew.name)}` : 'New plan', title: 'What are we planning?', sub: crew ? 'Pick a size. You can change it later.' : 'Say it in one sentence. We’ll set it up.', back: S.cameFromCrewStep ? 'backCrew' : 'cancelNew' },
+    `${crew ? '' : describeBox()}<div class="nf-sizes">${Object.entries(SIZES).map(([k, v]) => `<button class="nf-size" data-size="${k}" style="--pc:${v.color}"><span class="nf-ic">${svgI(SIZE_ICON[k])}</span><b>${esc(v.label)}</b><span class="nf-d">${esc(v.desc)}</span><span class="nf-eg">${esc(SIZE_EG[k])}</span></button>`).join('')}</div>`);
 }
 function modePicker() {
   const sz = S.newSize || 'trip', small = isSmallSize(sz);

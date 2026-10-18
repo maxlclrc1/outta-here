@@ -1381,3 +1381,38 @@ html:root .btn.wa{background:#25D366;border-color:#25D366;color:#0B2E17;font-wei
 html:root .btn.wa:active{transform:translateY(4px);box-shadow:none}
 html .j-focus .j-acts .btn.wa{background:#25D366;border-color:#25D366;color:#0B2E17}
 .wa-ic{font-size:16px;line-height:1}
+
+/* ---------- "describe your plan": one sentence, then what we understood as chips ---------- */
+.nd{display:flex;flex-direction:column;gap:12px}
+.nd-box textarea{width:100%;box-sizing:border-box;min-height:112px;resize:vertical;font:600 19px/1.4 var(--f-body);padding:16px 18px;border-radius:20px;border:2px solid color-mix(in oklab,var(--pc,var(--accent)) 45%,var(--line));background:var(--surface);color:var(--ink);box-shadow:0 4px 0 color-mix(in oklab,var(--pc,var(--accent)) 25%,var(--line))}
+.nd-box textarea:focus{outline:none;border-color:var(--pc,var(--accent))}
+.nd-box textarea::placeholder{color:var(--muted);font-weight:500}
+.nd-egs{display:flex;flex-wrap:wrap;gap:6px}
+.nd-eg{font:600 12px var(--f-body);padding:6px 11px;border-radius:99px;border:1px dashed var(--line);background:transparent;color:var(--muted);cursor:pointer}
+.nd-eg:hover{color:var(--ink);border-color:color-mix(in oklab,var(--ink) 30%,var(--line))}
+html:root .nd .nd-go{width:100%;justify-content:center;min-height:54px;font-size:17px;background:var(--pc,var(--accent));border-color:var(--pc,var(--accent));color:#fff;box-shadow:0 5px 0 color-mix(in oklab,var(--pc,var(--accent)) 55%,#000)}
+.nd-or{display:flex;align-items:center;gap:10px;margin:18px 0 4px;color:var(--muted);font:600 12px var(--f-body);text-transform:uppercase;letter-spacing:.08em}
+.nd-or::before,.nd-or::after{content:"";flex:1;height:1px;background:var(--line)}
+.sh{display:flex;flex-direction:column;gap:16px}
+.sh-chips{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sh-chip{all:unset;box-sizing:border-box;display:flex;gap:10px;align-items:center;padding:11px 12px;border-radius:16px;cursor:pointer;border:2px solid var(--line);background:var(--surface);box-shadow:0 3px 0 var(--line);min-width:0;transition:transform .1s var(--ease),box-shadow .1s var(--ease)}
+.sh-chip:active{transform:translateY(3px);box-shadow:none}
+.sh-chip:focus-visible{outline:2px solid var(--pc,var(--accent));outline-offset:2px}
+.sh-chip:first-child{grid-column:1/-1}
+.sh-chip.is-set{border-color:color-mix(in oklab,var(--good) 45%,var(--line))}
+.sh-chip.is-guess{border-style:dashed}
+.sh-chip.is-empty{border-style:dashed;box-shadow:none;background:transparent}
+.sh-chip.is-empty b{color:var(--pc,var(--accent))}
+.sh-chip.on{border-color:var(--pc,var(--accent));border-style:solid}
+.sh-ic{font-size:20px;line-height:1;flex:none}
+.sh-t{display:flex;flex-direction:column;gap:1px;min-width:0}
+.sh-k{font:700 11px var(--f-body);color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.sh-chip.is-guess .sh-k{color:var(--warn)}
+.sh-t b{font-size:14px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.sh-edit{display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:18px;border:2px solid var(--pc,var(--accent));background:color-mix(in oklab,var(--pc,var(--accent)) 7%,var(--surface));animation:cardIn .3s var(--spring) backwards}
+.sh-steps{display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:18px;background:color-mix(in oklab,var(--muted) 8%,transparent)}
+.sh-step{display:flex;gap:12px;align-items:center}
+.sh-step > div{display:flex;flex-direction:column;gap:1px}
+.sh-n{flex:none;width:40px;height:40px;border-radius:13px;display:grid;place-items:center;font-size:20px;background:var(--surface);box-shadow:0 3px 0 var(--line)}
+.sh .nf-cta .btn{width:100%;justify-content:center}
+@media (prefers-reduced-motion:reduce){.sh-edit{animation:none}}
