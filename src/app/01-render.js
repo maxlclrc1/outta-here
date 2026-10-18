@@ -345,7 +345,7 @@ function spotsTab() {
         ${w.how !== 'majority' ? `<div class="runoff"><span class="small">${w.how === 'runoff' ? `Runoff winner: <b>${esc(w.a)}</b> (${w.tied.map(a => (w.rv[a] || 0)).join('–')})` : w.votes ? `Runoff is tied too, so a coin flip picked <b>${esc(w.a)}</b>` : `Coin flip picked <b>${esc(w.a)}</b> for now. Vote in the runoff to decide it yourselves.`}</span>
           <div class="row" style="gap:6px">${w.tied.map(a => `<button class="chip ${myRun === a ? 'on' : ''}" data-qrunoff="${q.k}|${esc(a)}">${esc(a)}</button>`).join('')}</div></div>` : ''}</div>`; }).join('')}
       <span class="small" style="opacity:.75">Screenshot this and drop it in the chat.</span>
-    </div>` : `<div class="empty"><b>Your crew’s vibe shows up here.</b><span>Answer the ${Q.length} questions. Once ${pk.spots ? 'everyone answers' : 'friends answer'} too, you’ll see the blend, like “${pk.blendEg}”, and the AI uses it for its picks.</span></div>`}
+    </div>` : `<div class="empty"><b>Your crew’s vibe shows up here.</b><span>Answer the ${Q.length} questions. Once ${pk.spots ? 'everyone answers' : 'friends answer'} too, you’ll see the blend, like “${Q === pk.quiz ? pk.blendEg : `60% ${Q[0].o[0]}, 40% ${Q[0].o[1]}`}”, and the AI uses it for its picks.</span></div>`}
   </section>
   <section class="card stack">
     <div class="row" style="justify-content:space-between"><h2>${pk.spots ? pk.spots.heading : 'Where we’re going out in'} ${esc(ds.city)}</h2></div>

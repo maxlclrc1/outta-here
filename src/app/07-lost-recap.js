@@ -46,13 +46,14 @@ function hangoverCard(day) {
   </section>`;
 }
 function hangPlan(day) {
-  const items = visItems().filter(i => i.date === day && !i.hidden).sort(byTime);
+  // stops someone typed in themselves (a booking, a game) stay as they are; the rest of the day is rewritten
+  const all = visItems().filter(i => i.date === day), items = all.filter(i => !i.hidden && !isCommitment(i)).sort(byTime);
   const votes = Object.values((S.trip.hangover || {})[day] || {}), avg = votes.reduce((a, b) => a + b, 0) / Math.max(1, votes.length);
   const prompt = `A group on a trip is hungover. Hangover index ${avg.toFixed(1)} out of 5 (5 = dead).
 ${context()}
 Today's plan (${day}):
 ${items.map(i => `${i.time || '?'} ${i.title}${i.note ? ' (' + i.note + ')' : ''}`).join('\n')}
-
+${keptStops(all.filter(i => isCommitment(i) || i.hidden))}
 Rewrite today so it's gentler: start later, add a recovery meal and chill time, swap exhausting things for easy ones, but keep the best evening plan if it's still realistic. Keep it fun.
 Reply with only JSON: {"note":"one funny sentence about the state of the crew","items":[{"time":"HH:MM","title":"","kind":"food|activity|nightlife|chill","note":""}]}`;
   askAI('hang', prompt, data => {
@@ -63,7 +64,7 @@ Reply with only JSON: {"note":"one funny sentence about the state of the crew","
 }
 function applyHang() {
   const p = S.hangPlan; if (!p) return;
-  const keep = (S.trip.itinerary || []).filter(i => i.date !== p.day || i.secret);
+  const keep = (S.trip.itinerary || []).filter(i => i.date !== p.day || i.secret || isCommitment(i));
   S.hangPlan = null;
   saveTrip({ itinerary: [...keep, ...p.items.map(i => ({ id: rid(6), date: p.day, ...i, ai: true }))] }).then(ok => ok && flash('Today’s plan is updated.'));
 }

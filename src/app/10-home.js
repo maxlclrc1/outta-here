@@ -245,7 +245,9 @@ async function createTrip() {
   const id = rid(10);
   const currency = CUR_CODES.includes($('#nt-cur')?.value) ? $('#nt-cur').value : myCur(); try { localStorage.setItem('outta_lastcur', currency); } catch {}
   const trip = { name: name.slice(0, 60), size: sz, city, currency, winStart: a, winEnd: b, nights: small ? 0 : +($('#nt-nights')?.value || SIZES[sz].nights), destinations: [], vibes: [], itinerary: [], lockedDates: null, lockedDest: null,
-    mode: S.newMode || 'friends', honoreeName: ($('#nt-honoree')?.value || '').trim().slice(0, 40), honoreeFree: true, people: { [S.uid]: true }, createdBy: S.uid, createdAt: Date.now() };
+    mode: S.newMode || 'friends', honoreeName: ($('#nt-honoree')?.value || '').trim().slice(0, 40),
+    // a small birthday plan (a dinner, a night out) doesn't cover the birthday star unless someone turns it on
+    honoreeFree: !(small && S.newMode === 'birthday'), people: { [S.uid]: true }, createdBy: S.uid, createdAt: Date.now() };
   try {
     await S.db.doc('trips/' + id).set(trip);
     const crew = S.crews.find(c => c.id === S.newCrew);
