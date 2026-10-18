@@ -51,6 +51,7 @@ function undoPlan(x, id) {
     } else {
       if (cur) return { error: `“${u.item.title}” is already back in the plan.` };
       patch.itinerary = [...list, u.item];
+      if ((t.dropped || []).length) patch.dropped = undropTitle(t.dropped, u.item.title);
     }
     expect[key] = u.after; return { patch, expect };
   }
@@ -179,5 +180,7 @@ function saveItemEdit(id) {
   const moved = date !== old.date || time !== (old.time || '');
   const text = moved ? `${old.title} moved to ${when(date, time)}` : `${old.title} is now ${title}`;
   const fx = [moved ? `Was ${dow(old.date)} ${old.time ? t12(old.time) : 'with no set time'}` : '', title !== old.title && moved ? `Now called ${title}` : ''].filter(Boolean);
-  saveTrip(withLog({ itinerary: (S.trip.itinerary || []).map(i => i.id === id ? { ...i, date, time, title } : i) }, { area: 'plan', text, fx, act: old.secret ? '' : 'all', undo: { k: 'item', item: old } })).then(ok => ok && flash(`${text}. The crew sees it now.`));
+  // which parts a person set, so a redraft keeps this stop (and, if it was moved, plans around its time)
+  const edited = { ...(old.edited || {}), ...(title !== old.title ? { title: true } : {}), ...(date !== old.date ? { date: true } : {}), ...(time !== (old.time || '') ? { time: true } : {}) };
+  saveTrip(withLog({ itinerary: (S.trip.itinerary || []).map(i => i.id === id ? { ...i, date, time, title, edited } : i) }, { area: 'plan', text, fx, act: old.secret ? '' : 'all', undo: { k: 'item', item: old } })).then(ok => ok && flash(`${text}. The crew sees it now.`));
 }

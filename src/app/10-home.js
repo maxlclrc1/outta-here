@@ -13,31 +13,31 @@ function planStatus(t) {
   if (t.lockedDates) return isSmall(t) ? 'Picking the plan' : 'Picking where';
   return isSmall(t) ? 'Picking the plan and the day' : 'Picking where and when';
 }
-// Split-flap letters, one tile per character, flipping in left to right.
-const flap = text => String(text || '').split(' ').map((w, wi, all) => `<span class="fw">${[...w].map((ch, k) => `<i style="--i:${Math.min(24, all.slice(0, wi).join(' ').length + wi + k)}">${esc(ch)}</i>`).join('')}</span>`).join(' ');
-const BOARD = { draft: 'Standby', gathering: 'Voting', decided: 'Scheduled', organizing: 'Check-in', confirmed: 'On time', happening: 'Now', memories: 'Landed' };
+// A plan on the home page: a cover in the plan's color with its name and type, then where and when,
+// what it's waiting on, and who's in. The whole card opens the plan; share and delete sit on top.
 function planRow(t, opts = {}) {
-  const sz = SIZES[sizeOf(t)], crew = S.crews.find(c => c.id === t.crewId), name = (t.destinations || []).find(d => d.id === t.lockedDest)?.city;
+  const sz = SIZES[sizeOf(t)], crew = S.crews.find(c => c.id === t.crewId), where = (t.destinations || []).find(d => d.id === t.lockedDest)?.city;
   const daysTo = t.lockedDates ? Math.round((D(t.lockedDates.start) - D(TODAY)) / 864e5) : null, st = stageOf(t), p = t.pulse || {};
-  const mine = (p.who || []).includes(S.uid) && p.mine && st !== 'memories';
-  const d = t.lockedDates, n = Object.values(t.people || {}).filter(Boolean).length;
-  // lead with where it's happening; the plan's own name and the crew go underneath
-  const trip = sizeOf(t) === 'trip', main = name || (trip ? 'TBD' : t.name);
-  const sub = [main !== t.name && esc(t.name), crew && !opts.noCrew && esc(crew.name)].filter(Boolean).join(' · ');
-  return `<div class="card plan-row dep-row st-${st} ${mine ? 'needs-me' : ''}" style="--pc:${sz.color}">
-    <div class="pr-date">${d ? `<span>${fmt(d.start, { month: 'short' })}</span><b>${D(d.start).getUTCDate()}</b><span>${t.time ? t12(t.time) : fmt(d.start, { weekday: 'short' })}</span>` : '<span>Date</span><b>TBD</b><span>&nbsp;</span>'}</div>
-    <div class="pr-mid">
-      <span class="pr-kind"><i style="background:var(--pc)"></i>${esc(sz.label)}${n ? ` · ${n} in` : ''}</span>
-      ${trip ? `<h3><span class="sr-only">${esc(main)}</span><span class="flap" aria-hidden="true">${flap(main)}</span></h3>` : `<h3 class="pr-name">${esc(main)}</h3>`}
-      ${sub ? `<span class="pr-sub">${sub}</span>` : ''}
-      <span class="small muted pr-line">${moveLine(t)}${daysTo !== null && daysTo > 0 && daysTo <= 30 ? ` · <b style="color:var(--pc)">${daysTo === 1 ? 'Tomorrow' : 'in ' + daysTo + ' days'}</b>` : ''}</span>
+  const mine = (p.who || []).includes(S.uid) && p.mine && st !== 'memories', cv = coverOf(t, t.id);
+  const ids = Object.keys(t.people || {}).filter(k => t.people[k]), kind = MODES[t.mode] ? modeLabel(MODES[t.mode], sizeOf(t)) : sz.label;
+  const nick = id => id === S.uid ? S.myName : crew?.profiles?.[id]?.nick || '';
+  const meta = [where && esc(where), t.lockedDates && esc(planWhen(t)), crew && !opts.noCrew && esc(crew.name)].filter(Boolean).join(' · ');
+  const soon = daysTo !== null && daysTo >= 0 && daysTo <= 30 ? (daysTo === 0 ? 'Today' : daysTo === 1 ? 'Tomorrow' : `In ${daysTo} days`) : '';
+  return `<article class="plan-row pcard st-${st} ${mine ? 'needs-me' : ''}" style="${cv.style}" data-key="pc-${esc(t.id)}">
+    <button class="pc-hit" data-open="${esc(t.id)}" aria-label="Open ${esc(t.name)}"></button>
+    <div class="pc-cover ${cv.cls}">
+      <div class="pc-top"><span class="ovh-chip">${esc(kind)}</span>${mine ? '<span class="pc-flag">Your move</span>' : soon ? `<span class="pc-soon">${soon}</span>` : ''}</div>
+      <h3 class="pc-title">${esc(t.name)}</h3>
     </div>
-    <div class="pr-status"><span class="board-st">${BOARD[st]}</span>${mine ? '<span class="your-flag">Your move</span>' : ''}</div>
-    <div class="pr-acts">${S.confirmHome === t.id
-      ? `<span class="small pr-ask">Delete for everyone?</span><button class="btn sm ghost" data-act="homeCancel">Cancel</button><button class="btn sm danger-fill" data-homedo="${esc(t.id)}" ${S.busy.delete ? 'disabled' : ''}>${S.busy.delete ? 'Deleting…' : 'Delete'}</button>`
-      : `${canDelete(t) ? `<button class="btn sm ghost icon pr-del" data-homedel="${esc(t.id)}" aria-label="Delete ${esc(t.name)}" title="Delete"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg></button>` : ''}<button class="btn sm" data-share="${esc(t.id)}" aria-label="Share ${esc(t.name)}">Share</button><button class="btn sm primary" data-open="${esc(t.id)}">Open</button>`}</div>
-    ${S.shareHome === t.id && S.copyText ? `<textarea aria-label="Text to copy" class="pr-copy" id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
-  </div>`;
+    <div class="pc-body">
+      ${meta ? `<span class="pc-meta">${meta}</span>` : ''}
+      <span class="small pc-line">${moveLine(t)}</span>
+      <div class="pc-foot">${ids.length ? `${avStack(ids.map(id => ({ id, nick: nick(id) })), 4)}<span class="small muted">${ids.length === 1 ? 'Just you' : ids.length + ' in'}</span>` : ''}
+        <span class="pc-acts">${S.confirmHome === t.id ? '' : `<button class="btn sm ghost icon" data-share="${esc(t.id)}" aria-label="Share ${esc(t.name)}" title="Share"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg></button>${canDelete(t) ? `<button class="btn sm ghost icon pr-del" data-homedel="${esc(t.id)}" aria-label="Delete ${esc(t.name)}" title="Delete"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg></button>` : ''}`}</span></div>
+      ${S.confirmHome === t.id ? `<div class="pc-confirm"><span class="small">Delete this for everyone?</span><button class="btn sm ghost" data-act="homeCancel">Keep it</button><button class="btn sm danger-fill" data-homedo="${esc(t.id)}" ${S.busy.delete ? 'disabled' : ''}>${S.busy.delete ? 'Deleting…' : 'Delete'}</button></div>` : ''}
+      ${S.shareHome === t.id && S.copyText ? `<textarea aria-label="Text to copy" class="pr-copy" id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
+    </div>
+  </article>`;
 }
 function homeView() {
   if (S.loading && parseTripHash(location.hash.slice(1))) return `${topBar()}${skel()}`;
@@ -52,27 +52,30 @@ function homeView() {
   const deciding = plans.filter(t => !t.lockedDates && (!t.winEnd || t.winEnd >= TODAY)).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   const past = plans.filter(t => (t.lockedDates && t.lockedDates.end < TODAY) || (!t.lockedDates && t.winEnd && t.winEnd < TODAY));
   const fresh = canSave && S.tripsLoaded && !plans.length && !crews.length;
+  const group = (title, list, extra = '') => list.length ? `<section class="stack home-group"><h2 class="hg-h">${title}</h2>${extra}<div class="pcards">${list.map(t => planRow(t)).join('')}</div></section>` : '';
   return `${topBar()}
-  <section class="hero ${fresh ? '' : 'hero-sm'}">
-    <span class="label">${S.myName ? 'Hey ' + esc(S.myName) : 'Your crew’s plans, from Friday night to Tulum'}</span>
-    <h1>${fresh ? 'Get the group chat out the door.' : 'What are we doing?'}</h1>
-    ${fresh ? '<p>Hangouts, day trips and full-on trips with your crews. The AI pitches plans that fit everyone, the crew swipes, and when everyone matches, it’s on.</p>' : ''}
-    <div class="row"><button class="btn primary big" data-act="newTrip" ${canSave ? '' : 'disabled'}>New plan</button>${canSave ? '<button class="btn" data-act="newCrew">New crew</button>' : ''}<button class="btn ghost" data-act="demo">See the demo</button></div>
+  <section class="home-hero ${fresh ? 'fresh' : ''}">
+    <span class="hh-hi">${S.myName ? 'Hey ' + esc(S.myName) : 'Hey there'}</span>
+    <h1>${fresh ? 'Get the group chat out the door.' : 'What are we doing next?'}</h1>
+    ${fresh ? '<p>Dinners, day trips and full-on getaways. The AI pitches plans that fit everyone, your crew swipes, and when it’s a match, it’s on.</p>' : ''}
+    <button class="btn primary big hh-cta" data-act="newTrip" ${canSave ? '' : 'disabled'}>Make a plan</button>
+    ${fresh ? `<ol class="hh-steps"><li><b>Start a plan</b><span>A night out or a week away</span></li><li><b>Invite your crew</b><span>One link for the group chat</span></li><li><b>Swipe till it’s a match</b><span>Then it’s on</span></li></ol>
+      <div class="hh-more"><button class="linkbtn small" data-act="demo">See a demo trip</button>${canSave ? '<span class="muted" aria-hidden="true">·</span><button class="linkbtn small" data-act="newCrew">Make a crew</button>' : ''}</div>` : ''}
     ${!canSave && !S.loading ? `<span class="small muted">${IN_CLAUDE ? 'Couldn’t connect. Reload the page to try again.' : 'Can’t reach the local server. Start it with npm run dev, then reload.'}</span>` : ''}
   </section>
   ${S.creating === 'newCrew' ? `<section class="card stack"><h2>New crew</h2><p class="small muted">A crew is a group you make plans with. You’ll get an invite link for it next.</p>
     <form id="newCrewForm" class="row" style="gap:6px"><input aria-label="Crew name" id="nc-name" maxlength="40" required placeholder="The Vegas Six" style="flex:1 1 200px"><button class="btn primary" type="submit">Create crew</button><button class="btn ghost" type="button" data-act="cancelNew">Cancel</button></form></section>` : ''}
-  ${!canSave ? '' : !S.tripsLoaded ? skel('rows') : `
+  ${!canSave ? '' : !S.tripsLoaded ? skel('rows') : fresh ? '' : `
   ${inboxCard()}
-  <div class="home-bar"><span class="small muted">${[live.length && live.length + ' happening now', upcoming.length && upcoming.length + ' coming up', deciding.length && deciding.length + ' deciding'].filter(Boolean).join(' · ') || 'No plans yet'}</span>${viewSwitch()}</div>
+  ${plans.length ? `<div class="home-bar"><h2 class="hg-h">Your plans</h2>${viewSwitch()}</div>` : ''}
   ${homeMode === 'cal' ? calView(plans, deciding) : `
-  ${live.length ? `<section class="stack"><h2 class="board-h"><i class="live-dot" aria-hidden="true"></i> Happening now</h2>${live.map(t => planRow(t)).join('')}</section>` : ''}
-  <section class="stack"><div class="row" style="justify-content:space-between"><h2 class="board-h">Departures</h2><span class="small muted mono">${upcoming.length} locked in · <span data-clock>${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span></span></div>
-    ${upcoming.length ? upcoming.map(t => planRow(t)).join('') : `<div class="empty"><span>Nothing locked yet. When a plan has a place and a day, it shows up here like a calendar.</span></div>`}</section>
-  ${deciding.length ? `<section class="stack"><div class="row" style="justify-content:space-between"><h2 class="board-h">On standby</h2><span class="small muted">Still deciding</span></div>${deciding.map(t => planRow(t, { del: true })).join('')}</section>` : ''}`}
-  <section class="stack"><div class="row" style="justify-content:space-between"><h2>Your crews</h2><button class="btn sm" data-act="newCrew">New crew</button></div>
-    ${crews.length ? `<div class="crew-grid">${crews.map(c => crewCard(c, plans)).join('')}</div>` : `<div class="empty"><span>Crews are the groups you make plans with. Make one, share its invite link, and every plan after that starts with everyone already in.</span><button class="btn sm primary" data-act="newCrew">Make a crew</button></div>`}</section>
-  ${past.length && homeMode !== 'cal' ? `<details class="card past"><summary><b>Landed</b> <span class="small muted">Past plans ·</span> <span class="small muted">${past.length}</span></summary><div class="stack" style="margin-top:10px">${past.map(t => planRow(t, { del: true })).join('')}</div></details>` : ''}`}`;
+  ${group('<i class="live-dot" aria-hidden="true"></i> Happening now', live)}
+  ${group('Coming up', upcoming)}
+  ${group('Still deciding', deciding)}`}
+  <section class="stack home-group"><div class="home-bar"><h2 class="hg-h">Your crews</h2>${crews.length ? '<button class="btn sm" data-act="newCrew">New crew</button>' : ''}</div>
+    ${crews.length ? `<div class="crew-grid">${crews.map(c => crewCard(c, plans)).join('')}</div>` : `<div class="hh-crew-empty"><span class="small muted">Plan with the same people a lot? Make a crew and everyone’s in from the start.</span><button class="btn sm" data-act="newCrew">Make a crew</button></div>`}</section>
+  ${past.length && homeMode !== 'cal' ? `<details class="ov-fold past" data-key="home-past"><summary><b>Past plans</b><span class="small muted">${past.length}</span></summary><div class="pcards" style="margin-top:12px">${past.map(t => planRow(t)).join('')}</div></details>` : ''}
+  <div class="hh-more"><button class="linkbtn small" data-act="demo">See a demo trip</button></div>`}`;
 }
 /* ---------- home: calendar view ---------- */
 const ICON_LIST = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>';
@@ -245,7 +248,9 @@ async function createTrip() {
   const id = rid(10);
   const currency = CUR_CODES.includes($('#nt-cur')?.value) ? $('#nt-cur').value : myCur(); try { localStorage.setItem('outta_lastcur', currency); } catch {}
   const trip = { name: name.slice(0, 60), size: sz, city, currency, winStart: a, winEnd: b, nights: small ? 0 : +($('#nt-nights')?.value || SIZES[sz].nights), destinations: [], vibes: [], itinerary: [], lockedDates: null, lockedDest: null,
-    mode: S.newMode || 'friends', honoreeName: ($('#nt-honoree')?.value || '').trim().slice(0, 40), honoreeFree: true, people: { [S.uid]: true }, createdBy: S.uid, createdAt: Date.now() };
+    mode: S.newMode || 'friends', honoreeName: ($('#nt-honoree')?.value || '').trim().slice(0, 40),
+    // a small birthday plan (a dinner, a night out) doesn't cover the birthday star unless someone turns it on
+    honoreeFree: !(small && S.newMode === 'birthday'), people: { [S.uid]: true }, createdBy: S.uid, createdAt: Date.now() };
   try {
     await S.db.doc('trips/' + id).set(trip);
     const crew = S.crews.find(c => c.id === S.newCrew);

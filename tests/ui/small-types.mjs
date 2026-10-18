@@ -45,7 +45,8 @@ async function open(tid, sec, tab) {
 const ask = async act => { const n = sent.length; await p.locator(`[data-act=${act}]`).first().dispatchEvent('click'); for (let i = 0; i < 40 && sent.length === n; i++) await p.waitForTimeout(100); await settle(p); return sent[n] || ''; };
 const questions = () => p.locator('.q b').allInnerTexts();
 const saved = async tid => (await db('get', 'trips/' + tid)).data;
-const FRIENDS_Q = 'Perfect night out?|What’s playing?|You head home…|Spending style|Daytime is for…';
+// a hangout's friends questions (Task 29: no daytime question)
+const FRIENDS_Q = 'Perfect night out?|What’s playing?|You head home…|Spending style';
 const PARTY = /friend group|dinner-and-drinks|karaoke|nightlife|Perfect night out|adults|trip/i;
 
 // —— family dinner (a hangout) ——
@@ -59,7 +60,7 @@ const PARTY = /friend group|dinner-and-drinks|karaoke|nightlife|Perfect night ou
   expect('family dinner: pitches go to a family group, as a family outing, with a family vibe and mix', /pitching plans to a family group/.test(pitch) && /one evening out or in \(Family\. A family outing with mixed ages/.test(pitch) && /Vibe: relaxed and family-friendly/.test(pitch) && /a relaxed family meal/.test(pitch), (pitch.match(/Plan type: .*/) || [])[0]);
   expect('family dinner: no friend-group, party or trip framing', !PARTY.test(pitch), (pitch.match(PARTY) || [])[0]);
   await p.click('.subtab[data-tab=spots]'); await settle(p);
-  expect('family dinner: the family questions', (await questions()).join('|') === 'Ideal pace?|Days are for…|Evenings are for…|Spending style', (await questions()).join('|'));
+  expect('family dinner: the family questions for a meal (Task 28)', (await questions()).join('|') === 'What kind of meal?|And after?|Spending style', (await questions()).join('|'));
   const spots = await ask('spots');
   expect('family dinner: the AI context says an evening with family, people of mixed ages', /Plan type: one evening out with family\. Family\. A family outing/.test(spots) && /Group size: 1 people of mixed ages, possibly kids/.test(spots) && /local guide finding family-friendly places for an evening/.test(spots), (spots.match(/Plan type: .*/) || [])[0]);
   // size and type stay separate: making it a weekend keeps the type
@@ -77,7 +78,7 @@ const PARTY = /friend group|dinner-and-drinks|karaoke|nightlife|Perfect night ou
   expect('team lunch: pitches go to a work team, as a team outing, with a team mix', /pitching plans to a work team/.test(pitch) && /a full day out \(Team outing\. A work team outing/.test(pitch) && /a team lunch or dinner, a group activity/.test(pitch) && /Vibe: professional but fun/.test(pitch), (pitch.match(/Plan type: .*/) || [])[0]);
   expect('team lunch: no friend-group, party or “offsite” trip framing', !PARTY.test(pitch) && !/offsite/i.test(pitch), (pitch.match(/friend group|dinner-and-drinks|karaoke|nightlife|Perfect night out|adults|trip|offsite/i) || [])[0]);
   await p.click('.subtab[data-tab=spots]'); await settle(p);
-  expect('team lunch: the team questions', (await questions())[0] === 'Best team activity?');
+  expect('team lunch: the team outing questions (Task 28)', (await questions())[0] === 'Best kind of team outing?');
   const spots = await ask('spots');
   expect('team lunch: the AI context says a day out with colleagues', /Plan type: a day out with colleagues\. Team outing\./.test(spots) && /Group size: 1 colleagues/.test(spots), (spots.match(/Plan type: .*/) || [])[0]);
 }
@@ -97,9 +98,12 @@ const PARTY = /friend group|dinner-and-drinks|karaoke|nightlife|Perfect night ou
   const s = await p.locator('body').innerText();
   expect('Settings shows the type and the optional birthday star for a hangout', /Type/.test(s) && /The birthday star/.test(s) && (await p.locator('#set-honoree').inputValue()) === '', '');
   await p.selectOption('#set-honoree', uid); await p.waitForTimeout(900);
-  t = await saved(tid); expect('picking the birthday star works on a hangout, covered by default as in trips', t.honoree === uid && t.honoreeFree !== false);
+  t = await saved(tid); expect('picking the birthday star works on a hangout, not covered by default on a small plan (Task 28)', t.honoree === uid && t.honoreeFree === false);
   await open(tid, 'money', 'meter');
-  expect('…and they’re told they’re covered', /You’re covered/.test(await p.locator('body').innerText()));
+  expect('…so they aren’t told they’re covered', !/You’re covered/.test(await p.locator('body').innerText()));
+  await open(tid, 'home', 'settings'); await p.locator('#set-free').check(); await p.waitForTimeout(900);
+  await open(tid, 'money', 'meter');
+  expect('…until someone turns it on', /You’re covered/.test(await p.locator('body').innerText()));
 }
 
 // —— friends hangout: as before ——
@@ -110,7 +114,7 @@ const PARTY = /friend group|dinner-and-drinks|karaoke|nightlife|Perfect night ou
   const pitch = await ask('genPitches');
   expect('friends hangout: the original pitch request (friend group, “fun, social”, dinner-and-drinks mix, no type line)', /pitching plans to a friend group/.test(pitch) && /Plan type: one evening out or in\.\n/.test(pitch) && /Vibe: fun, social\n/.test(pitch) && /mix a dinner-and-drinks night, an activity \(bowling, karaoke, a class, a show\)/.test(pitch), (pitch.match(/Plan type: .*/) || [])[0]);
   await p.click('.subtab[data-tab=spots]'); await settle(p);
-  expect('friends hangout: the original five questions', (await questions()).join('|') === FRIENDS_Q);
+  expect('friends hangout: the friends evening questions', (await questions()).join('|') === FRIENDS_Q);
   const spots = await ask('spots');
   expect('friends hangout: the original context (with friends, adults)', /Plan type: one evening out with friends\. \n/.test(spots) && /Group size: 1 adults/.test(spots), (spots.match(/Plan type: .*/) || [])[0]);
 }

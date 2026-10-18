@@ -56,7 +56,7 @@ async function repeatGo() {
   let a = $('#rp-start')?.value || TODAY, b = $('#rp-end')?.value || add(a, 30); if (b < a) [a, b] = [b, a];
   const small = ['hangout', 'day'].includes(snap.size), id = rid(10);
   const trip = { name, size: snap.size, city: snap.city, currency: snap.currency, winStart: a, winEnd: b, nights: small ? 0 : snap.nights, destinations: on('dest') && snap.dest ? [{ id: rid(6), city: snap.dest.city, code: snap.dest.code }] : [], vibes: [], itinerary: [], lockedDates: null, lockedDest: null,
-    mode: snap.mode, honoreeName: '', honoreeFree: true, people: { [S.uid]: true }, createdBy: S.uid, createdAt: Date.now(),
+    mode: snap.mode, honoreeName: '', honoreeFree: !(small && snap.mode === 'birthday'), people: { [S.uid]: true }, createdBy: S.uid, createdAt: Date.now(),
     tasks: on('tasks') ? Object.fromEntries(snap.tasks.map((title, i) => [rid(6), { title, owner: '', due: '', done: false, by: S.uid, at: Date.now() + i }])) : {},
     itinTpl: on('itin') ? snap.itin : null, lastCosts: on('costs') ? snap.costs : null, repeatOf: { tid: snap.from || '', name: snap.fromName || '', tpl: r.tpl || '' } };
   try {
@@ -95,7 +95,7 @@ function crewTemplates(c) {
 function applyOutline() {
   const d = dates(), tpl = S.trip.itinTpl; if (!d || !tpl) return;
   const days = span(d.start, d.end);
-  const items = tpl.map(i => ({ id: rid(6), date: days[Math.min(i.day, days.length - 1)], time: hhmm(i.time), title: i.title, kind: i.kind, note: i.note }));
+  const items = tpl.map(i => ({ id: rid(6), date: days[Math.min(i.day, days.length - 1)], time: hhmm(i.time), title: i.title, kind: i.kind, note: i.note, src: 'outline' }));
   saveTrip({ itinerary: [...(S.trip.itinerary || []), ...items], itinTpl: null }).then(ok => ok && flash(`Added ${items.length} stop${items.length === 1 ? '' : 's'} from last time. Change anything that doesn’t fit.`));
 }
 

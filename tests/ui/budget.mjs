@@ -4,7 +4,7 @@ const skipSetup = async p => { await p.waitForTimeout(250); const l = p.locator(
 const b = await chromium.launch(process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {});
 const c = await b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true }); const p = await c.newPage();
 await p.goto((process.env.BASE || 'http://localhost:3000') + '/'); await p.fill('#join-name','Kim'); await p.click('.join-card [type=submit]');
-await p.click('[data-act=newTrip]'); await p.click('[data-size=trip]'); await p.click('[data-mode=friends]'); await p.fill('#nt-name','T'); await p.click('#newTrip [type=submit]'); await p.waitForSelector('.pass, .passport, .setup').then(() => skipSetup(p));
+await p.click('[data-act=newTrip]'); await p.click('[data-size=trip]'); await p.click('[data-mode=friends]'); await p.fill('#nt-name','T'); await p.click('#newTrip [type=submit]'); await p.waitForSelector('.ov-hero, .pass, .passport, .setup').then(() => skipSetup(p));
 await p.click('.bottomnav [data-sec=home]'); await p.click('.subtab[data-tab=crew]');
 await p.tap('#me-home'); await p.keyboard.type('ORD');
 await p.tap('#me-budget'); await p.keyboard.type('650');

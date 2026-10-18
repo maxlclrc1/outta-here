@@ -433,10 +433,10 @@ Reply with only JSON: {"weather":"one line on expected weather","items":[{"text"
 }
 function findSpots() {
   const sp = planKind().spots;
-  const prompt = sp ? `You're ${sp.who}${isSmall() ? ` for ${size() === 'hangout' ? 'an evening' : 'a day out'}` : ' for a group trip'}. Recommend real, well-known places that are open as of your latest knowledge.
+  const prompt = sp ? `You're ${isSmall() && sp.whoSmall || sp.who}${isSmall() ? ` for ${size() === 'hangout' ? 'an evening' : 'a day out'}` : ' for a group trip'}. Recommend real, well-known places that are open as of your latest knowledge.
 ${context()}
 
-${sp.ask}
+${isSmall() && sp.askSmall || sp.ask}
 Reply with only JSON: {"items":[{"name":"",${CALM_SPOT.replace('%T', sp.types)}}]}
 lat/lng: your best estimate of the place's coordinates.` : `You're a nightlife scout planning ${isSmall() ? 'a night out for a friend group' : 'a group trip'}. Recommend real, well-known venues that are open as of your latest knowledge.
 ${context()}
@@ -473,16 +473,16 @@ function draftPlan() {
 ${context()}
 ${planKind().picks}: ${spots || 'none yet — suggest real venues'}
 ${S.trip.crewId ? dnaText(S.trip.crewId) : ''}
-
+${keptStops(visItems())}
 Arrival and departure days are lighter. ${planKind().mix} 3–5 items per day.
-Reply with only JSON: {"days":[{"date":"YYYY-MM-DD","items":[{"time":"HH:MM","title":"short title with the place name","kind":"food|activity|nightlife|travel|chill","note":"one short line"}]}]}`;
+Reply with only JSON: {"days":[{"date":"YYYY-MM-DD","items":[{"time":"HH:MM","title":"short title with the place name","kind":"${stopKinds().join('|')}","note":"one short line"}]}]}`;
   askAI('plan', prompt, data => {
     const days = Array.isArray(data?.days) ? data.days : [];
     const valid = new Set(span(d.start, d.end));
     const items = [];
-    for (const day of days) for (const it of (day.items || [])) if (valid.has(day.date) && it.title) items.push({ id: rid(6), date: day.date, time: hhmm(it.time), title: String(it.title).slice(0, 120), kind: it.kind || 'activity', note: String(it.note || '').slice(0, 200), ai: true });
+    for (const day of days) for (const it of (day.items || [])) if (valid.has(day.date) && it.title && !isDropped(it)) items.push({ id: rid(6), date: day.date, time: hhmm(it.time), title: String(it.title).slice(0, 120), kind: stopKindOf(it.kind) || 'activity', note: String(it.note || '').slice(0, 200), ai: true });
     if (!items.length) { flash('No plan came back. Try again.'); return; }
-    const keep = (S.trip.itinerary || []).filter(i => !i.ai);
+    const keep = (S.trip.itinerary || []).filter(i => !isDraft(i));
     return saveTrip({ itinerary: [...keep, ...items] });
   });
 }
@@ -673,7 +673,7 @@ const skel = (kind = 'plan') => kind === 'rows'
 function topBar() {
   const day = document.documentElement.dataset.theme === 'light';
   return `<div class="top"><button class="logo" data-act="home">Outta<span>/</span>Here</button>
-    <div class="row" style="gap:10px;flex-wrap:nowrap">${S.tid ? `<span class="label">Code <span class="mono">${esc(S.demo ? 'DEMO' : S.tid)}</span></span>` : ''}<button class="theme-t" data-act="theme" aria-label="${day ? 'Switch to night mode' : 'Switch to day mode'}" title="${day ? 'Night mode' : 'Day mode'}">${day ? '☾' : '☀'}</button></div></div>`;
+    <div class="row" style="gap:10px;flex-wrap:nowrap"><button class="theme-t" data-act="theme" aria-label="${day ? 'Switch to night mode' : 'Switch to day mode'}" title="${day ? 'Night mode' : 'Day mode'}">${day ? '☾' : '☀'}</button></div></div>`;
 }
 
 function pass() {
@@ -893,7 +893,7 @@ function spotsTab() {
         ${w.how !== 'majority' ? `<div class="runoff"><span class="small">${w.how === 'runoff' ? `Runoff winner: <b>${esc(w.a)}</b> (${w.tied.map(a => (w.rv[a] || 0)).join('–')})` : w.votes ? `Runoff is tied too, so a coin flip picked <b>${esc(w.a)}</b>` : `Coin flip picked <b>${esc(w.a)}</b> for now. Vote in the runoff to decide it yourselves.`}</span>
           <div class="row" style="gap:6px">${w.tied.map(a => `<button class="chip ${myRun === a ? 'on' : ''}" data-qrunoff="${q.k}|${esc(a)}">${esc(a)}</button>`).join('')}</div></div>` : ''}</div>`; }).join('')}
       <span class="small" style="opacity:.75">Screenshot this and drop it in the chat.</span>
-    </div>` : `<div class="empty"><b>Your crew’s vibe shows up here.</b><span>Answer the ${Q.length} questions. Once ${pk.spots ? 'everyone answers' : 'friends answer'} too, you’ll see the blend, like “${pk.blendEg}”, and the AI uses it for its picks.</span></div>`}
+    </div>` : `<div class="empty"><b>Your crew’s vibe shows up here.</b><span>Answer the ${Q.length} questions. Once ${pk.spots ? 'everyone answers' : 'friends answer'} too, you’ll see the blend, like “${Q === pk.quiz ? pk.blendEg : `60% ${Q[0].o[0]}, 40% ${Q[0].o[1]}`}”, and the AI uses it for its picks.</span></div>`}
   </section>
   <section class="card stack">
     <div class="row" style="justify-content:space-between"><h2>${pk.spots ? pk.spots.heading : 'Where we’re going out in'} ${esc(ds.city)}</h2></div>
@@ -916,7 +916,7 @@ function planTab() {
   const days = span(d.start, d.end), items = visItems();
   return `<section class="card stack">
     <div class="row" style="justify-content:space-between"><h2>${isSmall() ? 'The plan' : 'Itinerary'}</h2>
-      <div class="row" style="gap:6px">${items.some(i => i.ai) ? `<button class="btn sm ghost" data-act="clearAI">Remove AI items</button>` : ''}
+      <div class="row" style="gap:6px">${items.some(isDraft) ? `<button class="btn sm ghost" data-act="clearAI">Remove AI items</button>` : ''}
       ${S.sample !== null ? `<button class="btn primary" data-act="plan" ${S.busy.plan ? 'disabled' : ''}>${S.busy.plan ? '<i class="spin"></i>Drafting…' : items.some(i => i.ai) ? 'Redraft with AI' : 'Draft it with AI'}</button>` : ''}</div></div>
     ${S.trip.itinTpl && S.trip.itinTpl.length && !S.readOnly ? `<div class="cost-flag soft row" style="justify-content:space-between;gap:8px"><span><b>Last time’s outline</b> · ${S.trip.itinTpl.length} stop${S.trip.itinTpl.length === 1 ? '' : 's'}${S.trip.repeatOf?.name ? ` from ${esc(S.trip.repeatOf.name)}` : ''}</span><span class="row" style="gap:6px"><button class="btn sm primary" data-act="applyOutline">Put it on these dates</button><button class="btn sm ghost" data-act="dropOutline">Skip it</button></span></div>` : ''}
     ${!d.locked ? `<p class="small muted">Using the best dates so far. ${isSmall() ? 'Lock the day in When so the plan doesn’t shift.' : 'Lock dates in Dates so the plan doesn’t shift.'}</p>` : ''}
@@ -1154,19 +1154,21 @@ async function joinCrewQuiet(cid) {
   try { await S.db.doc('crews/' + cid).update({ people: { [S.uid]: true }, profiles: { [S.uid]: { nick: S.myName || 'Someone' } } }); } catch {}
 }
 // First thing someone sees when they open an invite: what it is, who's in, and one tap to answer.
+// Until they answer, that's all they see (they can choose to look around first).
 function welcomeCard() {
   const t = S.trip, host = S.members.find(m => m.id === t.createdBy), ins = S.members.filter(going);
-  const crew = S.crews.find(c => c.id === t.crewId), ds = dest(), sz = SIZES[size()];
+  const crew = S.crews.find(c => c.id === t.crewId), ds = t.lockedDest ? dest() : null, sz = SIZES[size()], cv = coverOf(t, S.tid);
   const when = t.lockedDates ? planWhen(t) : `Picking ${isSmall() ? 'a day' : 'dates'} together`;
-  return `<section class="card welcome" style="--pc:${sz.color}">
-    <span class="label">${host ? `${esc(host.nick || 'A friend')} invited you` : 'You’re invited'}</span>
-    <h1>${esc(t.name)}</h1>
-    <p class="muted">${esc(sz.label)}${crew ? ' with ' + esc(crew.name) : ''} · ${esc(when)}${ds ? ' · ' + esc(ds.city) : ''}</p>
-    ${ins.length ? `<div class="row" style="gap:8px;align-items:center"><div class="avs">${ins.slice(0, 7).map(m => `<span class="av-sm" style="background:${colorFor(m.id)}" title="${esc(m.nick || 'Someone')}">${esc((m.nick || '?')[0].toUpperCase())}</span>`).join('')}</div><span class="small muted">${ins.length} in so far</span></div>` : ''}
-    ${S.trip.rsvpBy && TODAY <= S.trip.rsvpBy ? `<span class="small"><b>Answer by ${fmt(S.trip.rsvpBy)}</b> so the crew knows how many to plan for.</span>` : ''}
-    <div class="welcome-acts"><button class="btn primary big" data-join="in">I’m in</button><button class="btn big" data-join="maybe">Maybe</button><button class="btn ghost big" data-join="out">Can’t make it</button></div>
-    ${t.crewId ? `<span class="small muted">Saying you’re in also adds you to ${crew ? esc(crew.name) : 'the crew'}, so you’re part of their next plans too.</span>` : ''}
-  </section>`;
+  return `<section class="welcome ov-hero ${cv.cls}" style="${cv.style}">
+    <div class="ovh-top"><span class="ovh-chip">${host ? `${esc(host.nick || 'A friend')} invited you` : 'You’re invited'}</span><span class="ovh-chip soft">${esc(modeLabel(mode(), size()))}</span></div>
+    <h1 class="ovh-title">${esc(t.name)}</h1>
+    <p class="ovh-meta">${[esc(sz.label) + (crew ? ' with ' + esc(crew.name) : ''), esc(when), ds && esc(ds.city)].filter(Boolean).join(' · ')}</p>
+    ${ins.length ? `<div class="ovh-crew">${avStack(ins, 6)}<span class="ovh-who">${ins.length} in so far</span></div>` : ''}
+    ${S.trip.rsvpBy && TODAY <= S.trip.rsvpBy ? `<span class="small ovh-note"><b>Answer by ${fmt(S.trip.rsvpBy)}</b> so the crew knows how many to plan for.</span>` : ''}
+    <div class="welcome-acts"><button class="btn primary big" data-join="in">I’m in</button><button class="btn big glass" data-join="maybe">Maybe</button><button class="btn ghost big glass" data-join="out">Can’t make it</button></div>
+    ${t.crewId ? `<span class="small ovh-note">Saying you’re in also adds you to ${crew ? esc(crew.name) : 'the crew'}, so you’re part of their next plans too.</span>` : ''}
+  </section>
+  ${S.peek ? '' : '<button class="linkbtn small peek" data-act="peek">Look around the plan first</button>'}`;
 }
 function joinPlan(status) {
   saveMe({ status, seen: true }, true);
@@ -1532,7 +1534,7 @@ function hypeTab() {
   <section class="card stack">
     <div class="feed" id="feed">${feed.length ? feed.map(f => `<div class="bubble ${f.by === S.uid ? 'mine' : ''} ${f.by === 'ai' ? 'ai' : ''}">${f.secret ? '<span class="secret-tag">Planners only</span><br>' : ''}${f.by !== S.uid ? `<span class="small" style="font-weight:700">${esc(nameOf(f.by))}</span><br>` : ''}${linkify(f.text)}
       <span class="small" style="opacity:.7;display:block;margin-top:2px">${ago(f.at)}${f.by === S.uid ? ` · <button class="linkbtn" data-delfeed="${esc(f.id)}">delete</button>` : ''}</span></div>`).join('') : '<p class="small muted">Drop links, outfit ideas and hype here so they don’t get buried in the group chat.</p>'}</div>
-    <div class="row" style="gap:6px">${(isLive() ? planKind().hypesLive : isSmall() ? HYPES_SMALL : planKind().hypes).map(h => `<button class="chip" data-hype="${esc(h)}">${esc(h)}</button>`).join('')}</div>
+    <div class="row" style="gap:6px">${(isLive() ? planKind().hypesLive : isSmall() ? planKind().hypesSmall || HYPES_SMALL : planKind().hypes).map(h => `<button class="chip" data-hype="${esc(h)}">${esc(h)}</button>`).join('')}</div>
     <form id="feedForm" class="row" style="gap:6px"><input aria-label="Message to the crew" id="fd-text" maxlength="500" placeholder="Say something…" style="flex:1 1 200px" autocomplete="off"><button class="btn primary" type="submit">Send</button>
       ${honoreeMode() && !isHonoree() ? `<label class="row small" style="gap:6px;flex:1 1 100%"><input type="checkbox" id="fd-secret" style="width:auto"> Planners only (hidden from the ${esc(mode().honoree)})</label>` : ''}</form>
   </section>`;
@@ -1651,9 +1653,11 @@ const SUPERS_DEFAULT = ['MVP', 'Most likely to lose their ID', 'Biggest spender'
 const MODES = {
   friends: { label: 'Friends trip', desc: 'Your friends, somewhere new.', small: { desc: 'Just your friends.' }, color: '#D41C78', ai: 'A friend group trip.', supers: SUPERS_DEFAULT },
   bachelorette: { label: 'Bachelorette', desc: 'Brunch, a big dinner, one wild night.', color: '#E64980', honoree: 'bride',
+    small: { ai: 'A bachelorette night or day out: brunch or a nice dinner, drinks and one fun night out, with photo moments. The bride is the guest of honor.' },
     ai: 'A bachelorette party. Think brunch, a nice dinner, one wild night out, matching outfits and photo moments. The bride is the guest of honor.',
     supers: ['Best bridesmaid energy', 'Most likely to cry at the wedding', 'Most likely to get us kicked out', 'Best dressed', 'First one asleep', 'Hype queen', 'Main character', 'Best dance moves'] },
   bachelor: { label: 'Bachelor', desc: 'A steak, a day out, a long night.', color: '#3B5BDB', honoree: 'groom',
+    small: { ai: 'A bachelor night or day out: a great dinner, one fun activity and a night out. The groom is the guest of honor.' },
     ai: 'A bachelor party. Think steakhouse, golf or a day activity, a big night out, sports bars, a casino or a boat. The groom is the guest of honor.',
     supers: ['Best man energy', 'Most likely to lose the groom', 'Biggest spender', 'Worst decision', 'First one asleep', 'Last one standing', 'Best wingman', 'Most likely to miss the flight'] },
   birthday: { label: 'Birthday trip', desc: 'Planned around one dinner and one big night.', color: '#F08C00', honoree: 'birthday star',
@@ -1661,6 +1665,7 @@ const MODES = {
     ai: 'A birthday trip. Plan one special birthday dinner and one big birthday night. The birthday person is the guest of honor.',
     supers: ['Best birthday toast', 'Most likely to forget whose birthday it is', 'Biggest spender', 'Best dressed', 'First one asleep', 'Last one standing', 'Main character', 'Best gift'] },
   couples: { label: 'Couples trip', desc: 'Good dinners, nice views, real downtime.', color: '#C2255C',
+    small: { ai: 'A plan for a few couples: a great dinner, drinks somewhere nice and easy conversation.' },
     ai: 'A trip with several couples. Favor great dinners, wine and cocktail bars, scenic spots, one fun night out, and real downtime.',
     supers: ['Cutest couple', 'Most likely to argue about directions', 'Best dinner pick', 'Best dressed couple', 'First couple asleep', 'Most PDA', 'Best photographer', 'Most likely to miss the flight'] },
   family: { label: 'Family trip', desc: 'All ages. Easy days, early nights.', color: '#0E9F6E', nightlife: 'Things to do',
@@ -1668,12 +1673,15 @@ const MODES = {
     ai: 'A family trip with mixed ages, possibly kids. Keep everything family-friendly: no clubs. Favor activities, parks, easy food spots and early evenings.',
     supers: ['Trip MVP', 'Best snack supply', 'Most likely to get lost', 'Best navigator', 'First one asleep', 'Most photos taken', 'Best attitude', 'Funniest moment'] },
   college: { label: 'Spring break', desc: 'Tight budget, beach, happy hours.', color: '#1098AD',
+    small: { ai: 'A cheap night or day out for students: happy hours, cheap eats and free or low-cost fun.' },
     ai: 'A spring break or college trip on a tight budget. Favor cheap eats, beach or pool parties, happy hours, and budget stays like hostels or shared rentals.',
     supers: SUPERS_DEFAULT },
   festival: { label: 'Festival or concert', desc: 'Planned around the set times.', color: '#7048E8',
+    small: { ai: 'A plan built around a concert or festival: food and drinks before, an easy way to the venue, and somewhere to go after.' },
     ai: 'A trip built around a music festival or concert. Favor pre-game spots, after-parties, easy transport to the venue, and recovery brunches.',
     supers: ['Best festival outfit', 'Most likely to lose the group', 'Front row energy', 'Best set pick', 'First one asleep', 'Last one standing', 'Main character', 'Most likely to miss the flight'] },
   sports: { label: 'Sports trip', desc: 'The game, the tailgate, the night after.', color: '#E8590C',
+    small: { ai: 'A plan built around a game: at the stadium or a sports bar, food before or after, and somewhere fun to go after.' },
     ai: 'A trip built around a sports game or event. Favor sports bars, tailgates, a great steak or BBQ dinner, and a fun night out after the game.',
     supers: ['Loudest fan', 'Worst bet', 'Biggest spender', 'Best jersey', 'First one asleep', 'Last one standing', 'Best tailgate snack', 'Most likely to miss the flight'] },
   work: { label: 'Team offsite', desc: 'Team dinners, one activity, time to work.', color: '#5C6A7A', nightlife: 'Things to do',
@@ -1693,7 +1701,13 @@ const CALM_SPOT = '"type":"%T","area":"neighborhood","why":"one sentence on why 
 const calmAdd = s => { const t = s.type || ''; return /cafe/.test(t) ? { time: '09:30', kind: 'food' } : /restaurant|food/.test(t) ? { time: '18:30', kind: 'food' } : /bar|lounge/.test(t) ? { time: '20:00', kind: 'chill' } : { time: '10:00', kind: 'activity' }; };
 const PLAN_KINDS = {
   social: {
-    quiz: QUIZ, persona: w => `The ${PERSONA_LATE[w.late?.a] || 'Wild'} ${PERSONA_NIGHT[w.night?.a] || 'Party'} Crew`, blendEg: '60% Big club, 40% Rooftop cocktails',
+    quiz: QUIZ,
+    // one evening isn't asked about daytime or heading home at sunrise; a day out isn't asked about a night out
+    quizBy: {
+      hangout: [QUIZ[0], QUIZ[1], { k: 'home', q: 'You head home…', o: ['Early, around 10', 'Around midnight', 'Whenever it ends'] }, SPEND_Q],
+      day: [{ k: 'sday', q: 'The day is for…', o: ['Pool or beach', 'Exploring & eating', 'Activities', 'A game, show or concert'] }, { k: 'safter', q: 'And after?', o: ['Home early', 'Dinner somewhere good', 'A night out'] }, SPEND_Q],
+    },
+    persona: w => `The ${PERSONA_LATE[w.late?.a] || { 'Early, around 10': 'Early-Bird', 'Around midnight': 'Midnight', 'Whenever it ends': 'Late-Night' }[w.home?.a] || 'Wild'} ${PERSONA_NIGHT[w.night?.a] || { 'Pool or beach': 'Beach', 'Exploring & eating': 'Foodie', Activities: 'Go-Go', 'A game, show or concert': 'Front-Row' }[w.sday?.a] || 'Party'} Crew`, blendEg: '60% Big club, 40% Rooftop cocktails',
     group: 'friend group', with: 'friends', people: 'adults', vibe: { ctx: 'mixed, fun', pitch: 'fun, social, nightlife', small: 'fun, social' },
     spots: null, // the original nightlife scout prompt and card
     checkins: CHECKINS, hypes: HYPES, hypesLive: HYPES_LIVE, hangover: true,
@@ -1706,11 +1720,24 @@ const PLAN_KINDS = {
       { k: 'fday', q: 'Days are for…', o: ['Pool or beach', 'Parks & outdoors', 'Museums & sights', 'Theme parks', 'Exploring & eating'] },
       { k: 'feve', q: 'Evenings are for…', o: ['Early dinner, early night', 'Dinner out together', 'Games or a movie in'] },
       SPEND_Q],
-    persona: w => `The ${{ 'Packed days': 'Go-Go', 'A good mix': 'Easygoing', 'Slow and easy': 'Slow-Days' }[w.fpace?.a] || 'Happy'} Family`, blendEg: '60% Parks & outdoors, 40% Museums & sights',
+    // a dinner or a single day doesn't get questions about days, evenings or theme parks
+    quizBy: {
+      hangout: [
+        { k: 'fmeal', q: 'What kind of meal?', o: ['Casual & kid-friendly', 'A proper sit-down dinner', 'Somewhere with room to play', 'Takeout or a picnic'] },
+        { k: 'fafter', q: 'And after?', o: ['Straight home', 'A walk or dessert', 'Games or a movie'] },
+        SPEND_Q],
+      day: [
+        { k: 'fdayout', q: 'The day is for…', o: ['Parks & outdoors', 'Museums & sights', 'Zoo, aquarium or theme park', 'Pool or beach', 'Exploring & eating'] },
+        { k: 'fdpace', q: 'Ideal pace?', o: ['Packed', 'A good mix', 'Slow and easy'] },
+        SPEND_Q],
+    },
+    persona: w => `The ${{ 'Packed days': 'Go-Go', Packed: 'Go-Go', 'A good mix': 'Easygoing', 'Slow and easy': 'Slow-Days' }[w.fpace?.a || w.fdpace?.a] || 'Happy'} Family`, blendEg: '60% Parks & outdoors, 40% Museums & sights',
     group: 'family group', with: 'family', people: 'people of mixed ages, possibly kids', vibe: 'relaxed and family-friendly',
-    spots: { who: 'a local guide finding family-friendly places', ask: 'Give 9 picks that work for all ages: activities, parks, sights and easy places to eat. No clubs or bars. Favor places that work for a group this size. Match the best time for each place to the trip days.', types: 'activity|park|museum|sight|restaurant|cafe|show', heading: 'Things to do in', empty: 'Take the vibe quiz, then let AI pull activities, parks and easy places to eat that fit your crew, budget and the days you’re there.', add: calmAdd },
+    spots: { who: 'a local guide finding family-friendly places', ask: 'Give 9 picks that work for all ages: activities, parks, sights and easy places to eat. No clubs or bars. Favor places that work for a group this size. Match the best time for each place to the trip days.',
+      askSmall: 'Give 9 family-friendly picks for this outing: mostly places to eat that work for all ages, plus a few easy things to do nearby. No clubs or bars. Favor places that work for a group this size.', types: 'activity|park|museum|sight|restaurant|cafe|show', heading: 'Things to do in', empty: 'Take the vibe quiz, then let AI pull activities, parks and easy places to eat that fit your crew, budget and the days you’re there.', add: calmAdd },
     checkins: ['At the hotel', 'At the pool', 'Getting food', 'Out exploring', 'Heading back', 'Asleep'],
     hypes: ['LET’S GOOO', 'Who’s packing already?', 'I just booked!', 'Countdown is on'], hypesLive: ['Where is everyone?', 'Best day yet', 'Who’s hungry?', 'Heading back soon'], hangover: false,
+    hypesSmall: ['Can’t wait!', 'Who’s driving?', 'Running a bit late', 'Saved us a table'], stops: ['food', 'activity', 'travel', 'chill'],
     picks: 'Places the group already likes', mix: 'Mix food, activities, downtime and easy evenings (use the picks at their best times). Nothing late at night or 21+ only.',
     pack: 'sunscreen, snacks, phone chargers, games, first aid, wipes, etc.',
     smallMix: 'a relaxed family meal, an easy activity everyone can join, something outdoors, and something new',
@@ -1722,11 +1749,18 @@ const PLAN_KINDS = {
       { k: 'wpace', q: 'Work vs team time?', o: ['Mostly working', 'Half and half', 'Mostly team time'] },
       { k: 'weve', q: 'Evenings are for…', o: ['Team dinner, early night', 'Dinner, then a drink', 'A proper night out'] },
       SPEND_Q],
+    // a team lunch or day out isn't asked about work sessions or evenings
+    quizBy: (() => { const q = [
+      { k: 'wout', q: 'Best kind of team outing?', o: ['A good lunch or dinner', 'A class or workshop', 'Games or a challenge', 'Something outdoors', 'Drinks after work'] },
+      { k: 'wtalk', q: 'The vibe?', o: ['Easy conversation', 'A bit competitive', 'Something new to try'] },
+      SPEND_Q]; return { hangout: q, day: q }; })(),
     persona: w => `The ${{ 'Mostly working': 'Heads-Down', 'Half and half': 'Balanced', 'Mostly team time': 'All-Hands' }[w.wpace?.a] || 'Dream'} Team`, blendEg: '60% Food or cooking, 40% Something active',
     group: 'work team', with: 'colleagues', people: 'colleagues', vibe: 'professional but fun',
-    spots: { who: 'a local guide finding places for a work team offsite', ask: 'Give 9 picks: group activities, good restaurants for a team dinner, and one or two relaxed spots for an evening drink. Nothing rowdy. Favor places that take group bookings for a team this size. Match the best time for each place to the trip days.', types: 'activity|restaurant|bar|cafe|venue|tour', heading: 'Things to do in', empty: 'Take the vibe quiz, then let AI pull team activities, dinner spots and a relaxed place for the evening that fit your team, budget and the days you’re there.', add: calmAdd },
+    spots: { who: 'a local guide finding places for a work team offsite', whoSmall: 'a local guide finding places for a work team outing',
+      askSmall: 'Give 9 picks for a team outing: restaurants that take group bookings, a few group activities, and one relaxed spot for a drink. Nothing rowdy.', ask: 'Give 9 picks: group activities, good restaurants for a team dinner, and one or two relaxed spots for an evening drink. Nothing rowdy. Favor places that take group bookings for a team this size. Match the best time for each place to the trip days.', types: 'activity|restaurant|bar|cafe|venue|tour', heading: 'Things to do in', empty: 'Take the vibe quiz, then let AI pull team activities, dinner spots and a relaxed place for the evening that fit your team, budget and the days you’re there.', add: calmAdd },
     checkins: ['At the hotel', 'In a session', 'Getting food', 'At dinner', 'Heading back', 'Asleep'],
     hypes: ['Can’t wait!', 'Who’s packing already?', 'I just booked!', 'See you there'], hypesLive: ['Where is everyone?', 'Great session', 'Dinner plans?', 'Heading back soon'], hangover: false,
+    hypesSmall: ['See you there', 'Who’s driving?', 'Running a few minutes late', 'Saved us a table'], stops: ['food', 'activity', 'work', 'travel', 'chill'],
     picks: 'Places the team already likes', mix: 'Mix work sessions, team meals, one group activity and relaxed evenings (use the picks at their best times).',
     pack: 'laptop chargers, plug adapters, a speaker, snacks, first aid, etc.',
     smallMix: 'a team lunch or dinner, a group activity (a class, a game, a tour), something low-key, and something new',
@@ -1735,7 +1769,30 @@ const PLAN_KINDS = {
 };
 const KIND_OF = { family: 'family', work: 'work' };
 const planKind = (t = S.trip) => PLAN_KINDS[KIND_OF[t?.mode]] || PLAN_KINDS.social;
-const quiz = () => planKind().quiz;
+const quiz = () => planKind().quizBy?.[size()] || planKind().quiz;
+// Itinerary stop kinds the AI may use: social plans keep nightlife; family trips and offsites don't get it
+// (offsites get work sessions). Small plans have no travel or work stops.
+const stopKinds = () => { const k = planKind().stops || ['food', 'activity', 'nightlife', 'travel', 'chill']; return isSmall() ? k.filter(x => x !== 'travel' && x !== 'work') : k; };
+// a kind from an AI reply: social plans keep it as it came; others never get one outside their list
+const stopKindOf = k => !planKind().stops || stopKinds().includes(k) ? k : k === 'nightlife' ? 'chill' : 'activity';
+// Stops someone typed in themselves are commitments (a booking, a game, a set time); picks added from
+// suggestions or last time's outline are already on the plan, but their times were never chosen.
+// An AI stop nobody has changed. Editing a stop records which parts a person set (edited: { title,
+// date, time }), so redrafts and replans keep it. AI stops saved before edits were recorded count as untouched.
+const isDraft = i => !!i.ai && !i.edited;
+const isCommitment = i => (!i.ai && !i.src && i.kind === 'plan') || !!(i.edited && (i.edited.date || i.edited.time));
+// Stops someone deleted (by name), so no AI draft or replan puts them back. Surprises are never listed:
+// the guest of honor can read the plan.
+const isDropped = i => (S.trip.dropped || []).some(t => rkey(t) === rkey(i.title || ''));
+const dropTitle = (list, title) => [...(list || []).filter(t => rkey(t) !== rkey(title)), title].slice(-40);
+const undropTitle = (list, title) => (list || []).filter(t => rkey(t) !== rkey(title));
+const stopLine = i => `- ${i.date}${i.time ? ' ' + i.time : ''}: ${i.title}${i.note ? ' (' + i.note + ')' : ''}`;
+// what an AI itinerary request is told about stops already in the plan (only the ones it may see)
+function keptStops(items) {
+  // a surprise the guest of honor can't see still holds its slot
+  const keep = items.filter(i => !isDraft(i)), dropped = S.trip.dropped || [], fixed = keep.filter(i => isCommitment(i) || i.hidden), rest = keep.filter(i => !isCommitment(i) && !i.hidden);
+  return `${fixed.length ? `Fixed commitments the crew set (keep them exactly as they are, plan around their times, don't move, replace or repeat them):\n${fixed.map(stopLine).join('\n')}\n` : ''}${rest.length ? `Also already on the plan (the crew added these; don't repeat them):\n${rest.map(stopLine).join('\n')}\n` : ''}${dropped.length ? `The crew removed these, so don't add them back: ${dropped.join('; ')}\n` : ''}`;
+}
 const vibeDefault = where => { const v = planKind().vibe; return typeof v === 'string' ? v : v[where]; };
 // a hangout or day out says “Family”, not “Family trip”; v.small has the few words that differ for small plans
 const isSmallSize = sz => sz === 'hangout' || sz === 'day';
@@ -1778,6 +1835,8 @@ function tripView() {
   if (TAB_ALIAS[S.tab]) S.tab = TAB_ALIAS[S.tab];
   const fns = TABFN(); if (!fns[S.tab]) S.tab = 'overview';
   const sec = secOf(S.tab), cd = countdown(), m = mode(), gd = guide(), crumbTab = gd && !gd.wait && gd.tab !== S.tab ? gd.tab : null;
+  // someone deciding whether to join sees just the invitation, until they answer or choose to look around
+  const inviteOnly = S.tab === 'overview' && showWelcome() && !S.peek;
   const head = S.tab === 'overview' ? '' : `<div class="mini"><span class="sec-eyebrow">${esc(sec.label)}</span><button class="mini-name" data-tab="overview">${esc(S.trip.name)}</button>
       ${isSmall() ? `<span class="mode-chip" style="--mc:${SIZES[size()].color}">${esc(SIZES[size()].label)}</span>` : `<span class="mode-chip" style="--mc:${m.color}">${esc(modeLabel(m, size()))}</span>`}${cd ? `<span class="small muted">${esc(cd.n > 0 ? cd.text + ' to go' : cd.text)}</span>` : ''}</div>`;
   return `${topBar()}
@@ -1787,31 +1846,14 @@ function tripView() {
   ${head}
   ${liveBanner()}
   ${journeyPill()}
-  ${sec.tabs.length > 1 ? `<nav class="subtabs" aria-label="${esc(sec.label)}">${sec.tabs.map(([k, l]) => `<button class="subtab ${S.tab === k ? 'on' : ''}" data-tab="${k}" aria-current="${S.tab === k}">${esc(l)}${crumbTab === k ? '<i class="crumb" aria-hidden="true"></i>' : ''}${k === 'log' && !S.demo && logList().some(x => needsMe(x)) ? ` <span class="count">${logList().filter(x => needsMe(x)).length}</span>` : ''}</button>`).join('')}</nav>` : ''}
+  ${sec.tabs.length > 1 && !inviteOnly ? `<nav class="subtabs" aria-label="${esc(sec.label)}">${sec.tabs.map(([k, l]) => `<button class="subtab ${S.tab === k ? 'on' : ''}" data-tab="${k}" aria-current="${S.tab === k}">${esc(l)}${crumbTab === k ? '<i class="crumb" aria-hidden="true"></i>' : ''}${k === 'log' && !S.demo && logList().some(x => needsMe(x)) ? ` <span class="count">${logList().filter(x => needsMe(x)).length}</span>` : ''}</button>`).join('')}</nav>` : ''}
   ${fns[S.tab]()}
   ${isLive() && !S.lostOpen && !['live', 'map', 'overview'].includes(S.tab) ? '<button class="fab-lost" data-act="lostOpen" aria-label="I’m lost: send the crew my spot">SOS</button>' : ''}
   ${S.lostOpen ? lostSheet() : ''}
-  <nav class="bottomnav" aria-label="Trip sections"><div class="bn-inner" style="grid-template-columns:repeat(${sections().length},1fr)">${sections().map(s => `<button class="bn ${s.k === sec.k ? 'on' : ''}" data-sec="${s.k}" aria-current="${s.k === sec.k}">${icon(s.k)}${crumbTab && secOf(crumbTab).k === s.k && s.k !== sec.k ? '<i class="crumb" aria-hidden="true"></i>' : ''}<span>${s.label}${s.k === 'live' && isLive() ? ' ●' : ''}</span></button>`).join('')}</div></nav>`;
+  ${inviteOnly ? '' : `<nav class="bottomnav" aria-label="Trip sections"><div class="bn-inner" style="grid-template-columns:repeat(${sections().length},1fr)">${sections().map(s => `<button class="bn ${s.k === sec.k ? 'on' : ''}" data-sec="${s.k}" aria-current="${s.k === sec.k}">${icon(s.k)}${crumbTab && secOf(crumbTab).k === s.k && s.k !== sec.k ? '<i class="crumb" aria-hidden="true"></i>' : ''}<span>${s.label}${s.k === 'live' && isLive() ? ' ●' : ''}</span></button>`).join('')}</div></nav>`}`;
 }
 
-/* ---------- home: overview ---------- */
-/* ---------- home: overview ----------
-   The journey leads. Everything else on the plan home is secondary: the pass, recent changes,
-   "something changed?", and the crew at a glance. Booking, money and the rest stay one tap
-   away in the bottom menu. */
-function overviewTab() {
-  const t = S.trip, ns = nudges(), welcome = showWelcome();
-  return `${welcome ? welcomeCard() : journeyCard()}
-  ${isLive() ? '<div class="row" style="gap:8px"><button class="btn lost-btn" data-act="lostOpen">I’m lost</button><span class="small muted">Sends the crew your spot.</span></div>' : ''}
-  ${welcome ? '' : changesCard()}
-  ${STAGES.findIndex(([k]) => k === stageOf(t, S.members)) >= 2 ? passport() : pass()}
-  ${welcome ? '' : recoveryCard()}
-  <section class="card stack">
-    <div class="row" style="justify-content:space-between"><h3>Crew</h3><button class="btn sm" data-tab="crew">Invite & manage</button></div>
-    <div class="row" style="gap:6px">${S.members.map(m => `<span class="av-sm" title="${esc(m.nick || 'Someone')}" style="background:${colorFor(m.id)};${m.status === 'out' ? 'opacity:.35' : ''}">${esc((m.nick || '?')[0].toUpperCase())}</span>`).join('')}</div>
-    ${ns.length ? `<span class="small muted">${ns.length} ${ns.length === 1 ? 'person has' : 'people have'} stuff to do. <button class="linkbtn" data-tab="crew">See who</button></span>` : '<span class="small" style="color:var(--good)">Everyone’s done their part.</span>'}
-  </section>`;
-}
+/* the plan home (overviewTab) is in 05o-overview.js */
 function settingsTab() {
   const m = mode();
   return `<section class="card stack"><h3>Plan size</h3><div class="row" style="gap:6px">${Object.entries(SIZES).map(([k, v]) => `<button class="chip ${size() === k ? 'on' : ''}" data-setsize="${k}">${esc(v.label)}</button>`).join('')}</div><p class="small muted">Changing the size keeps everyone’s votes and free days.</p></section>
@@ -2493,7 +2535,7 @@ async function applyChange(ch, picks = {}, opts = {}) {
       if (on('flights')) newTask('Change booked flights to the new dates');
       if (on('staymove')) newTask('Move the stay booking to the new dates');
     }
-    if (ch.kind === 'closed') patch.itinerary = (S.trip.itinerary || []).filter(i => i.id !== ch.item);
+    if (ch.kind === 'closed') { const it = (S.trip.itinerary || []).find(i => i.id === ch.item); patch.itinerary = (S.trip.itinerary || []).filter(i => i.id !== ch.item); if (it && !it.secret) patch.dropped = dropTitle(S.trip.dropped, it.title); }
     if (Object.keys(tasks).length) patch.tasks = tasks;
     if (on('ask')) patch.check = { id: rid(6), q: `${changeText(ch)}. What do we do?`, by: S.uid, at: Date.now(), votes: {} };
     // budgets are private, so a budget change isn't logged for the crew
@@ -2674,7 +2716,7 @@ async function repeatGo() {
   let a = $('#rp-start')?.value || TODAY, b = $('#rp-end')?.value || add(a, 30); if (b < a) [a, b] = [b, a];
   const small = ['hangout', 'day'].includes(snap.size), id = rid(10);
   const trip = { name, size: snap.size, city: snap.city, currency: snap.currency, winStart: a, winEnd: b, nights: small ? 0 : snap.nights, destinations: on('dest') && snap.dest ? [{ id: rid(6), city: snap.dest.city, code: snap.dest.code }] : [], vibes: [], itinerary: [], lockedDates: null, lockedDest: null,
-    mode: snap.mode, honoreeName: '', honoreeFree: true, people: { [S.uid]: true }, createdBy: S.uid, createdAt: Date.now(),
+    mode: snap.mode, honoreeName: '', honoreeFree: !(small && snap.mode === 'birthday'), people: { [S.uid]: true }, createdBy: S.uid, createdAt: Date.now(),
     tasks: on('tasks') ? Object.fromEntries(snap.tasks.map((title, i) => [rid(6), { title, owner: '', due: '', done: false, by: S.uid, at: Date.now() + i }])) : {},
     itinTpl: on('itin') ? snap.itin : null, lastCosts: on('costs') ? snap.costs : null, repeatOf: { tid: snap.from || '', name: snap.fromName || '', tpl: r.tpl || '' } };
   try {
@@ -2713,7 +2755,7 @@ function crewTemplates(c) {
 function applyOutline() {
   const d = dates(), tpl = S.trip.itinTpl; if (!d || !tpl) return;
   const days = span(d.start, d.end);
-  const items = tpl.map(i => ({ id: rid(6), date: days[Math.min(i.day, days.length - 1)], time: hhmm(i.time), title: i.title, kind: i.kind, note: i.note }));
+  const items = tpl.map(i => ({ id: rid(6), date: days[Math.min(i.day, days.length - 1)], time: hhmm(i.time), title: i.title, kind: i.kind, note: i.note, src: 'outline' }));
   saveTrip({ itinerary: [...(S.trip.itinerary || []), ...items], itinTpl: null }).then(ok => ok && flash(`Added ${items.length} stop${items.length === 1 ? '' : 's'} from last time. Change anything that doesn’t fit.`));
 }
 
@@ -2998,6 +3040,7 @@ function undoPlan(x, id) {
     } else {
       if (cur) return { error: `“${u.item.title}” is already back in the plan.` };
       patch.itinerary = [...list, u.item];
+      if ((t.dropped || []).length) patch.dropped = undropTitle(t.dropped, u.item.title);
     }
     expect[key] = u.after; return { patch, expect };
   }
@@ -3126,7 +3169,9 @@ function saveItemEdit(id) {
   const moved = date !== old.date || time !== (old.time || '');
   const text = moved ? `${old.title} moved to ${when(date, time)}` : `${old.title} is now ${title}`;
   const fx = [moved ? `Was ${dow(old.date)} ${old.time ? t12(old.time) : 'with no set time'}` : '', title !== old.title && moved ? `Now called ${title}` : ''].filter(Boolean);
-  saveTrip(withLog({ itinerary: (S.trip.itinerary || []).map(i => i.id === id ? { ...i, date, time, title } : i) }, { area: 'plan', text, fx, act: old.secret ? '' : 'all', undo: { k: 'item', item: old } })).then(ok => ok && flash(`${text}. The crew sees it now.`));
+  // which parts a person set, so a redraft keeps this stop (and, if it was moved, plans around its time)
+  const edited = { ...(old.edited || {}), ...(title !== old.title ? { title: true } : {}), ...(date !== old.date ? { date: true } : {}), ...(time !== (old.time || '') ? { time: true } : {}) };
+  saveTrip(withLog({ itinerary: (S.trip.itinerary || []).map(i => i.id === id ? { ...i, date, time, title, edited } : i) }, { area: 'plan', text, fx, act: old.secret ? '' : 'all', undo: { k: 'item', item: old } })).then(ok => ok && flash(`${text}. The crew sees it now.`));
 }
 /* ---------- personal needs ---------- */
 // Food, access and travel needs, so plans work for everyone. Nobody is asked why. Each
@@ -3507,37 +3552,40 @@ function journeyNow() {
   return { stage, si, steps, focus, also, later: steps.filter(s => s.status !== 'done' && s !== focus && !also.includes(s)), done: steps.filter(s => s.status === 'done') };
 }
 
-/* ----- the guide card: the plan home's main thing ----- */
+/* ----- the plan home's next move and progress ----- */
+// One card with the single next move (its button is the only bright one), then a compact progress
+// card: the six stages, what else is open, and what's coming up or done, folded.
 function journeyCard() {
   const j = journey(), f = j.focus, fresh = f && S.jLast && S.jLast !== f.k; if (f) S.jLast = f.k;
-  const strip = `<div class="card stage-track j-track"><ol class="j-strip" aria-label="Where the plan is">${JSTAGES.map(([k, l], i) => `<li class="${i < j.si ? 'j-done' : i === j.si ? 'j-cur' : ''}"><i></i><span>${l}</span></li>`).join('')}</ol></div>`;
-  const head = f ? `<div class="j-focus ${f.mine ? 'mine' : ''} ${fresh ? 'fresh' : ''}" data-key="jf-${f.k}">
-      <span class="j-eyebrow">${esc(JSTAGE_LABEL[f.stage])}${f.mine ? ' · Your move' : ''}</span>
+  const waitOn = f && (f.who || []).filter(x => x.id !== S.uid);
+  const head = f ? `<section class="j-focus ${f.mine ? 'mine' : ''} ${fresh ? 'fresh' : ''}" data-key="jf-${f.k}">
+      <span class="j-eyebrow">${f.mine ? 'Your move' : 'Up next'}</span>
       <h2>${esc(f.goal)}</h2>
-      ${f.why ? `<p class="j-why">${esc(f.why)}</p>` : ''}
-      <div class="j-do"><span class="label">Here’s what to do</span><b>${esc(f.todo)}</b></div>
-      ${f.who && f.who.filter(x => x.id !== S.uid).length ? `<div class="avs">${f.who.filter(x => x.id !== S.uid).slice(0, 8).map(x => `<span class="av-sm" title="${esc(x.nick || 'Someone')}" style="background:${colorFor(x.id)}">${esc((x.nick || '?')[0].toUpperCase())}</span>`).join('')}</div>` : ''}
-      <div class="j-acts">${f.act()}${f.help && !f.live ? `<button class="linkbtn small j-help" data-jgo="${f.k}">Help me finish this step</button>` : ''}</div>
+      ${f.why || f.todo ? `<p class="j-why">${esc(f.why || f.todo)}</p>` : ''}
+      ${waitOn.length ? `<div class="j-wait">${avStack(waitOn, 5)}<span class="small">Waiting on ${esc(namesOrCount(waitOn))}</span></div>` : ''}
+      <div class="j-acts">${f.act()}</div>
+      ${f.help && !f.live ? `<button class="linkbtn small j-help" data-jgo="${f.k}">Show me where</button>` : ''}
       ${f.k === 'invite' && S.copyText ? `<textarea aria-label="Text to copy" id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
-      ${f.after ? `<p class="j-after"><span class="label">After this</span> ${esc(f.after)}</p>` : ''}
-    </div>`
-    : `<div class="j-focus done"><span class="j-eyebrow">${esc(JSTAGE_LABEL[j.stage])}</span><h2>${j.stage === 'after' ? 'All wrapped up' : 'You’re all set'}</h2><p class="j-why">${(() => { const c = countdown(); return c && j.stage !== 'after' ? `${c.text} to go. Nothing needs doing right now.` : 'Nothing needs doing right now.'; })()}</p></div>`;
+    </section>`
+    : `<section class="j-focus done"><span class="j-eyebrow">${j.stage === 'after' ? 'That’s a wrap' : 'All set'}</span><h2>${j.stage === 'after' ? 'All wrapped up' : 'You’re all set'}</h2><p class="j-why">${(() => { const c = countdown(); return c && j.stage !== 'after' ? `${c.text} to go. Nothing needs doing right now.` : 'Nothing needs doing right now.'; })()}</p></section>`;
   const row = (s, later) => `<div class="j-row s-${s.status}" data-key="j-${s.k}">
-      <span class="j-ic" aria-hidden="true">${s.status === 'done' ? '✓' : s.status === 'blocked' ? '🔒' : s.status === 'later' ? '◷' : s.mine ? '●' : '○'}</span>
-      <div class="stack" style="gap:2px;min-width:0;flex:1"><b>${esc(s.mine && s.mineText && s.status !== 'done' ? s.mineText : s.title)}</b>
-        <span class="small muted">${s.status === 'blocked' ? `Unlocks after: ${esc(s.blocked.join(', ').toLowerCase())}` : s.status === 'later' ? 'Closer to the day' : later && s.status === 'ready' ? `Later, in ${esc(JSTAGE_LABEL[s.stage].toLowerCase())}` : s.status === 'waiting' ? esc(s.group || 'Waiting on the crew') : s.status === 'done' ? 'Done' : esc(s.group || JSTAGE_LABEL[s.stage])}</span></div>
-      ${s.status === 'ready' || s.status === 'waiting' ? `<button class="btn sm ${s.mine ? 'primary' : ''}" data-jgo="${s.k}">${s.mine ? 'Do it' : s.status === 'waiting' ? 'See' : 'Open'}</button>` : ''}
+      <span class="j-ic" aria-hidden="true">${s.status === 'done' ? '✓' : ''}</span>
+      <div class="stack" style="gap:1px;min-width:0;flex:1"><b>${esc(s.mine && s.mineText && s.status !== 'done' ? s.mineText : s.title)}</b>
+        <span class="small muted">${s.status === 'blocked' ? `After ${esc(s.blocked.join(', ').toLowerCase())}` : s.status === 'later' ? 'Closer to the day' : later && s.status === 'ready' ? `Later, in ${esc(JSTAGE_LABEL[s.stage].toLowerCase())}` : s.status === 'waiting' ? esc(s.group || 'Waiting on the crew') : s.status === 'done' ? 'Done' : esc(s.group || JSTAGE_LABEL[s.stage])}</span></div>
+      ${s.status === 'ready' || s.status === 'waiting' ? `<button class="btn sm" data-jgo="${s.k}">${s.mine ? 'Do it' : s.status === 'waiting' ? 'See' : 'Open'}</button>` : ''}
     </div>`;
-  return `<section class="journey" id="journey">
-    ${strip}
+  const progress = `<section class="card ov-progress j-track">
+      <div class="ovp-head"><span class="g-k">Plan progress</span><span class="small muted">${esc(JSTAGE_LABEL[j.stage])} · ${j.si + 1} of ${JSTAGES.length}</span></div>
+      <ol class="j-strip" aria-label="Where the plan is">${JSTAGES.map(([k, l], i) => `<li class="${i < j.si ? 'j-done' : i === j.si ? 'j-cur' : ''}"><i></i><span>${l}</span></li>`).join('')}</ol>
+      ${j.also.length ? `<div class="j-list"><span class="g-k">Also open</span>${j.also.slice(0, 2).map(s => row(s)).join('')}</div>` : ''}
+      ${j.also.length > 2 || j.later.length || j.done.length ? `<details class="j-more" data-key="j-more"><summary class="small">${[j.also.length > 2 && `${j.also.length - 2} more open`, j.later.length && `${j.later.length} coming up`, j.done.length && `${j.done.length} done`].filter(Boolean).join(' · ')}</summary>
+        <div class="j-list">${j.also.slice(2).map(s => row(s)).join('')}${j.later.map(s => row(s, true)).join('')}${j.done.map(s => row(s)).join('')}</div></details>` : ''}
+    </section>`;
+  return `<div class="journey" id="journey">
     ${head}
-    ${j.also.length || j.later.length || j.done.length ? `<div class="card j-lists">` : ''}
-    ${j.also.length ? `<div class="j-list"><span class="label">Also open now</span>${j.also.map(s => row(s)).join('')}</div>` : ''}
-    ${j.later.length || j.done.length ? `<details class="j-more" ${S.jMore ? 'open' : ''}><summary class="small">${[j.later.length && `${j.later.length} coming up`, j.done.length && `${j.done.length} done`].filter(Boolean).join(' · ')}</summary>
-      <div class="j-list">${j.later.map(s => row(s, true)).join('')}${j.done.map(s => row(s)).join('')}</div></details>` : ''}
-    ${j.also.length || j.later.length || j.done.length ? '</div>' : ''}
     ${isHonoree() ? `<p class="small muted">Some of this ${planWord()} is a surprise for you. You’ll see those parts when they’re revealed.</p>` : ''}
-  </section>`;
+    ${progress}
+  </div>`;
 }
 // open the workspace for a step and light up the exact control; click it if that's the action
 function jGo(k) {
@@ -3561,6 +3609,70 @@ function journeyPill() {
   const here = f.help && f.help.tab === S.tab;
   return `<div class="j-pill ${f.mine ? 'mine' : ''}"><span class="small"><span class="np-k">${f.mine ? 'Your move' : 'Next'}</span> ${esc(f.mine && f.mineText ? f.mineText : f.title)}</span>
     ${here ? '' : `<button class="btn sm ${f.mine ? 'primary' : ''}" data-jgo="${f.k}">Go</button>`}</div>`;
+}
+/* ---------- plan covers and the plan home ----------
+   The plan home leads with the plan itself: a cover with its name, type, where and when, and who's
+   coming. Then the one thing to do next (from the journey), then compact progress and four
+   at-a-glance tiles that open their sections. The pass, the story card and "Something changed?"
+   are folded underneath, so they're there without competing with the next move. */
+
+// A plan's color: its type's, or for friends plans its size's, so a crew's plans don't all look alike.
+const planColor = t => t.mode && t.mode !== 'friends' && MODES[t.mode] ? MODES[t.mode].color : SIZES[sizeOf(t)].color;
+// A cover: the crew's latest photo when there is one, otherwise the plan's color with one of a few
+// soft shapes, picked from the plan's id so it never changes.
+function coverOf(t, id, photo) {
+  let h = 0; for (const c of String(id || t.name || '')) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return { cls: `cv cv-${h % 4}${photo ? ' cv-photo' : ''}`, style: `--pc:${planColor(t)}${photo ? `;--img:url('/_blob/${encodeURIComponent(photo)}')` : ''}` };
+}
+// Overlapping avatars; people who haven't said yes are faded.
+function avStack(ms, max = 5) {
+  const list = ms.slice(0, max);
+  return `<div class="avstack" aria-hidden="true">${list.map(m => `<span class="av ${m.faded ? 'av-maybe' : ''}" style="background:${colorFor(m.id)}">${esc((m.nick || '').trim()[0]?.toUpperCase() || '')}</span>`).join('')}${ms.length > max ? `<span class="av av-more">+${ms.length - max}</span>` : ''}</div>`;
+}
+function planHero() {
+  const t = S.trip, m = mode(), sz = size(), small = isSmall(), d = t.lockedDates, ds = t.lockedDest ? dest() : null, cd = d ? countdown() : null;
+  const here = S.members.filter(x => !x.removed && x.status !== 'out'), goers = here.filter(going), maybes = here.length - goers.length;
+  const photo = [...S.photos].filter(p => p.asset).sort((a, b) => (b.at || 0) - (a.at || 0))[0]?.asset;
+  const cv = coverOf(t, S.tid, photo);
+  const meta = [ds && esc(ds.city), d && esc(planWhen(t))].filter(Boolean).join(' · ') || (small ? 'Picking the plan and the day' : 'Picking where and when');
+  const who = here.length <= 1 ? 'Just you so far' : `${goers.length} going${maybes ? ` · ${maybes} maybe` : ''}`;
+  const onInvite = journey().focus?.k === 'invite';
+  return `<section class="ov-hero ${cv.cls}" style="${cv.style}">
+    <div class="ovh-top"><span class="ovh-chip">${esc(modeLabel(m, sz))}</span>${!modeLabel(m, sz).toLowerCase().includes(SIZES[sz].label.toLowerCase()) ? `<span class="ovh-chip soft">${esc(SIZES[sz].label)}</span>` : ''}
+      ${cd ? `<span class="ovh-count ${cd.n === 0 ? 'now' : ''}">${cd.n > 0 ? `<b>${cd.n}</b> ${cd.n === 1 ? 'day' : 'days'} to go` : esc(cd.text)}</span>` : ''}</div>
+    <h1 class="ovh-title">${esc(t.name)}</h1>
+    <p class="ovh-meta">${meta}</p>
+    <div class="ovh-crew">${avStack([...goers, ...here.filter(x => !going(x)).map(x => ({ ...x, faded: true }))], 6)}<span class="ovh-who">${who}</span>
+      ${!onInvite && !S.readOnly && canInvite() ? '<button class="btn sm glass" data-tab="crew">Invite</button>' : ''}</div>
+  </section>`;
+}
+// Four tiles with where each part of the plan stands; each opens its section.
+function ovGlance() {
+  const t = S.trip, small = isSmall(), d = t.lockedDates, ms = active(), ds = t.lockedDest ? dest() : null;
+  const shared = ms.filter(m => (m.days || []).length).length, ideas = (t.destinations || []).length, pitches = (t.pitches?.items || []).length;
+  const b = budgetCap(), all = taskList(), open = all.filter(x => !x.done).length;
+  const tile = (tab, k, v, done) => `<button class="glance ${done ? 'g-done' : ''}" data-tab="${tab}"><span class="g-k">${k}</span><b>${v}</b></button>`;
+  return `<section class="glance-grid" aria-label="At a glance">
+    ${tile('dates', 'When', d ? esc(planWhen(t)) : !shared ? 'Nobody’s shared free days yet' : shared === ms.length ? 'Everyone’s free days are in' : `${shared} of ${ms.length} shared free days`, !!d)}
+    ${tile('match', small ? 'What' : 'Where', ds ? esc(ds.city) : pitches ? `${pitches} to swipe on` : ideas ? `${ideas} idea${ideas === 1 ? '' : 's'} to vote on` : 'No ideas yet', !!ds)}
+    ${tile('cost', 'Budget', b ? `${esc(b.label)} a person` : 'Nobody’s set one yet', !!b)}
+    ${tile('tasks', 'To-dos', open ? `${open} open` : all.length ? 'All done' : 'Nothing yet', all.length > 0 && !open)}
+  </section>`;
+}
+function overviewTab() {
+  const t = S.trip, welcome = showWelcome();
+  // someone who hasn't answered yet sees the invitation first, not the whole planning screen
+  if (welcome && !S.peek) return welcomeCard();
+  const f = journey().focus, me = meDoc(), stage = STAGES.findIndex(([k]) => k === stageOf(t, S.members));
+  const rsvpShown = f && ['rsvp', 'confirm'].includes(f.k) && f.mine;
+  return `${welcome ? welcomeCard() : planHero()}
+  ${isLive() ? '<div class="row" style="gap:8px"><button class="btn lost-btn" data-act="lostOpen">I’m lost</button><span class="small muted">Sends the crew your spot.</span></div>' : ''}
+  ${welcome ? '' : journeyCard()}
+  ${welcome ? '' : changesCard()}
+  ${me && !welcome && !rsvpShown && !S.readOnly ? `<section class="card ov-me"><span class="g-k">Are you in?</span>${commitLadder()}</section>` : ''}
+  ${ovGlance()}
+  ${S.recover ? recoveryCard() : welcome ? '' : `<details class="ov-fold" data-key="fold-recover"><summary><b>Something changed?</b><span class="small muted">See what it affects before anything moves</span></summary>${recoveryCard()}</details>`}
+  <details class="ov-fold" data-key="fold-pass" ${S.cardUrl ? 'open' : ''}><summary><b>${stage >= 2 ? 'Plan passport' : 'Plan pass'}</b><span class="small muted">Share it, or make a story card</span></summary>${stage >= 2 ? passport() : pass()}</details>`;
 }
 /* ---------- home screen + trip creation ---------- */
 /* ---------- book: flights ---------- */
@@ -3890,24 +4002,25 @@ function hangoverCard(day) {
   </section>`;
 }
 function hangPlan(day) {
-  const items = visItems().filter(i => i.date === day && !i.hidden).sort(byTime);
+  // only the day's untouched AI stops are rewritten; anything a person added or changed stays, as in a redraft
+  const all = visItems().filter(i => i.date === day), items = all.filter(isDraft).sort(byTime);
   const votes = Object.values((S.trip.hangover || {})[day] || {}), avg = votes.reduce((a, b) => a + b, 0) / Math.max(1, votes.length);
   const prompt = `A group on a trip is hungover. Hangover index ${avg.toFixed(1)} out of 5 (5 = dead).
 ${context()}
 Today's plan (${day}):
 ${items.map(i => `${i.time || '?'} ${i.title}${i.note ? ' (' + i.note + ')' : ''}`).join('\n')}
-
+${keptStops(all)}
 Rewrite today so it's gentler: start later, add a recovery meal and chill time, swap exhausting things for easy ones, but keep the best evening plan if it's still realistic. Keep it fun.
 Reply with only JSON: {"note":"one funny sentence about the state of the crew","items":[{"time":"HH:MM","title":"","kind":"food|activity|nightlife|chill","note":""}]}`;
   askAI('hang', prompt, data => {
-    const its = (data?.items || []).filter(i => i && i.title).slice(0, 8).map(i => ({ time: hhmm(i.time), title: String(i.title).slice(0, 120), kind: i.kind || 'chill', note: String(i.note || '').slice(0, 200) }));
+    const its = (data?.items || []).filter(i => i && i.title && !isDropped(i)).slice(0, 8).map(i => ({ time: hhmm(i.time), title: String(i.title).slice(0, 120), kind: i.kind || 'chill', note: String(i.note || '').slice(0, 200) }));
     if (!its.length) { flash('No plan came back. Try again.'); return; }
     S.hangPlan = { day, note: String(data.note || '').slice(0, 200), items: its };
   });
 }
 function applyHang() {
   const p = S.hangPlan; if (!p) return;
-  const keep = (S.trip.itinerary || []).filter(i => i.date !== p.day || i.secret);
+  const keep = (S.trip.itinerary || []).filter(i => i.date !== p.day || !isDraft(i));
   S.hangPlan = null;
   saveTrip({ itinerary: [...keep, ...p.items.map(i => ({ id: rid(6), date: p.day, ...i, ai: true }))] }).then(ok => ok && flash('Today’s plan is updated.'));
 }
@@ -4399,7 +4512,7 @@ function lockSmallPitch(p) {
   let d = ds.find(x => x.city.toLowerCase() === p.title.toLowerCase());
   if (!d) { d = { id: rid(6), city: p.title, code: '' }; ds.push(d); }
   const patch = { destinations: ds, lockedDest: d.id, lockedDates: { start: p.start, end: p.start }, time: p.time || '', venue: p.where || '' };
-  if (!(S.trip.itinerary || []).length && p.steps?.length) patch.itinerary = p.steps.map(s => ({ id: rid(6), date: p.start, time: s.time, title: s.title, kind: 'plan', note: '', ai: true }));
+  if (!(S.trip.itinerary || []).length && p.steps?.length) patch.itinerary = p.steps.filter(s => !isDropped(s)).map(s => ({ id: rid(6), date: p.start, time: s.time, title: s.title, kind: 'plan', note: '', ai: true }));
   saveTrip(withLog(patch, { area: 'dest', text: `Locked in: ${p.title}, ${fmt(p.start)}${p.time ? ' at ' + t12(p.time) : ''}`, act: 'all', undo: { k: 'set', patch: { lockedDest: S.trip.lockedDest || null, lockedDates: S.trip.lockedDates || null, time: S.trip.time || '', venue: S.trip.venue || '' } } })).then(ok => ok && flash(`Locked: ${p.title}, ${fmt(p.start)}${p.time ? ' at ' + t12(p.time) : ''}.`));
 }
 
@@ -4418,31 +4531,31 @@ function planStatus(t) {
   if (t.lockedDates) return isSmall(t) ? 'Picking the plan' : 'Picking where';
   return isSmall(t) ? 'Picking the plan and the day' : 'Picking where and when';
 }
-// Split-flap letters, one tile per character, flipping in left to right.
-const flap = text => String(text || '').split(' ').map((w, wi, all) => `<span class="fw">${[...w].map((ch, k) => `<i style="--i:${Math.min(24, all.slice(0, wi).join(' ').length + wi + k)}">${esc(ch)}</i>`).join('')}</span>`).join(' ');
-const BOARD = { draft: 'Standby', gathering: 'Voting', decided: 'Scheduled', organizing: 'Check-in', confirmed: 'On time', happening: 'Now', memories: 'Landed' };
+// A plan on the home page: a cover in the plan's color with its name and type, then where and when,
+// what it's waiting on, and who's in. The whole card opens the plan; share and delete sit on top.
 function planRow(t, opts = {}) {
-  const sz = SIZES[sizeOf(t)], crew = S.crews.find(c => c.id === t.crewId), name = (t.destinations || []).find(d => d.id === t.lockedDest)?.city;
+  const sz = SIZES[sizeOf(t)], crew = S.crews.find(c => c.id === t.crewId), where = (t.destinations || []).find(d => d.id === t.lockedDest)?.city;
   const daysTo = t.lockedDates ? Math.round((D(t.lockedDates.start) - D(TODAY)) / 864e5) : null, st = stageOf(t), p = t.pulse || {};
-  const mine = (p.who || []).includes(S.uid) && p.mine && st !== 'memories';
-  const d = t.lockedDates, n = Object.values(t.people || {}).filter(Boolean).length;
-  // lead with where it's happening; the plan's own name and the crew go underneath
-  const trip = sizeOf(t) === 'trip', main = name || (trip ? 'TBD' : t.name);
-  const sub = [main !== t.name && esc(t.name), crew && !opts.noCrew && esc(crew.name)].filter(Boolean).join(' · ');
-  return `<div class="card plan-row dep-row st-${st} ${mine ? 'needs-me' : ''}" style="--pc:${sz.color}">
-    <div class="pr-date">${d ? `<span>${fmt(d.start, { month: 'short' })}</span><b>${D(d.start).getUTCDate()}</b><span>${t.time ? t12(t.time) : fmt(d.start, { weekday: 'short' })}</span>` : '<span>Date</span><b>TBD</b><span>&nbsp;</span>'}</div>
-    <div class="pr-mid">
-      <span class="pr-kind"><i style="background:var(--pc)"></i>${esc(sz.label)}${n ? ` · ${n} in` : ''}</span>
-      ${trip ? `<h3><span class="sr-only">${esc(main)}</span><span class="flap" aria-hidden="true">${flap(main)}</span></h3>` : `<h3 class="pr-name">${esc(main)}</h3>`}
-      ${sub ? `<span class="pr-sub">${sub}</span>` : ''}
-      <span class="small muted pr-line">${moveLine(t)}${daysTo !== null && daysTo > 0 && daysTo <= 30 ? ` · <b style="color:var(--pc)">${daysTo === 1 ? 'Tomorrow' : 'in ' + daysTo + ' days'}</b>` : ''}</span>
+  const mine = (p.who || []).includes(S.uid) && p.mine && st !== 'memories', cv = coverOf(t, t.id);
+  const ids = Object.keys(t.people || {}).filter(k => t.people[k]), kind = MODES[t.mode] ? modeLabel(MODES[t.mode], sizeOf(t)) : sz.label;
+  const nick = id => id === S.uid ? S.myName : crew?.profiles?.[id]?.nick || '';
+  const meta = [where && esc(where), t.lockedDates && esc(planWhen(t)), crew && !opts.noCrew && esc(crew.name)].filter(Boolean).join(' · ');
+  const soon = daysTo !== null && daysTo >= 0 && daysTo <= 30 ? (daysTo === 0 ? 'Today' : daysTo === 1 ? 'Tomorrow' : `In ${daysTo} days`) : '';
+  return `<article class="plan-row pcard st-${st} ${mine ? 'needs-me' : ''}" style="${cv.style}" data-key="pc-${esc(t.id)}">
+    <button class="pc-hit" data-open="${esc(t.id)}" aria-label="Open ${esc(t.name)}"></button>
+    <div class="pc-cover ${cv.cls}">
+      <div class="pc-top"><span class="ovh-chip">${esc(kind)}</span>${mine ? '<span class="pc-flag">Your move</span>' : soon ? `<span class="pc-soon">${soon}</span>` : ''}</div>
+      <h3 class="pc-title">${esc(t.name)}</h3>
     </div>
-    <div class="pr-status"><span class="board-st">${BOARD[st]}</span>${mine ? '<span class="your-flag">Your move</span>' : ''}</div>
-    <div class="pr-acts">${S.confirmHome === t.id
-      ? `<span class="small pr-ask">Delete for everyone?</span><button class="btn sm ghost" data-act="homeCancel">Cancel</button><button class="btn sm danger-fill" data-homedo="${esc(t.id)}" ${S.busy.delete ? 'disabled' : ''}>${S.busy.delete ? 'Deleting…' : 'Delete'}</button>`
-      : `${canDelete(t) ? `<button class="btn sm ghost icon pr-del" data-homedel="${esc(t.id)}" aria-label="Delete ${esc(t.name)}" title="Delete"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg></button>` : ''}<button class="btn sm" data-share="${esc(t.id)}" aria-label="Share ${esc(t.name)}">Share</button><button class="btn sm primary" data-open="${esc(t.id)}">Open</button>`}</div>
-    ${S.shareHome === t.id && S.copyText ? `<textarea aria-label="Text to copy" class="pr-copy" id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
-  </div>`;
+    <div class="pc-body">
+      ${meta ? `<span class="pc-meta">${meta}</span>` : ''}
+      <span class="small pc-line">${moveLine(t)}</span>
+      <div class="pc-foot">${ids.length ? `${avStack(ids.map(id => ({ id, nick: nick(id) })), 4)}<span class="small muted">${ids.length === 1 ? 'Just you' : ids.length + ' in'}</span>` : ''}
+        <span class="pc-acts">${S.confirmHome === t.id ? '' : `<button class="btn sm ghost icon" data-share="${esc(t.id)}" aria-label="Share ${esc(t.name)}" title="Share"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg></button>${canDelete(t) ? `<button class="btn sm ghost icon pr-del" data-homedel="${esc(t.id)}" aria-label="Delete ${esc(t.name)}" title="Delete"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg></button>` : ''}`}</span></div>
+      ${S.confirmHome === t.id ? `<div class="pc-confirm"><span class="small">Delete this for everyone?</span><button class="btn sm ghost" data-act="homeCancel">Keep it</button><button class="btn sm danger-fill" data-homedo="${esc(t.id)}" ${S.busy.delete ? 'disabled' : ''}>${S.busy.delete ? 'Deleting…' : 'Delete'}</button></div>` : ''}
+      ${S.shareHome === t.id && S.copyText ? `<textarea aria-label="Text to copy" class="pr-copy" id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
+    </div>
+  </article>`;
 }
 function homeView() {
   if (S.loading && parseTripHash(location.hash.slice(1))) return `${topBar()}${skel()}`;
@@ -4457,27 +4570,30 @@ function homeView() {
   const deciding = plans.filter(t => !t.lockedDates && (!t.winEnd || t.winEnd >= TODAY)).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   const past = plans.filter(t => (t.lockedDates && t.lockedDates.end < TODAY) || (!t.lockedDates && t.winEnd && t.winEnd < TODAY));
   const fresh = canSave && S.tripsLoaded && !plans.length && !crews.length;
+  const group = (title, list, extra = '') => list.length ? `<section class="stack home-group"><h2 class="hg-h">${title}</h2>${extra}<div class="pcards">${list.map(t => planRow(t)).join('')}</div></section>` : '';
   return `${topBar()}
-  <section class="hero ${fresh ? '' : 'hero-sm'}">
-    <span class="label">${S.myName ? 'Hey ' + esc(S.myName) : 'Your crew’s plans, from Friday night to Tulum'}</span>
-    <h1>${fresh ? 'Get the group chat out the door.' : 'What are we doing?'}</h1>
-    ${fresh ? '<p>Hangouts, day trips and full-on trips with your crews. The AI pitches plans that fit everyone, the crew swipes, and when everyone matches, it’s on.</p>' : ''}
-    <div class="row"><button class="btn primary big" data-act="newTrip" ${canSave ? '' : 'disabled'}>New plan</button>${canSave ? '<button class="btn" data-act="newCrew">New crew</button>' : ''}<button class="btn ghost" data-act="demo">See the demo</button></div>
+  <section class="home-hero ${fresh ? 'fresh' : ''}">
+    <span class="hh-hi">${S.myName ? 'Hey ' + esc(S.myName) : 'Hey there'}</span>
+    <h1>${fresh ? 'Get the group chat out the door.' : 'What are we doing next?'}</h1>
+    ${fresh ? '<p>Dinners, day trips and full-on getaways. The AI pitches plans that fit everyone, your crew swipes, and when it’s a match, it’s on.</p>' : ''}
+    <button class="btn primary big hh-cta" data-act="newTrip" ${canSave ? '' : 'disabled'}>Make a plan</button>
+    ${fresh ? `<ol class="hh-steps"><li><b>Start a plan</b><span>A night out or a week away</span></li><li><b>Invite your crew</b><span>One link for the group chat</span></li><li><b>Swipe till it’s a match</b><span>Then it’s on</span></li></ol>
+      <div class="hh-more"><button class="linkbtn small" data-act="demo">See a demo trip</button>${canSave ? '<span class="muted" aria-hidden="true">·</span><button class="linkbtn small" data-act="newCrew">Make a crew</button>' : ''}</div>` : ''}
     ${!canSave && !S.loading ? `<span class="small muted">${IN_CLAUDE ? 'Couldn’t connect. Reload the page to try again.' : 'Can’t reach the local server. Start it with npm run dev, then reload.'}</span>` : ''}
   </section>
   ${S.creating === 'newCrew' ? `<section class="card stack"><h2>New crew</h2><p class="small muted">A crew is a group you make plans with. You’ll get an invite link for it next.</p>
     <form id="newCrewForm" class="row" style="gap:6px"><input aria-label="Crew name" id="nc-name" maxlength="40" required placeholder="The Vegas Six" style="flex:1 1 200px"><button class="btn primary" type="submit">Create crew</button><button class="btn ghost" type="button" data-act="cancelNew">Cancel</button></form></section>` : ''}
-  ${!canSave ? '' : !S.tripsLoaded ? skel('rows') : `
+  ${!canSave ? '' : !S.tripsLoaded ? skel('rows') : fresh ? '' : `
   ${inboxCard()}
-  <div class="home-bar"><span class="small muted">${[live.length && live.length + ' happening now', upcoming.length && upcoming.length + ' coming up', deciding.length && deciding.length + ' deciding'].filter(Boolean).join(' · ') || 'No plans yet'}</span>${viewSwitch()}</div>
+  ${plans.length ? `<div class="home-bar"><h2 class="hg-h">Your plans</h2>${viewSwitch()}</div>` : ''}
   ${homeMode === 'cal' ? calView(plans, deciding) : `
-  ${live.length ? `<section class="stack"><h2 class="board-h"><i class="live-dot" aria-hidden="true"></i> Happening now</h2>${live.map(t => planRow(t)).join('')}</section>` : ''}
-  <section class="stack"><div class="row" style="justify-content:space-between"><h2 class="board-h">Departures</h2><span class="small muted mono">${upcoming.length} locked in · <span data-clock>${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span></span></div>
-    ${upcoming.length ? upcoming.map(t => planRow(t)).join('') : `<div class="empty"><span>Nothing locked yet. When a plan has a place and a day, it shows up here like a calendar.</span></div>`}</section>
-  ${deciding.length ? `<section class="stack"><div class="row" style="justify-content:space-between"><h2 class="board-h">On standby</h2><span class="small muted">Still deciding</span></div>${deciding.map(t => planRow(t, { del: true })).join('')}</section>` : ''}`}
-  <section class="stack"><div class="row" style="justify-content:space-between"><h2>Your crews</h2><button class="btn sm" data-act="newCrew">New crew</button></div>
-    ${crews.length ? `<div class="crew-grid">${crews.map(c => crewCard(c, plans)).join('')}</div>` : `<div class="empty"><span>Crews are the groups you make plans with. Make one, share its invite link, and every plan after that starts with everyone already in.</span><button class="btn sm primary" data-act="newCrew">Make a crew</button></div>`}</section>
-  ${past.length && homeMode !== 'cal' ? `<details class="card past"><summary><b>Landed</b> <span class="small muted">Past plans ·</span> <span class="small muted">${past.length}</span></summary><div class="stack" style="margin-top:10px">${past.map(t => planRow(t, { del: true })).join('')}</div></details>` : ''}`}`;
+  ${group('<i class="live-dot" aria-hidden="true"></i> Happening now', live)}
+  ${group('Coming up', upcoming)}
+  ${group('Still deciding', deciding)}`}
+  <section class="stack home-group"><div class="home-bar"><h2 class="hg-h">Your crews</h2>${crews.length ? '<button class="btn sm" data-act="newCrew">New crew</button>' : ''}</div>
+    ${crews.length ? `<div class="crew-grid">${crews.map(c => crewCard(c, plans)).join('')}</div>` : `<div class="hh-crew-empty"><span class="small muted">Plan with the same people a lot? Make a crew and everyone’s in from the start.</span><button class="btn sm" data-act="newCrew">Make a crew</button></div>`}</section>
+  ${past.length && homeMode !== 'cal' ? `<details class="ov-fold past" data-key="home-past"><summary><b>Past plans</b><span class="small muted">${past.length}</span></summary><div class="pcards" style="margin-top:12px">${past.map(t => planRow(t)).join('')}</div></details>` : ''}
+  <div class="hh-more"><button class="linkbtn small" data-act="demo">See a demo trip</button></div>`}`;
 }
 /* ---------- home: calendar view ---------- */
 const ICON_LIST = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>';
@@ -4650,7 +4766,9 @@ async function createTrip() {
   const id = rid(10);
   const currency = CUR_CODES.includes($('#nt-cur')?.value) ? $('#nt-cur').value : myCur(); try { localStorage.setItem('outta_lastcur', currency); } catch {}
   const trip = { name: name.slice(0, 60), size: sz, city, currency, winStart: a, winEnd: b, nights: small ? 0 : +($('#nt-nights')?.value || SIZES[sz].nights), destinations: [], vibes: [], itinerary: [], lockedDates: null, lockedDest: null,
-    mode: S.newMode || 'friends', honoreeName: ($('#nt-honoree')?.value || '').trim().slice(0, 40), honoreeFree: true, people: { [S.uid]: true }, createdBy: S.uid, createdAt: Date.now() };
+    mode: S.newMode || 'friends', honoreeName: ($('#nt-honoree')?.value || '').trim().slice(0, 40),
+    // a small birthday plan (a dinner, a night out) doesn't cover the birthday star unless someone turns it on
+    honoreeFree: !(small && S.newMode === 'birthday'), people: { [S.uid]: true }, createdBy: S.uid, createdAt: Date.now() };
   try {
     await S.db.doc('trips/' + id).set(trip);
     const crew = S.crews.find(c => c.id === S.newCrew);
@@ -4744,11 +4862,11 @@ function draftNight() {
   const prompt = `Plan ${size() === 'hangout' ? 'this evening' : 'this day out'} for a ${planKind().group}: 3–5 stops with times, in order, close to each other.
 ${context()}
 Spots the crew likes: ${spots || 'none yet, suggest real places'}
-Reply with only JSON: {"items":[{"time":"HH:MM","title":"short title with the place name","kind":"food|activity|nightlife|chill","note":"one short line"}]}`;
+${keptStops(visItems().filter(i => i.date === d.start))}Reply with only JSON: {"items":[{"time":"HH:MM","title":"short title with the place name","kind":"${stopKinds().join('|')}","note":"one short line"}]}`;
   askAI('plan', prompt, data => {
-    const items = (data?.items || []).filter(i => i && i.title).slice(0, 6).map(i => ({ id: rid(6), date: d.start, time: hhmm(i.time), title: String(i.title).slice(0, 120), kind: i.kind || 'plan', note: String(i.note || '').slice(0, 200), ai: true }));
+    const items = (data?.items || []).filter(i => i && i.title && !isDropped(i)).slice(0, 6).map(i => ({ id: rid(6), date: d.start, time: hhmm(i.time), title: String(i.title).slice(0, 120), kind: stopKindOf(i.kind) || 'plan', note: String(i.note || '').slice(0, 200), ai: true }));
     if (!items.length) { flash('No plan came back. Try again.'); return; }
-    return saveTrip({ itinerary: [...(S.trip.itinerary || []).filter(i => !i.ai), ...items] });
+    return saveTrip({ itinerary: [...(S.trip.itinerary || []).filter(i => !isDraft(i)), ...items] });
   });
 }
 const planWord = () => ({ hangout: 'hangout', day: 'day out', weekend: 'weekend', trip: 'trip' })[size()];
@@ -4831,6 +4949,7 @@ app.addEventListener('click', e => {
   if (ds.act === 'notifyAsk') { try { Notification.requestPermission().then(render); } catch {} return; }
   if (ds.act === 'theme') { const day = document.documentElement.dataset.theme !== 'light'; document.documentElement.dataset.theme = day ? 'light' : 'dark'; try { localStorage.setItem('outta_theme', day ? 'light' : 'dark'); } catch {} return render(); }
   if (ds.act === 'demo') return openDemo();
+  if (ds.act === 'peek') { S.peek = true; return render(); }
   if (ds.open) return openTrip(ds.open);
   if (ds.homedel) { S.confirmHome = ds.homedel; return render(); }
   if (ds.homeview) { homeMode = ds.homeview; try { localStorage.setItem('outta_homeview', homeMode); } catch {} return render(); }
@@ -5020,16 +5139,16 @@ app.addEventListener('click', e => {
   if (ds.act === 'spots') return findSpots();
   if (ds.act === 'deals') return findDeals();
   if (ds.act === 'plan') return draftPlan();
-  if (ds.act === 'clearAI') return saveTrip({ itinerary: (S.trip.itinerary || []).filter(i => !i.ai) });
+  if (ds.act === 'clearAI') return saveTrip({ itinerary: (S.trip.itinerary || []).filter(i => !isDraft(i)) });
   if (ds.addspot) {
     const s = S.trip.spots.items[+ds.addspot], d = dates(); if (!s || !d) return;
     const days = span(d.start, d.end).slice(0, -1);
     const pref = days.find(x => (s.bestNight || '').toLowerCase().startsWith(dow(x).toLowerCase())) || days[0] || d.start;
     flash(`Added ${s.name} to ${fmt(pref)}`);
     const at = planKind().spots?.add(s) || { time: s.type === 'late-night food' ? '01:30' : '22:30', kind: 'nightlife' };
-    return saveTrip({ itinerary: [...(S.trip.itinerary || []), { id: rid(6), date: pref, ...at, title: s.name, note: s.why || '' }] });
+    return saveTrip({ itinerary: [...(S.trip.itinerary || []), { id: rid(6), date: pref, ...at, title: s.name, note: s.why || '', src: 'pick' }] });
   }
-  if (ds.delitem) { const it = (S.trip.itinerary || []).find(i => i.id === ds.delitem); if (!it) return; return saveTrip(withLog({ itinerary: (S.trip.itinerary || []).filter(i => i.id !== ds.delitem) }, { area: 'plan', text: `${it.title} removed from the plan`, act: it.secret ? '' : 'all', undo: { k: 'item', item: it } })); }
+  if (ds.delitem) { const it = (S.trip.itinerary || []).find(i => i.id === ds.delitem); if (!it) return; return saveTrip(withLog({ itinerary: (S.trip.itinerary || []).filter(i => i.id !== ds.delitem), ...(it.secret ? {} : { dropped: dropTitle(S.trip.dropped, it.title) }) }, { area: 'plan', text: `${it.title} removed from the plan`, act: it.secret ? '' : 'all', undo: { k: 'item', item: it } })); }
   if (ds.edititem) { S.editItem = ds.edititem; render(); setTimeout(() => $('#ei-time')?.focus(), 50); return; }
   if (ds.act === 'editItemCancel') { S.editItem = null; return render(); }
 });
@@ -5185,7 +5304,7 @@ app.addEventListener('submit', async e => {
 function stop() { if (S.meDirty && S.tid && !S.demo) flushMe(); S.unsub.forEach(u => { try { u(); } catch {} }); S.unsub = []; }
 function setHash(h) { try { history.replaceState(null, '', h ? '#' + h : location.pathname + location.search); } catch {} }
 function resetTrip() {
-  S.trip = null; S.members = []; S.membersIn = false; S.busy = {}; meSaved = false; S.setup = null; S.addStay = false; S.whatif = null; S.repeat = null; S.recover = null; S.rc = null; S.editItem = null; S.alts = null; S.expenses = []; S.packing = []; S.readOnly = false;
+  S.trip = null; S.members = []; S.membersIn = false; S.busy = {}; meSaved = false; S.setup = null; S.addStay = false; S.whatif = null; S.repeat = null; S.recover = null; S.rc = null; S.editItem = null; S.alts = null; S.peek = false; S.expenses = []; S.packing = []; S.readOnly = false;
   S.cardUrl = null; S.cardBlob = null; S.copyText = ''; S.split = null; S.confirm = null; S.tkFile = null; S.feed = []; S.bucket = []; S.photos = []; S.pot = []; S.mySpend = []; S.lostOpen = false; S.pinSel = null; S.hangPlan = null; S.wrapI = 0; S.img = null; S.show = null; clearInterval(showTimer);
   for (const k of Object.keys(DRAFT)) delete DRAFT[k];
 }

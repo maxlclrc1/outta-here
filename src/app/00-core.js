@@ -433,10 +433,10 @@ Reply with only JSON: {"weather":"one line on expected weather","items":[{"text"
 }
 function findSpots() {
   const sp = planKind().spots;
-  const prompt = sp ? `You're ${sp.who}${isSmall() ? ` for ${size() === 'hangout' ? 'an evening' : 'a day out'}` : ' for a group trip'}. Recommend real, well-known places that are open as of your latest knowledge.
+  const prompt = sp ? `You're ${isSmall() && sp.whoSmall || sp.who}${isSmall() ? ` for ${size() === 'hangout' ? 'an evening' : 'a day out'}` : ' for a group trip'}. Recommend real, well-known places that are open as of your latest knowledge.
 ${context()}
 
-${sp.ask}
+${isSmall() && sp.askSmall || sp.ask}
 Reply with only JSON: {"items":[{"name":"",${CALM_SPOT.replace('%T', sp.types)}}]}
 lat/lng: your best estimate of the place's coordinates.` : `You're a nightlife scout planning ${isSmall() ? 'a night out for a friend group' : 'a group trip'}. Recommend real, well-known venues that are open as of your latest knowledge.
 ${context()}
@@ -473,16 +473,16 @@ function draftPlan() {
 ${context()}
 ${planKind().picks}: ${spots || 'none yet — suggest real venues'}
 ${S.trip.crewId ? dnaText(S.trip.crewId) : ''}
-
+${keptStops(visItems())}
 Arrival and departure days are lighter. ${planKind().mix} 3–5 items per day.
-Reply with only JSON: {"days":[{"date":"YYYY-MM-DD","items":[{"time":"HH:MM","title":"short title with the place name","kind":"food|activity|nightlife|travel|chill","note":"one short line"}]}]}`;
+Reply with only JSON: {"days":[{"date":"YYYY-MM-DD","items":[{"time":"HH:MM","title":"short title with the place name","kind":"${stopKinds().join('|')}","note":"one short line"}]}]}`;
   askAI('plan', prompt, data => {
     const days = Array.isArray(data?.days) ? data.days : [];
     const valid = new Set(span(d.start, d.end));
     const items = [];
-    for (const day of days) for (const it of (day.items || [])) if (valid.has(day.date) && it.title) items.push({ id: rid(6), date: day.date, time: hhmm(it.time), title: String(it.title).slice(0, 120), kind: it.kind || 'activity', note: String(it.note || '').slice(0, 200), ai: true });
+    for (const day of days) for (const it of (day.items || [])) if (valid.has(day.date) && it.title && !isDropped(it)) items.push({ id: rid(6), date: day.date, time: hhmm(it.time), title: String(it.title).slice(0, 120), kind: stopKindOf(it.kind) || 'activity', note: String(it.note || '').slice(0, 200), ai: true });
     if (!items.length) { flash('No plan came back. Try again.'); return; }
-    const keep = (S.trip.itinerary || []).filter(i => !i.ai);
+    const keep = (S.trip.itinerary || []).filter(i => !isDraft(i));
     return saveTrip({ itinerary: [...keep, ...items] });
   });
 }

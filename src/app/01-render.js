@@ -125,7 +125,7 @@ const skel = (kind = 'plan') => kind === 'rows'
 function topBar() {
   const day = document.documentElement.dataset.theme === 'light';
   return `<div class="top"><button class="logo" data-act="home">Outta<span>/</span>Here</button>
-    <div class="row" style="gap:10px;flex-wrap:nowrap">${S.tid ? `<span class="label">Code <span class="mono">${esc(S.demo ? 'DEMO' : S.tid)}</span></span>` : ''}<button class="theme-t" data-act="theme" aria-label="${day ? 'Switch to night mode' : 'Switch to day mode'}" title="${day ? 'Night mode' : 'Day mode'}">${day ? '☾' : '☀'}</button></div></div>`;
+    <div class="row" style="gap:10px;flex-wrap:nowrap"><button class="theme-t" data-act="theme" aria-label="${day ? 'Switch to night mode' : 'Switch to day mode'}" title="${day ? 'Night mode' : 'Day mode'}">${day ? '☾' : '☀'}</button></div></div>`;
 }
 
 function pass() {
@@ -345,7 +345,7 @@ function spotsTab() {
         ${w.how !== 'majority' ? `<div class="runoff"><span class="small">${w.how === 'runoff' ? `Runoff winner: <b>${esc(w.a)}</b> (${w.tied.map(a => (w.rv[a] || 0)).join('–')})` : w.votes ? `Runoff is tied too, so a coin flip picked <b>${esc(w.a)}</b>` : `Coin flip picked <b>${esc(w.a)}</b> for now. Vote in the runoff to decide it yourselves.`}</span>
           <div class="row" style="gap:6px">${w.tied.map(a => `<button class="chip ${myRun === a ? 'on' : ''}" data-qrunoff="${q.k}|${esc(a)}">${esc(a)}</button>`).join('')}</div></div>` : ''}</div>`; }).join('')}
       <span class="small" style="opacity:.75">Screenshot this and drop it in the chat.</span>
-    </div>` : `<div class="empty"><b>Your crew’s vibe shows up here.</b><span>Answer the ${Q.length} questions. Once ${pk.spots ? 'everyone answers' : 'friends answer'} too, you’ll see the blend, like “${pk.blendEg}”, and the AI uses it for its picks.</span></div>`}
+    </div>` : `<div class="empty"><b>Your crew’s vibe shows up here.</b><span>Answer the ${Q.length} questions. Once ${pk.spots ? 'everyone answers' : 'friends answer'} too, you’ll see the blend, like “${Q === pk.quiz ? pk.blendEg : `60% ${Q[0].o[0]}, 40% ${Q[0].o[1]}`}”, and the AI uses it for its picks.</span></div>`}
   </section>
   <section class="card stack">
     <div class="row" style="justify-content:space-between"><h2>${pk.spots ? pk.spots.heading : 'Where we’re going out in'} ${esc(ds.city)}</h2></div>
@@ -368,7 +368,7 @@ function planTab() {
   const days = span(d.start, d.end), items = visItems();
   return `<section class="card stack">
     <div class="row" style="justify-content:space-between"><h2>${isSmall() ? 'The plan' : 'Itinerary'}</h2>
-      <div class="row" style="gap:6px">${items.some(i => i.ai) ? `<button class="btn sm ghost" data-act="clearAI">Remove AI items</button>` : ''}
+      <div class="row" style="gap:6px">${items.some(isDraft) ? `<button class="btn sm ghost" data-act="clearAI">Remove AI items</button>` : ''}
       ${S.sample !== null ? `<button class="btn primary" data-act="plan" ${S.busy.plan ? 'disabled' : ''}>${S.busy.plan ? '<i class="spin"></i>Drafting…' : items.some(i => i.ai) ? 'Redraft with AI' : 'Draft it with AI'}</button>` : ''}</div></div>
     ${S.trip.itinTpl && S.trip.itinTpl.length && !S.readOnly ? `<div class="cost-flag soft row" style="justify-content:space-between;gap:8px"><span><b>Last time’s outline</b> · ${S.trip.itinTpl.length} stop${S.trip.itinTpl.length === 1 ? '' : 's'}${S.trip.repeatOf?.name ? ` from ${esc(S.trip.repeatOf.name)}` : ''}</span><span class="row" style="gap:6px"><button class="btn sm primary" data-act="applyOutline">Put it on these dates</button><button class="btn sm ghost" data-act="dropOutline">Skip it</button></span></div>` : ''}
     ${!d.locked ? `<p class="small muted">Using the best dates so far. ${isSmall() ? 'Lock the day in When so the plan doesn’t shift.' : 'Lock dates in Dates so the plan doesn’t shift.'}</p>` : ''}

@@ -5,11 +5,11 @@ function draftNight() {
   const prompt = `Plan ${size() === 'hangout' ? 'this evening' : 'this day out'} for a ${planKind().group}: 3–5 stops with times, in order, close to each other.
 ${context()}
 Spots the crew likes: ${spots || 'none yet, suggest real places'}
-Reply with only JSON: {"items":[{"time":"HH:MM","title":"short title with the place name","kind":"food|activity|nightlife|chill","note":"one short line"}]}`;
+${keptStops(visItems().filter(i => i.date === d.start))}Reply with only JSON: {"items":[{"time":"HH:MM","title":"short title with the place name","kind":"${stopKinds().join('|')}","note":"one short line"}]}`;
   askAI('plan', prompt, data => {
-    const items = (data?.items || []).filter(i => i && i.title).slice(0, 6).map(i => ({ id: rid(6), date: d.start, time: hhmm(i.time), title: String(i.title).slice(0, 120), kind: i.kind || 'plan', note: String(i.note || '').slice(0, 200), ai: true }));
+    const items = (data?.items || []).filter(i => i && i.title && !isDropped(i)).slice(0, 6).map(i => ({ id: rid(6), date: d.start, time: hhmm(i.time), title: String(i.title).slice(0, 120), kind: stopKindOf(i.kind) || 'plan', note: String(i.note || '').slice(0, 200), ai: true }));
     if (!items.length) { flash('No plan came back. Try again.'); return; }
-    return saveTrip({ itinerary: [...(S.trip.itinerary || []).filter(i => !i.ai), ...items] });
+    return saveTrip({ itinerary: [...(S.trip.itinerary || []).filter(i => !isDraft(i)), ...items] });
   });
 }
 const planWord = () => ({ hangout: 'hangout', day: 'day out', weekend: 'weekend', trip: 'trip' })[size()];
