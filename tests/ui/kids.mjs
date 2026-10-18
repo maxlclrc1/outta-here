@@ -1,7 +1,7 @@
 // Browser regression test, run with: npm run test:ui (needs Playwright, see README › Tests)
 // Family plans: next to "Are you in?", an adult says how many kids they're bringing (− / +, 0 to 12),
 // saved as a count on their own record; the crew list shows "Rae + 2 kids". Kids follow their adult:
-// they aren't people in the plan, so headcounts don't change yet. Other plan types show none of this,
+// they aren't people in the plan, so they add to the party count but not the adults. Other plan types show none of this,
 // even for a record that has a count, and records without one read as 0.
 import { install, trackBrowser } from '../_identity.mjs'; install(); // act as the test's people (see the file)
 const { chromium } = await import(process.env.PLAYWRIGHT || 'playwright');
@@ -33,7 +33,8 @@ const mine = async tid => (await api(A, 'get', `trips/${tid}/members/${A}`)).dat
   const who = await p.locator('.ovh-who').innerText();
   await step.locator('[data-kids="1"]').click(); await step.locator('[data-kids="1"]').click(); await p.waitForTimeout(1200);
   expect('…+ twice saves 2 on Rae’s own record', (await mine(tid))?.kids === 2 && (await step.locator('.kids-n').innerText()) === '2');
-  expect('…without changing Rae’s RSVP or the headcount', (await mine(tid))?.status === 'in' && (await p.locator('.ovh-who').innerText()) === who, who);
+  { const now = await p.locator('.ovh-who').innerText();
+    expect('…without changing Rae’s RSVP; the party count adds her kids (adults stay 2)', (await mine(tid))?.status === 'in' && who === '5 going (2 adults, 3 kids)' && now === '7 going (2 adults, 5 kids)', `${who} → ${now}`); }
   { const t = await crew(); expect('the crew list shows “Rae + 2 kids” and “Bea + 3 kids”', /Rae \+ 2 kids \(you\)/.test(t) && /Bea \+ 3 kids/.test(t), t); }
   await overview(); await step.locator('[data-kids="-1"]').click(); await p.waitForTimeout(1200);
   { const t = await crew(); expect('− brings it to 1 (“+ 1 kid”)', (await mine(tid))?.kids === 1 && /Rae \+ 1 kid \(you\)/.test(t), t); }

@@ -7,16 +7,27 @@ const LEVEL_HELP = { maybe: 'Into it, not sure yet', in: 'Planning to come', con
 const isOrganizer = () => S.demo || S.trip?.createdBy === S.uid || !!(S.trip?.orgs || {})[S.uid];
 const undecided = () => S.members.filter(m => !m.status || m.status === 'maybe');
 const NUDGE_REST = 12 * 36e5;
+// Who's coming. Three different counts, kept apart on purpose:
+// - the level counts and firm/max are ADULTS, one per person in the plan (votes, free days and "Can come"
+//   are about these, and planHeads/payHeads, which split costs and budgets, still use them);
+// - kids: on family plans, the kids each adult brings, counted at their adult's level;
+// - party: adults + kids, the size of the group that's actually coming, for attendance displays.
 function headcount() {
-  const c = k => S.members.filter(m => (m.status || 'maybe') === k).length;
+  const at = k => S.members.filter(m => (m.status || 'maybe') === k), c = k => at(k).length, kc = k => kidsWith(at(k));
   const h = { booked: c('booked'), confirmed: c('confirmed'), going: c('in'), interested: c('maybe'), out: c('out') };
-  return { ...h, firm: h.booked + h.confirmed, max: h.booked + h.confirmed + h.going };
+  const firm = h.booked + h.confirmed, max = firm + h.going;
+  const kids = { booked: kc('booked'), confirmed: kc('confirmed'), going: kc('in') }, kf = kids.booked + kids.confirmed, km = kf + kids.going;
+  return { ...h, firm, max, kids: { ...kids, firm: kf, max: km }, party: { firm: firm + kf, max: max + km } };
 }
 // Kids an adult is bringing (family plans): just a count on their own record, no accounts, RSVPs,
 // budgets or days of their own; they follow their adult. Missing means 0. Not yet in any headcount.
 const KIDS_MAX = 12;
 const kidsOf = m => Math.max(0, Math.min(KIDS_MAX, Math.floor(+m?.kids || 0)));
 const kidsOn = () => planGroup() === 'family';
+// the kids that come with these adults (0 outside family plans, whatever is saved)
+const kidsWith = (ms, t = S.trip) => planGroup(t) === 'family' ? ms.reduce((n, m) => n + kidsOf(m), 0) : 0;
+// " (4 adults, 3 kids)" after a party total, or nothing when there are no kids
+const partyNote = (adults, kids) => kids ? ` (${adults} ${adults === 1 ? 'adult' : 'adults'}, ${kids} ${kids === 1 ? 'kid' : 'kids'})` : '';
 const withKids = m => { const n = kidsOn() ? kidsOf(m) : 0; return n ? ` + ${n} ${n === 1 ? 'kid' : 'kids'}` : ''; };
 function kidsStep() {
   const n = kidsOf(meDoc());
@@ -36,8 +47,8 @@ function rsvpCard() {
   return `<section class="card stack rsvp">
     <div class="row" style="justify-content:space-between"><h2>Who’s coming</h2>${by ? `<span class="pill ${late ? 'out' : 'maybe'}">${late ? 'Answers closed ' + short(by) : 'Answer by ' + short(by)}</span>` : ''}</div>
     ${meDoc() && !S.readOnly && STAGES.findIndex(([k]) => k === stageOf(S.trip, S.members)) >= 2 ? commitLadder() : ''}
-    <div class="hc">${blocks.map(([k, n]) => `<div class="hc-b lvl-${k} ${n ? '' : 'zero'}"><b>${n}</b><span>${LEVEL_LABEL[k]}</span></div>`).join('')}</div>
-    <p class="small muted">${h.firm ? `Plan for <b>${h.firm}</b> ${h.firm === 1 ? 'person' : 'people'}${h.going ? `, up to <b>${h.max}</b> if everyone going confirms` : ''}.` : h.going ? `Nobody has confirmed yet. <b>${h.going}</b> ${h.going === 1 ? 'is' : 'are'} planning to come.` : 'Nobody has said they’re coming yet.'} Stays and costs use this number.</p>
+    <div class="hc">${blocks.map(([k, n]) => { const kn = h.kids[k === 'in' ? 'going' : k] || 0; return `<div class="hc-b lvl-${k} ${n ? '' : 'zero'}"><b>${n}</b><span>${LEVEL_LABEL[k]}</span>${kn ? `<span class="hc-k">+${kn} ${kn === 1 ? 'kid' : 'kids'}</span>` : ''}</div>`; }).join('')}</div>
+    <p class="small muted">${h.firm ? `Plan for <b>${h.party.firm}</b> ${h.party.firm === 1 ? 'person' : 'people'}${partyNote(h.firm, h.kids.firm)}${h.going ? `, up to <b>${h.party.max}</b> if everyone going confirms` : ''}.` : h.going ? `Nobody has confirmed yet. <b>${h.party.max}</b> ${h.party.max === 1 ? 'is' : 'are'} planning to come${partyNote(h.going, h.kids.going)}.` : 'Nobody has said they’re coming yet.'} ${h.kids.max ? 'Stays and costs still count adults only for now.' : 'Stays and costs use this number.'}</p>
     ${condLines()}
     ${org ? `<div class="stack" style="gap:10px;border-top:1px solid var(--line);padding-top:12px">
       <div class="row" style="gap:8px;align-items:flex-end"><label class="field" style="flex:0 1 190px"><span class="label">Everyone answers by</span><input id="rsvp-by" type="date" value="${esc(by || '')}" min="${TODAY}"></label>${by ? '<button class="btn sm ghost" data-act="rsvpClear">No deadline</button>' : ''}</div>

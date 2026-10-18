@@ -1168,7 +1168,7 @@ function welcomeCard() {
     <div class="ovh-top"><span class="ovh-chip">${host ? `${esc(host.nick || 'A friend')} invited you` : 'You’re invited'}</span><span class="ovh-chip soft">${esc(modeLabel(mode(), size()))}</span></div>
     <h1 class="ovh-title">${esc(t.name)}</h1>
     <p class="ovh-meta">${[esc(sz.label) + (crew ? ' with ' + esc(crew.name) : ''), esc(when), ds && esc(ds.city)].filter(Boolean).join(' · ')}</p>
-    ${ins.length ? `<div class="ovh-crew">${avStack(ins, 6)}<span class="ovh-who">${ins.length} in so far</span></div>` : ''}
+    ${ins.length ? `<div class="ovh-crew">${avStack(ins, 6)}<span class="ovh-who">${ins.length + kidsWith(ins)} in so far${partyNote(ins.length, kidsWith(ins))}</span></div>` : ''}
     ${S.trip.rsvpBy && TODAY <= S.trip.rsvpBy ? `<span class="small ovh-note"><b>Answer by ${fmt(S.trip.rsvpBy)}</b> so the crew knows how many to plan for.</span>` : ''}
     <div class="welcome-acts"><button class="btn primary big" data-join="in">I’m in</button><button class="btn big glass" data-join="maybe">Maybe</button><button class="btn ghost big glass" data-join="out">Can’t make it</button></div>
     ${t.crewId ? `<span class="small ovh-note">Saying you’re in also adds you to ${crew ? esc(crew.name) : 'the crew'}, so you’re part of their next plans too.</span>` : ''}
@@ -1996,16 +1996,27 @@ const LEVEL_HELP = { maybe: 'Into it, not sure yet', in: 'Planning to come', con
 const isOrganizer = () => S.demo || S.trip?.createdBy === S.uid || !!(S.trip?.orgs || {})[S.uid];
 const undecided = () => S.members.filter(m => !m.status || m.status === 'maybe');
 const NUDGE_REST = 12 * 36e5;
+// Who's coming. Three different counts, kept apart on purpose:
+// - the level counts and firm/max are ADULTS, one per person in the plan (votes, free days and "Can come"
+//   are about these, and planHeads/payHeads, which split costs and budgets, still use them);
+// - kids: on family plans, the kids each adult brings, counted at their adult's level;
+// - party: adults + kids, the size of the group that's actually coming, for attendance displays.
 function headcount() {
-  const c = k => S.members.filter(m => (m.status || 'maybe') === k).length;
+  const at = k => S.members.filter(m => (m.status || 'maybe') === k), c = k => at(k).length, kc = k => kidsWith(at(k));
   const h = { booked: c('booked'), confirmed: c('confirmed'), going: c('in'), interested: c('maybe'), out: c('out') };
-  return { ...h, firm: h.booked + h.confirmed, max: h.booked + h.confirmed + h.going };
+  const firm = h.booked + h.confirmed, max = firm + h.going;
+  const kids = { booked: kc('booked'), confirmed: kc('confirmed'), going: kc('in') }, kf = kids.booked + kids.confirmed, km = kf + kids.going;
+  return { ...h, firm, max, kids: { ...kids, firm: kf, max: km }, party: { firm: firm + kf, max: max + km } };
 }
 // Kids an adult is bringing (family plans): just a count on their own record, no accounts, RSVPs,
 // budgets or days of their own; they follow their adult. Missing means 0. Not yet in any headcount.
 const KIDS_MAX = 12;
 const kidsOf = m => Math.max(0, Math.min(KIDS_MAX, Math.floor(+m?.kids || 0)));
 const kidsOn = () => planGroup() === 'family';
+// the kids that come with these adults (0 outside family plans, whatever is saved)
+const kidsWith = (ms, t = S.trip) => planGroup(t) === 'family' ? ms.reduce((n, m) => n + kidsOf(m), 0) : 0;
+// " (4 adults, 3 kids)" after a party total, or nothing when there are no kids
+const partyNote = (adults, kids) => kids ? ` (${adults} ${adults === 1 ? 'adult' : 'adults'}, ${kids} ${kids === 1 ? 'kid' : 'kids'})` : '';
 const withKids = m => { const n = kidsOn() ? kidsOf(m) : 0; return n ? ` + ${n} ${n === 1 ? 'kid' : 'kids'}` : ''; };
 function kidsStep() {
   const n = kidsOf(meDoc());
@@ -2025,8 +2036,8 @@ function rsvpCard() {
   return `<section class="card stack rsvp">
     <div class="row" style="justify-content:space-between"><h2>Who’s coming</h2>${by ? `<span class="pill ${late ? 'out' : 'maybe'}">${late ? 'Answers closed ' + short(by) : 'Answer by ' + short(by)}</span>` : ''}</div>
     ${meDoc() && !S.readOnly && STAGES.findIndex(([k]) => k === stageOf(S.trip, S.members)) >= 2 ? commitLadder() : ''}
-    <div class="hc">${blocks.map(([k, n]) => `<div class="hc-b lvl-${k} ${n ? '' : 'zero'}"><b>${n}</b><span>${LEVEL_LABEL[k]}</span></div>`).join('')}</div>
-    <p class="small muted">${h.firm ? `Plan for <b>${h.firm}</b> ${h.firm === 1 ? 'person' : 'people'}${h.going ? `, up to <b>${h.max}</b> if everyone going confirms` : ''}.` : h.going ? `Nobody has confirmed yet. <b>${h.going}</b> ${h.going === 1 ? 'is' : 'are'} planning to come.` : 'Nobody has said they’re coming yet.'} Stays and costs use this number.</p>
+    <div class="hc">${blocks.map(([k, n]) => { const kn = h.kids[k === 'in' ? 'going' : k] || 0; return `<div class="hc-b lvl-${k} ${n ? '' : 'zero'}"><b>${n}</b><span>${LEVEL_LABEL[k]}</span>${kn ? `<span class="hc-k">+${kn} ${kn === 1 ? 'kid' : 'kids'}</span>` : ''}</div>`; }).join('')}</div>
+    <p class="small muted">${h.firm ? `Plan for <b>${h.party.firm}</b> ${h.party.firm === 1 ? 'person' : 'people'}${partyNote(h.firm, h.kids.firm)}${h.going ? `, up to <b>${h.party.max}</b> if everyone going confirms` : ''}.` : h.going ? `Nobody has confirmed yet. <b>${h.party.max}</b> ${h.party.max === 1 ? 'is' : 'are'} planning to come${partyNote(h.going, h.kids.going)}.` : 'Nobody has said they’re coming yet.'} ${h.kids.max ? 'Stays and costs still count adults only for now.' : 'Stays and costs use this number.'}</p>
     ${condLines()}
     ${org ? `<div class="stack" style="gap:10px;border-top:1px solid var(--line);padding-top:12px">
       <div class="row" style="gap:8px;align-items:flex-end"><label class="field" style="flex:0 1 190px"><span class="label">Everyone answers by</span><input id="rsvp-by" type="date" value="${esc(by || '')}" min="${TODAY}"></label>${by ? '<button class="btn sm ghost" data-act="rsvpClear">No deadline</button>' : ''}</div>
@@ -2137,6 +2148,9 @@ function moneyRange(s) {
   const v = n.map(Number).filter(x => x > 0).slice(0, 2); if (!v.length) return null;
   return [Math.min(...v), Math.max(...v)];
 }
+// How many people the plan's costs and budgets are shared over: attending ADULTS (headcount's firm/max),
+// not the party size. Kids aren't priced yet, so they don't change cost totals, shares or budgets
+// (lib/pays.ts headsOf mirrors this for the server's budget check).
 const planHeads = () => { const h = headcount(); return Math.max(1, h.firm || h.max || active().length); };
 // Who splits a shared cost: those heads, minus a guest of honor whose share the group covers
 // (as expense splits and settle-up do). Never below 1, so a lone covered honoree sees the full price.
@@ -3739,7 +3753,7 @@ function planHero() {
   const photo = [...S.photos].filter(p => p.asset).sort((a, b) => (b.at || 0) - (a.at || 0))[0]?.asset;
   const cv = coverOf(t, S.tid, photo);
   const meta = [ds && esc(ds.city), d && esc(planWhen(t))].filter(Boolean).join(' · ') || (small ? 'Picking the plan and the day' : 'Picking where and when');
-  const who = here.length <= 1 ? 'Just you so far' : `${goers.length} going${maybes ? ` · ${maybes} maybe` : ''}`;
+  const kids = kidsWith(goers), who = here.length <= 1 && !kids ? 'Just you so far' : `${goers.length + kids} going${partyNote(goers.length, kids)}${maybes ? ` · ${maybes} maybe` : ''}`;
   const onInvite = journey().focus?.k === 'invite';
   return `<section class="ov-hero ${cv.cls}" style="${cv.style}">
     <div class="ovh-top"><span class="ovh-chip">${esc(modeLabel(m, sz))}</span>${!modeLabel(m, sz).toLowerCase().includes(SIZES[sz].label.toLowerCase()) ? `<span class="ovh-chip soft">${esc(SIZES[sz].label)}</span>` : ''}

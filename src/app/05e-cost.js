@@ -18,6 +18,9 @@ function moneyRange(s) {
   const v = n.map(Number).filter(x => x > 0).slice(0, 2); if (!v.length) return null;
   return [Math.min(...v), Math.max(...v)];
 }
+// How many people the plan's costs and budgets are shared over: attending ADULTS (headcount's firm/max),
+// not the party size. Kids aren't priced yet, so they don't change cost totals, shares or budgets
+// (lib/pays.ts headsOf mirrors this for the server's budget check).
 const planHeads = () => { const h = headcount(); return Math.max(1, h.firm || h.max || active().length); };
 // Who splits a shared cost: those heads, minus a guest of honor whose share the group covers
 // (as expense splits and settle-up do). Never below 1, so a lone covered honoree sees the full price.

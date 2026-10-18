@@ -8,7 +8,8 @@ export const paysOf = (t: Json | null | undefined): Pays => (t && (t.pays === 'o
 export const payerOf = (t: Json | null | undefined) => (paysOf(t) === 'one' ? String(t!.payer || t!.createdBy || '') : '');
 
 const num = (v: unknown) => (typeof v === 'number' && isFinite(v) ? v : +String(v ?? '') || 0);
-// how many people a total is shared over: confirmed, else going, else everyone still in (the app's planHeads)
+// how many people a total is shared over: confirmed, else going, else everyone still in (the app's planHeads).
+// Adults only: a family plan's kids (members' `kids`) aren't counted until kids have their own pricing.
 export function headsOf(ms: Json[]) {
   const st = (m: Json) => String(m.status || 'maybe');
   const firm = ms.filter(m => ['booked', 'confirmed'].includes(st(m))).length, max = firm + ms.filter(m => st(m) === 'in').length;

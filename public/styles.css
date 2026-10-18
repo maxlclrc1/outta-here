@@ -623,6 +623,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 .hc-b b{font:900 22px var(--f-display);font-variation-settings:"wdth" 70}
 .hc-b span{font:600 10px var(--f-body);color:var(--muted)}
 .hc-b.zero{opacity:.45}
+.hc-b .hc-k{font:600 10px var(--f-body);color:var(--muted)}
 .hc-b.lvl-booked,.hc-b.lvl-confirmed{background:color-mix(in oklab,var(--good) 15%,transparent)}
 .hc-b.lvl-booked b,.hc-b.lvl-confirmed b{color:var(--good)}
 .pill.lvl-booked,.pill.lvl-confirmed{background:var(--good);color:#fff}
