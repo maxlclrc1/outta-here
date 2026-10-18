@@ -198,7 +198,7 @@ app.addEventListener('click', e => {
   if (ds.act === 'spots') return findSpots();
   if (ds.act === 'deals') return findDeals();
   if (ds.act === 'plan') return draftPlan();
-  if (ds.act === 'clearAI') return saveTrip({ itinerary: (S.trip.itinerary || []).filter(i => !i.ai) });
+  if (ds.act === 'clearAI') return saveTrip({ itinerary: (S.trip.itinerary || []).filter(i => !isDraft(i)) });
   if (ds.addspot) {
     const s = S.trip.spots.items[+ds.addspot], d = dates(); if (!s || !d) return;
     const days = span(d.start, d.end).slice(0, -1);
@@ -207,7 +207,7 @@ app.addEventListener('click', e => {
     const at = planKind().spots?.add(s) || { time: s.type === 'late-night food' ? '01:30' : '22:30', kind: 'nightlife' };
     return saveTrip({ itinerary: [...(S.trip.itinerary || []), { id: rid(6), date: pref, ...at, title: s.name, note: s.why || '', src: 'pick' }] });
   }
-  if (ds.delitem) { const it = (S.trip.itinerary || []).find(i => i.id === ds.delitem); if (!it) return; return saveTrip(withLog({ itinerary: (S.trip.itinerary || []).filter(i => i.id !== ds.delitem) }, { area: 'plan', text: `${it.title} removed from the plan`, act: it.secret ? '' : 'all', undo: { k: 'item', item: it } })); }
+  if (ds.delitem) { const it = (S.trip.itinerary || []).find(i => i.id === ds.delitem); if (!it) return; return saveTrip(withLog({ itinerary: (S.trip.itinerary || []).filter(i => i.id !== ds.delitem), ...(it.secret ? {} : { dropped: dropTitle(S.trip.dropped, it.title) }) }, { area: 'plan', text: `${it.title} removed from the plan`, act: it.secret ? '' : 'all', undo: { k: 'item', item: it } })); }
   if (ds.edititem) { S.editItem = ds.edititem; render(); setTimeout(() => $('#ei-time')?.focus(), 50); return; }
   if (ds.act === 'editItemCancel') { S.editItem = null; return render(); }
 });

@@ -165,7 +165,7 @@ async function applyChange(ch, picks = {}, opts = {}) {
       if (on('flights')) newTask('Change booked flights to the new dates');
       if (on('staymove')) newTask('Move the stay booking to the new dates');
     }
-    if (ch.kind === 'closed') patch.itinerary = (S.trip.itinerary || []).filter(i => i.id !== ch.item);
+    if (ch.kind === 'closed') { const it = (S.trip.itinerary || []).find(i => i.id === ch.item); patch.itinerary = (S.trip.itinerary || []).filter(i => i.id !== ch.item); if (it && !it.secret) patch.dropped = dropTitle(S.trip.dropped, it.title); }
     if (Object.keys(tasks).length) patch.tasks = tasks;
     if (on('ask')) patch.check = { id: rid(6), q: `${changeText(ch)}. What do we do?`, by: S.uid, at: Date.now(), votes: {} };
     // budgets are private, so a budget change isn't logged for the crew

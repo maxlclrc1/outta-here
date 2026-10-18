@@ -73,7 +73,13 @@ const CALM_SPOT = '"type":"%T","area":"neighborhood","why":"one sentence on why 
 const calmAdd = s => { const t = s.type || ''; return /cafe/.test(t) ? { time: '09:30', kind: 'food' } : /restaurant|food/.test(t) ? { time: '18:30', kind: 'food' } : /bar|lounge/.test(t) ? { time: '20:00', kind: 'chill' } : { time: '10:00', kind: 'activity' }; };
 const PLAN_KINDS = {
   social: {
-    quiz: QUIZ, persona: w => `The ${PERSONA_LATE[w.late?.a] || 'Wild'} ${PERSONA_NIGHT[w.night?.a] || 'Party'} Crew`, blendEg: '60% Big club, 40% Rooftop cocktails',
+    quiz: QUIZ,
+    // one evening isn't asked about daytime or heading home at sunrise; a day out isn't asked about a night out
+    quizBy: {
+      hangout: [QUIZ[0], QUIZ[1], { k: 'home', q: 'You head home…', o: ['Early, around 10', 'Around midnight', 'Whenever it ends'] }, SPEND_Q],
+      day: [{ k: 'sday', q: 'The day is for…', o: ['Pool or beach', 'Exploring & eating', 'Activities', 'A game, show or concert'] }, { k: 'safter', q: 'And after?', o: ['Home early', 'Dinner somewhere good', 'A night out'] }, SPEND_Q],
+    },
+    persona: w => `The ${PERSONA_LATE[w.late?.a] || { 'Early, around 10': 'Early-Bird', 'Around midnight': 'Midnight', 'Whenever it ends': 'Late-Night' }[w.home?.a] || 'Wild'} ${PERSONA_NIGHT[w.night?.a] || { 'Pool or beach': 'Beach', 'Exploring & eating': 'Foodie', Activities: 'Go-Go', 'A game, show or concert': 'Front-Row' }[w.sday?.a] || 'Party'} Crew`, blendEg: '60% Big club, 40% Rooftop cocktails',
     group: 'friend group', with: 'friends', people: 'adults', vibe: { ctx: 'mixed, fun', pitch: 'fun, social, nightlife', small: 'fun, social' },
     spots: null, // the original nightlife scout prompt and card
     checkins: CHECKINS, hypes: HYPES, hypesLive: HYPES_LIVE, hangover: true,
@@ -143,13 +149,21 @@ const stopKinds = () => { const k = planKind().stops || ['food', 'activity', 'ni
 const stopKindOf = k => !planKind().stops || stopKinds().includes(k) ? k : k === 'nightlife' ? 'chill' : 'activity';
 // Stops someone typed in themselves are commitments (a booking, a game, a set time); picks added from
 // suggestions or last time's outline are already on the plan, but their times were never chosen.
-const isCommitment = i => !i.ai && !i.src && i.kind === 'plan';
+// An AI stop nobody has changed. Editing a stop records which parts a person set (edited: { title,
+// date, time }), so redrafts and replans keep it. AI stops saved before edits were recorded count as untouched.
+const isDraft = i => !!i.ai && !i.edited;
+const isCommitment = i => (!i.ai && !i.src && i.kind === 'plan') || !!(i.edited && (i.edited.date || i.edited.time));
+// Stops someone deleted (by name), so no AI draft or replan puts them back. Surprises are never listed:
+// the guest of honor can read the plan.
+const isDropped = i => (S.trip.dropped || []).some(t => rkey(t) === rkey(i.title || ''));
+const dropTitle = (list, title) => [...(list || []).filter(t => rkey(t) !== rkey(title)), title].slice(-40);
+const undropTitle = (list, title) => (list || []).filter(t => rkey(t) !== rkey(title));
 const stopLine = i => `- ${i.date}${i.time ? ' ' + i.time : ''}: ${i.title}${i.note ? ' (' + i.note + ')' : ''}`;
 // what an AI itinerary request is told about stops already in the plan (only the ones it may see)
 function keptStops(items) {
   // a surprise the guest of honor can't see still holds its slot
-  const keep = items.filter(i => !i.ai), fixed = keep.filter(i => isCommitment(i) || i.hidden), rest = keep.filter(i => !isCommitment(i) && !i.hidden);
-  return `${fixed.length ? `Fixed commitments the crew set (keep them exactly as they are, plan around their times, don't move, replace or repeat them):\n${fixed.map(stopLine).join('\n')}\n` : ''}${rest.length ? `Also already on the plan (the crew added these; don't repeat them):\n${rest.map(stopLine).join('\n')}\n` : ''}`;
+  const keep = items.filter(i => !isDraft(i)), dropped = S.trip.dropped || [], fixed = keep.filter(i => isCommitment(i) || i.hidden), rest = keep.filter(i => !isCommitment(i) && !i.hidden);
+  return `${fixed.length ? `Fixed commitments the crew set (keep them exactly as they are, plan around their times, don't move, replace or repeat them):\n${fixed.map(stopLine).join('\n')}\n` : ''}${rest.length ? `Also already on the plan (the crew added these; don't repeat them):\n${rest.map(stopLine).join('\n')}\n` : ''}${dropped.length ? `The crew removed these, so don't add them back: ${dropped.join('; ')}\n` : ''}`;
 }
 const vibeDefault = where => { const v = planKind().vibe; return typeof v === 'string' ? v : v[where]; };
 // a hangout or day out says “Family”, not “Family trip”; v.small has the few words that differ for small plans

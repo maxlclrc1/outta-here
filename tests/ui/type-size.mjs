@@ -76,7 +76,7 @@ for (const [mode, line] of Object.entries({ couples: 'A trip with several couple
   const qs = await questions(); expect('team offsite: the offsite questions, as before', qs[0] === 'Best team activity?' && qs[1] === 'Work vs team time?', qs.join('|'));
   const spots = await ask('spots'); expect('team offsite: picks for an offsite, as before', /places for a work team offsite for a group trip/.test(spots)); }
 { const tid = await plan('friends', 'hangout'); await open(tid, 'plan', 'spots');
-  expect('friends hangout: the original five questions', (await questions()).join('|') === 'Perfect night out?|What’s playing?|You head home…|Spending style|Daytime is for…'); }
+  expect('friends hangout: the friends evening questions (Task 29)', (await questions()).join('|') === 'Perfect night out?|What’s playing?|You head home…|Spending style'); }
 
 // —— 3. itinerary stop kinds ——
 const draft = days => ({ days: days.map(([date, kind, title]) => ({ date, items: [{ time: '20:00', title, kind, note: '' }] })) });
@@ -117,7 +117,7 @@ for (const [mode, kinds] of [['family', 'food|activity|travel|chill'], ['work', 
   reply = { note: 'Rough.', items: [{ time: '11:00', title: 'Recovery brunch', kind: 'food', note: '' }] };
   const hreq = await ask('hangPlan', reply); await p.locator('[data-act=hangApply]').dispatchEvent('click'); await p.waitForTimeout(900);
   const h = Object.fromEntries(((await saved(tid)).itinerary || []).filter(i => i.date === START).map(i => [i.title, i.time]));
-  expect('the hangover replan is told the game is fixed, and keeps it while rewriting the rest of the day', /Fixed commitments[\s\S]*Nuggets game at Ball Arena/.test(hreq) && !hreq.split('Fixed commitments')[0].includes('Nuggets') && h['Nuggets game at Ball Arena'] === '19:00' && h['Recovery brunch'] === '11:00' && !h['Club Vault'], JSON.stringify(h));
+  expect('the hangover replan is told the game is fixed, and keeps it and the added pick (Task 29) while rewriting the AI stops', /Fixed commitments[\s\S]*Nuggets game at Ball Arena/.test(hreq) && !hreq.split('Fixed commitments')[0].includes('Nuggets') && h['Nuggets game at Ball Arena'] === '19:00' && h['Recovery brunch'] === '11:00' && h['Club Vault'] === '22:30', JSON.stringify(h));
 }
 { const tid = await plan('friends', 'hangout', { lockedDates: { start: START, end: START }, itinerary: [{ id: 'm1', date: START, time: '18:30', title: 'Table at Tavernetta', kind: 'plan', note: 'booked' }] });
   await open(tid, 'plan', 'plan');

@@ -480,9 +480,9 @@ Reply with only JSON: {"days":[{"date":"YYYY-MM-DD","items":[{"time":"HH:MM","ti
     const days = Array.isArray(data?.days) ? data.days : [];
     const valid = new Set(span(d.start, d.end));
     const items = [];
-    for (const day of days) for (const it of (day.items || [])) if (valid.has(day.date) && it.title) items.push({ id: rid(6), date: day.date, time: hhmm(it.time), title: String(it.title).slice(0, 120), kind: stopKindOf(it.kind) || 'activity', note: String(it.note || '').slice(0, 200), ai: true });
+    for (const day of days) for (const it of (day.items || [])) if (valid.has(day.date) && it.title && !isDropped(it)) items.push({ id: rid(6), date: day.date, time: hhmm(it.time), title: String(it.title).slice(0, 120), kind: stopKindOf(it.kind) || 'activity', note: String(it.note || '').slice(0, 200), ai: true });
     if (!items.length) { flash('No plan came back. Try again.'); return; }
-    const keep = (S.trip.itinerary || []).filter(i => !i.ai);
+    const keep = (S.trip.itinerary || []).filter(i => !isDraft(i));
     return saveTrip({ itinerary: [...keep, ...items] });
   });
 }
@@ -916,7 +916,7 @@ function planTab() {
   const days = span(d.start, d.end), items = visItems();
   return `<section class="card stack">
     <div class="row" style="justify-content:space-between"><h2>${isSmall() ? 'The plan' : 'Itinerary'}</h2>
-      <div class="row" style="gap:6px">${items.some(i => i.ai) ? `<button class="btn sm ghost" data-act="clearAI">Remove AI items</button>` : ''}
+      <div class="row" style="gap:6px">${items.some(isDraft) ? `<button class="btn sm ghost" data-act="clearAI">Remove AI items</button>` : ''}
       ${S.sample !== null ? `<button class="btn primary" data-act="plan" ${S.busy.plan ? 'disabled' : ''}>${S.busy.plan ? '<i class="spin"></i>Drafting…' : items.some(i => i.ai) ? 'Redraft with AI' : 'Draft it with AI'}</button>` : ''}</div></div>
     ${S.trip.itinTpl && S.trip.itinTpl.length && !S.readOnly ? `<div class="cost-flag soft row" style="justify-content:space-between;gap:8px"><span><b>Last time’s outline</b> · ${S.trip.itinTpl.length} stop${S.trip.itinTpl.length === 1 ? '' : 's'}${S.trip.repeatOf?.name ? ` from ${esc(S.trip.repeatOf.name)}` : ''}</span><span class="row" style="gap:6px"><button class="btn sm primary" data-act="applyOutline">Put it on these dates</button><button class="btn sm ghost" data-act="dropOutline">Skip it</button></span></div>` : ''}
     ${!d.locked ? `<p class="small muted">Using the best dates so far. ${isSmall() ? 'Lock the day in When so the plan doesn’t shift.' : 'Lock dates in Dates so the plan doesn’t shift.'}</p>` : ''}
@@ -1699,7 +1699,13 @@ const CALM_SPOT = '"type":"%T","area":"neighborhood","why":"one sentence on why 
 const calmAdd = s => { const t = s.type || ''; return /cafe/.test(t) ? { time: '09:30', kind: 'food' } : /restaurant|food/.test(t) ? { time: '18:30', kind: 'food' } : /bar|lounge/.test(t) ? { time: '20:00', kind: 'chill' } : { time: '10:00', kind: 'activity' }; };
 const PLAN_KINDS = {
   social: {
-    quiz: QUIZ, persona: w => `The ${PERSONA_LATE[w.late?.a] || 'Wild'} ${PERSONA_NIGHT[w.night?.a] || 'Party'} Crew`, blendEg: '60% Big club, 40% Rooftop cocktails',
+    quiz: QUIZ,
+    // one evening isn't asked about daytime or heading home at sunrise; a day out isn't asked about a night out
+    quizBy: {
+      hangout: [QUIZ[0], QUIZ[1], { k: 'home', q: 'You head home…', o: ['Early, around 10', 'Around midnight', 'Whenever it ends'] }, SPEND_Q],
+      day: [{ k: 'sday', q: 'The day is for…', o: ['Pool or beach', 'Exploring & eating', 'Activities', 'A game, show or concert'] }, { k: 'safter', q: 'And after?', o: ['Home early', 'Dinner somewhere good', 'A night out'] }, SPEND_Q],
+    },
+    persona: w => `The ${PERSONA_LATE[w.late?.a] || { 'Early, around 10': 'Early-Bird', 'Around midnight': 'Midnight', 'Whenever it ends': 'Late-Night' }[w.home?.a] || 'Wild'} ${PERSONA_NIGHT[w.night?.a] || { 'Pool or beach': 'Beach', 'Exploring & eating': 'Foodie', Activities: 'Go-Go', 'A game, show or concert': 'Front-Row' }[w.sday?.a] || 'Party'} Crew`, blendEg: '60% Big club, 40% Rooftop cocktails',
     group: 'friend group', with: 'friends', people: 'adults', vibe: { ctx: 'mixed, fun', pitch: 'fun, social, nightlife', small: 'fun, social' },
     spots: null, // the original nightlife scout prompt and card
     checkins: CHECKINS, hypes: HYPES, hypesLive: HYPES_LIVE, hangover: true,
@@ -1769,13 +1775,21 @@ const stopKinds = () => { const k = planKind().stops || ['food', 'activity', 'ni
 const stopKindOf = k => !planKind().stops || stopKinds().includes(k) ? k : k === 'nightlife' ? 'chill' : 'activity';
 // Stops someone typed in themselves are commitments (a booking, a game, a set time); picks added from
 // suggestions or last time's outline are already on the plan, but their times were never chosen.
-const isCommitment = i => !i.ai && !i.src && i.kind === 'plan';
+// An AI stop nobody has changed. Editing a stop records which parts a person set (edited: { title,
+// date, time }), so redrafts and replans keep it. AI stops saved before edits were recorded count as untouched.
+const isDraft = i => !!i.ai && !i.edited;
+const isCommitment = i => (!i.ai && !i.src && i.kind === 'plan') || !!(i.edited && (i.edited.date || i.edited.time));
+// Stops someone deleted (by name), so no AI draft or replan puts them back. Surprises are never listed:
+// the guest of honor can read the plan.
+const isDropped = i => (S.trip.dropped || []).some(t => rkey(t) === rkey(i.title || ''));
+const dropTitle = (list, title) => [...(list || []).filter(t => rkey(t) !== rkey(title)), title].slice(-40);
+const undropTitle = (list, title) => (list || []).filter(t => rkey(t) !== rkey(title));
 const stopLine = i => `- ${i.date}${i.time ? ' ' + i.time : ''}: ${i.title}${i.note ? ' (' + i.note + ')' : ''}`;
 // what an AI itinerary request is told about stops already in the plan (only the ones it may see)
 function keptStops(items) {
   // a surprise the guest of honor can't see still holds its slot
-  const keep = items.filter(i => !i.ai), fixed = keep.filter(i => isCommitment(i) || i.hidden), rest = keep.filter(i => !isCommitment(i) && !i.hidden);
-  return `${fixed.length ? `Fixed commitments the crew set (keep them exactly as they are, plan around their times, don't move, replace or repeat them):\n${fixed.map(stopLine).join('\n')}\n` : ''}${rest.length ? `Also already on the plan (the crew added these; don't repeat them):\n${rest.map(stopLine).join('\n')}\n` : ''}`;
+  const keep = items.filter(i => !isDraft(i)), dropped = S.trip.dropped || [], fixed = keep.filter(i => isCommitment(i) || i.hidden), rest = keep.filter(i => !isCommitment(i) && !i.hidden);
+  return `${fixed.length ? `Fixed commitments the crew set (keep them exactly as they are, plan around their times, don't move, replace or repeat them):\n${fixed.map(stopLine).join('\n')}\n` : ''}${rest.length ? `Also already on the plan (the crew added these; don't repeat them):\n${rest.map(stopLine).join('\n')}\n` : ''}${dropped.length ? `The crew removed these, so don't add them back: ${dropped.join('; ')}\n` : ''}`;
 }
 const vibeDefault = where => { const v = planKind().vibe; return typeof v === 'string' ? v : v[where]; };
 // a hangout or day out says “Family”, not “Family trip”; v.small has the few words that differ for small plans
@@ -2534,7 +2548,7 @@ async function applyChange(ch, picks = {}, opts = {}) {
       if (on('flights')) newTask('Change booked flights to the new dates');
       if (on('staymove')) newTask('Move the stay booking to the new dates');
     }
-    if (ch.kind === 'closed') patch.itinerary = (S.trip.itinerary || []).filter(i => i.id !== ch.item);
+    if (ch.kind === 'closed') { const it = (S.trip.itinerary || []).find(i => i.id === ch.item); patch.itinerary = (S.trip.itinerary || []).filter(i => i.id !== ch.item); if (it && !it.secret) patch.dropped = dropTitle(S.trip.dropped, it.title); }
     if (Object.keys(tasks).length) patch.tasks = tasks;
     if (on('ask')) patch.check = { id: rid(6), q: `${changeText(ch)}. What do we do?`, by: S.uid, at: Date.now(), votes: {} };
     // budgets are private, so a budget change isn't logged for the crew
@@ -3039,6 +3053,7 @@ function undoPlan(x, id) {
     } else {
       if (cur) return { error: `“${u.item.title}” is already back in the plan.` };
       patch.itinerary = [...list, u.item];
+      if ((t.dropped || []).length) patch.dropped = undropTitle(t.dropped, u.item.title);
     }
     expect[key] = u.after; return { patch, expect };
   }
@@ -3167,7 +3182,9 @@ function saveItemEdit(id) {
   const moved = date !== old.date || time !== (old.time || '');
   const text = moved ? `${old.title} moved to ${when(date, time)}` : `${old.title} is now ${title}`;
   const fx = [moved ? `Was ${dow(old.date)} ${old.time ? t12(old.time) : 'with no set time'}` : '', title !== old.title && moved ? `Now called ${title}` : ''].filter(Boolean);
-  saveTrip(withLog({ itinerary: (S.trip.itinerary || []).map(i => i.id === id ? { ...i, date, time, title } : i) }, { area: 'plan', text, fx, act: old.secret ? '' : 'all', undo: { k: 'item', item: old } })).then(ok => ok && flash(`${text}. The crew sees it now.`));
+  // which parts a person set, so a redraft keeps this stop (and, if it was moved, plans around its time)
+  const edited = { ...(old.edited || {}), ...(title !== old.title ? { title: true } : {}), ...(date !== old.date ? { date: true } : {}), ...(time !== (old.time || '') ? { time: true } : {}) };
+  saveTrip(withLog({ itinerary: (S.trip.itinerary || []).map(i => i.id === id ? { ...i, date, time, title, edited } : i) }, { area: 'plan', text, fx, act: old.secret ? '' : 'all', undo: { k: 'item', item: old } })).then(ok => ok && flash(`${text}. The crew sees it now.`));
 }
 /* ---------- personal needs ---------- */
 // Food, access and travel needs, so plans work for everyone. Nobody is asked why. Each
@@ -3931,25 +3948,25 @@ function hangoverCard(day) {
   </section>`;
 }
 function hangPlan(day) {
-  // stops someone typed in themselves (a booking, a game) stay as they are; the rest of the day is rewritten
-  const all = visItems().filter(i => i.date === day), items = all.filter(i => !i.hidden && !isCommitment(i)).sort(byTime);
+  // only the day's untouched AI stops are rewritten; anything a person added or changed stays, as in a redraft
+  const all = visItems().filter(i => i.date === day), items = all.filter(isDraft).sort(byTime);
   const votes = Object.values((S.trip.hangover || {})[day] || {}), avg = votes.reduce((a, b) => a + b, 0) / Math.max(1, votes.length);
   const prompt = `A group on a trip is hungover. Hangover index ${avg.toFixed(1)} out of 5 (5 = dead).
 ${context()}
 Today's plan (${day}):
 ${items.map(i => `${i.time || '?'} ${i.title}${i.note ? ' (' + i.note + ')' : ''}`).join('\n')}
-${keptStops(all.filter(i => isCommitment(i) || i.hidden))}
+${keptStops(all)}
 Rewrite today so it's gentler: start later, add a recovery meal and chill time, swap exhausting things for easy ones, but keep the best evening plan if it's still realistic. Keep it fun.
 Reply with only JSON: {"note":"one funny sentence about the state of the crew","items":[{"time":"HH:MM","title":"","kind":"food|activity|nightlife|chill","note":""}]}`;
   askAI('hang', prompt, data => {
-    const its = (data?.items || []).filter(i => i && i.title).slice(0, 8).map(i => ({ time: hhmm(i.time), title: String(i.title).slice(0, 120), kind: i.kind || 'chill', note: String(i.note || '').slice(0, 200) }));
+    const its = (data?.items || []).filter(i => i && i.title && !isDropped(i)).slice(0, 8).map(i => ({ time: hhmm(i.time), title: String(i.title).slice(0, 120), kind: i.kind || 'chill', note: String(i.note || '').slice(0, 200) }));
     if (!its.length) { flash('No plan came back. Try again.'); return; }
     S.hangPlan = { day, note: String(data.note || '').slice(0, 200), items: its };
   });
 }
 function applyHang() {
   const p = S.hangPlan; if (!p) return;
-  const keep = (S.trip.itinerary || []).filter(i => i.date !== p.day || i.secret || isCommitment(i));
+  const keep = (S.trip.itinerary || []).filter(i => i.date !== p.day || !isDraft(i));
   S.hangPlan = null;
   saveTrip({ itinerary: [...keep, ...p.items.map(i => ({ id: rid(6), date: p.day, ...i, ai: true }))] }).then(ok => ok && flash('Today’s plan is updated.'));
 }
@@ -4441,7 +4458,7 @@ function lockSmallPitch(p) {
   let d = ds.find(x => x.city.toLowerCase() === p.title.toLowerCase());
   if (!d) { d = { id: rid(6), city: p.title, code: '' }; ds.push(d); }
   const patch = { destinations: ds, lockedDest: d.id, lockedDates: { start: p.start, end: p.start }, time: p.time || '', venue: p.where || '' };
-  if (!(S.trip.itinerary || []).length && p.steps?.length) patch.itinerary = p.steps.map(s => ({ id: rid(6), date: p.start, time: s.time, title: s.title, kind: 'plan', note: '', ai: true }));
+  if (!(S.trip.itinerary || []).length && p.steps?.length) patch.itinerary = p.steps.filter(s => !isDropped(s)).map(s => ({ id: rid(6), date: p.start, time: s.time, title: s.title, kind: 'plan', note: '', ai: true }));
   saveTrip(withLog(patch, { area: 'dest', text: `Locked in: ${p.title}, ${fmt(p.start)}${p.time ? ' at ' + t12(p.time) : ''}`, act: 'all', undo: { k: 'set', patch: { lockedDest: S.trip.lockedDest || null, lockedDates: S.trip.lockedDates || null, time: S.trip.time || '', venue: S.trip.venue || '' } } })).then(ok => ok && flash(`Locked: ${p.title}, ${fmt(p.start)}${p.time ? ' at ' + t12(p.time) : ''}.`));
 }
 
@@ -4790,9 +4807,9 @@ ${context()}
 Spots the crew likes: ${spots || 'none yet, suggest real places'}
 ${keptStops(visItems().filter(i => i.date === d.start))}Reply with only JSON: {"items":[{"time":"HH:MM","title":"short title with the place name","kind":"${stopKinds().join('|')}","note":"one short line"}]}`;
   askAI('plan', prompt, data => {
-    const items = (data?.items || []).filter(i => i && i.title).slice(0, 6).map(i => ({ id: rid(6), date: d.start, time: hhmm(i.time), title: String(i.title).slice(0, 120), kind: stopKindOf(i.kind) || 'plan', note: String(i.note || '').slice(0, 200), ai: true }));
+    const items = (data?.items || []).filter(i => i && i.title && !isDropped(i)).slice(0, 6).map(i => ({ id: rid(6), date: d.start, time: hhmm(i.time), title: String(i.title).slice(0, 120), kind: stopKindOf(i.kind) || 'plan', note: String(i.note || '').slice(0, 200), ai: true }));
     if (!items.length) { flash('No plan came back. Try again.'); return; }
-    return saveTrip({ itinerary: [...(S.trip.itinerary || []).filter(i => !i.ai), ...items] });
+    return saveTrip({ itinerary: [...(S.trip.itinerary || []).filter(i => !isDraft(i)), ...items] });
   });
 }
 const planWord = () => ({ hangout: 'hangout', day: 'day out', weekend: 'weekend', trip: 'trip' })[size()];
@@ -5064,7 +5081,7 @@ app.addEventListener('click', e => {
   if (ds.act === 'spots') return findSpots();
   if (ds.act === 'deals') return findDeals();
   if (ds.act === 'plan') return draftPlan();
-  if (ds.act === 'clearAI') return saveTrip({ itinerary: (S.trip.itinerary || []).filter(i => !i.ai) });
+  if (ds.act === 'clearAI') return saveTrip({ itinerary: (S.trip.itinerary || []).filter(i => !isDraft(i)) });
   if (ds.addspot) {
     const s = S.trip.spots.items[+ds.addspot], d = dates(); if (!s || !d) return;
     const days = span(d.start, d.end).slice(0, -1);
@@ -5073,7 +5090,7 @@ app.addEventListener('click', e => {
     const at = planKind().spots?.add(s) || { time: s.type === 'late-night food' ? '01:30' : '22:30', kind: 'nightlife' };
     return saveTrip({ itinerary: [...(S.trip.itinerary || []), { id: rid(6), date: pref, ...at, title: s.name, note: s.why || '', src: 'pick' }] });
   }
-  if (ds.delitem) { const it = (S.trip.itinerary || []).find(i => i.id === ds.delitem); if (!it) return; return saveTrip(withLog({ itinerary: (S.trip.itinerary || []).filter(i => i.id !== ds.delitem) }, { area: 'plan', text: `${it.title} removed from the plan`, act: it.secret ? '' : 'all', undo: { k: 'item', item: it } })); }
+  if (ds.delitem) { const it = (S.trip.itinerary || []).find(i => i.id === ds.delitem); if (!it) return; return saveTrip(withLog({ itinerary: (S.trip.itinerary || []).filter(i => i.id !== ds.delitem), ...(it.secret ? {} : { dropped: dropTitle(S.trip.dropped, it.title) }) }, { area: 'plan', text: `${it.title} removed from the plan`, act: it.secret ? '' : 'all', undo: { k: 'item', item: it } })); }
   if (ds.edititem) { S.editItem = ds.edititem; render(); setTimeout(() => $('#ei-time')?.focus(), 50); return; }
   if (ds.act === 'editItemCancel') { S.editItem = null; return render(); }
 });

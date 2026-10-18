@@ -111,7 +111,7 @@ const liveText = async () => { await p.click('.bottomnav [data-sec=live]'); awai
   expect('hangout: still a friend group, “fun, social”, the original quiz', /pitching plans to a friend group/.test(pitch) && /Vibe: fun, social\n/.test(pitch));
   expect('hangout: saved as a friends plan, type and size kept apart', (await db('get', 'trips/' + tid)).data.mode === 'friends' && (await db('get', 'trips/' + tid)).data.size === 'hangout');
   await p.click('.subtab[data-tab=spots]'); await settle(p);
-  expect('hangout: the original five questions', (await questions()).length === 5 && (await questions())[0] === 'Perfect night out?');
+  expect('hangout: the friends evening questions (Task 29)', (await questions()).join('|') === 'Perfect night out?|What’s playing?|You head home…|Spending style');
 }
 
 // —— plans saved without a type, or with one this version doesn't know: friends trips ——

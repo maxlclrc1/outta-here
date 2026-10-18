@@ -480,9 +480,9 @@ Reply with only JSON: {"days":[{"date":"YYYY-MM-DD","items":[{"time":"HH:MM","ti
     const days = Array.isArray(data?.days) ? data.days : [];
     const valid = new Set(span(d.start, d.end));
     const items = [];
-    for (const day of days) for (const it of (day.items || [])) if (valid.has(day.date) && it.title) items.push({ id: rid(6), date: day.date, time: hhmm(it.time), title: String(it.title).slice(0, 120), kind: stopKindOf(it.kind) || 'activity', note: String(it.note || '').slice(0, 200), ai: true });
+    for (const day of days) for (const it of (day.items || [])) if (valid.has(day.date) && it.title && !isDropped(it)) items.push({ id: rid(6), date: day.date, time: hhmm(it.time), title: String(it.title).slice(0, 120), kind: stopKindOf(it.kind) || 'activity', note: String(it.note || '').slice(0, 200), ai: true });
     if (!items.length) { flash('No plan came back. Try again.'); return; }
-    const keep = (S.trip.itinerary || []).filter(i => !i.ai);
+    const keep = (S.trip.itinerary || []).filter(i => !isDraft(i));
     return saveTrip({ itinerary: [...keep, ...items] });
   });
 }

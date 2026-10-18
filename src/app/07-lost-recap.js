@@ -46,25 +46,25 @@ function hangoverCard(day) {
   </section>`;
 }
 function hangPlan(day) {
-  // stops someone typed in themselves (a booking, a game) stay as they are; the rest of the day is rewritten
-  const all = visItems().filter(i => i.date === day), items = all.filter(i => !i.hidden && !isCommitment(i)).sort(byTime);
+  // only the day's untouched AI stops are rewritten; anything a person added or changed stays, as in a redraft
+  const all = visItems().filter(i => i.date === day), items = all.filter(isDraft).sort(byTime);
   const votes = Object.values((S.trip.hangover || {})[day] || {}), avg = votes.reduce((a, b) => a + b, 0) / Math.max(1, votes.length);
   const prompt = `A group on a trip is hungover. Hangover index ${avg.toFixed(1)} out of 5 (5 = dead).
 ${context()}
 Today's plan (${day}):
 ${items.map(i => `${i.time || '?'} ${i.title}${i.note ? ' (' + i.note + ')' : ''}`).join('\n')}
-${keptStops(all.filter(i => isCommitment(i) || i.hidden))}
+${keptStops(all)}
 Rewrite today so it's gentler: start later, add a recovery meal and chill time, swap exhausting things for easy ones, but keep the best evening plan if it's still realistic. Keep it fun.
 Reply with only JSON: {"note":"one funny sentence about the state of the crew","items":[{"time":"HH:MM","title":"","kind":"food|activity|nightlife|chill","note":""}]}`;
   askAI('hang', prompt, data => {
-    const its = (data?.items || []).filter(i => i && i.title).slice(0, 8).map(i => ({ time: hhmm(i.time), title: String(i.title).slice(0, 120), kind: i.kind || 'chill', note: String(i.note || '').slice(0, 200) }));
+    const its = (data?.items || []).filter(i => i && i.title && !isDropped(i)).slice(0, 8).map(i => ({ time: hhmm(i.time), title: String(i.title).slice(0, 120), kind: i.kind || 'chill', note: String(i.note || '').slice(0, 200) }));
     if (!its.length) { flash('No plan came back. Try again.'); return; }
     S.hangPlan = { day, note: String(data.note || '').slice(0, 200), items: its };
   });
 }
 function applyHang() {
   const p = S.hangPlan; if (!p) return;
-  const keep = (S.trip.itinerary || []).filter(i => i.date !== p.day || i.secret || isCommitment(i));
+  const keep = (S.trip.itinerary || []).filter(i => i.date !== p.day || !isDraft(i));
   S.hangPlan = null;
   saveTrip({ itinerary: [...keep, ...p.items.map(i => ({ id: rid(6), date: p.day, ...i, ai: true }))] }).then(ok => ok && flash('Today’s plan is updated.'));
 }

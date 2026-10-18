@@ -45,7 +45,8 @@ async function open(tid, sec, tab) {
 const ask = async act => { const n = sent.length; await p.locator(`[data-act=${act}]`).first().dispatchEvent('click'); for (let i = 0; i < 40 && sent.length === n; i++) await p.waitForTimeout(100); await settle(p); return sent[n] || ''; };
 const questions = () => p.locator('.q b').allInnerTexts();
 const saved = async tid => (await db('get', 'trips/' + tid)).data;
-const FRIENDS_Q = 'Perfect night out?|What’s playing?|You head home…|Spending style|Daytime is for…';
+// a hangout's friends questions (Task 29: no daytime question)
+const FRIENDS_Q = 'Perfect night out?|What’s playing?|You head home…|Spending style';
 const PARTY = /friend group|dinner-and-drinks|karaoke|nightlife|Perfect night out|adults|trip/i;
 
 // —— family dinner (a hangout) ——
@@ -113,7 +114,7 @@ const PARTY = /friend group|dinner-and-drinks|karaoke|nightlife|Perfect night ou
   const pitch = await ask('genPitches');
   expect('friends hangout: the original pitch request (friend group, “fun, social”, dinner-and-drinks mix, no type line)', /pitching plans to a friend group/.test(pitch) && /Plan type: one evening out or in\.\n/.test(pitch) && /Vibe: fun, social\n/.test(pitch) && /mix a dinner-and-drinks night, an activity \(bowling, karaoke, a class, a show\)/.test(pitch), (pitch.match(/Plan type: .*/) || [])[0]);
   await p.click('.subtab[data-tab=spots]'); await settle(p);
-  expect('friends hangout: the original five questions', (await questions()).join('|') === FRIENDS_Q);
+  expect('friends hangout: the friends evening questions', (await questions()).join('|') === FRIENDS_Q);
   const spots = await ask('spots');
   expect('friends hangout: the original context (with friends, adults)', /Plan type: one evening out with friends\. \n/.test(spots) && /Group size: 1 adults/.test(spots), (spots.match(/Plan type: .*/) || [])[0]);
 }
