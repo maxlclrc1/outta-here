@@ -21,7 +21,7 @@ console.log('pass title:', await a.locator('.ev-title').innerText(), '| hero:', 
 const tid = await a.evaluate(() => location.hash);
 // Jay sees it on home
 await j.click('[data-act=home] >> nth=0'); await settle(j); console.log('jay home deciding:', await j.locator('.plan-row h3').allInnerTexts());
-await j.click('[data-open]'); await j.waitForSelector('.ov-hero, .pass, .passport, .setup').then(() => skipSetup(j)); await j.click('[data-status=in]'); await skipSetup(j); await settle(j);
+await j.click('[data-open]'); await j.waitForSelector('.ov-hero, .pass, .passport, .setup').then(() => skipSetup(j)); await j.click('.welcome [data-join=in]'); await skipSetup(j); await settle(j); // the invitation's answer
 // Ali: plan tabs
 await a.click('.bottomnav [data-sec=plan]'); await settle(a); console.log('plan tabs:', await a.locator('.subtab').allInnerTexts());
 await a.click('.subtab[data-tab=match]'); await a.fill('#ad-city', 'Tacos at Los Tacos No.1'); await a.click('#addDest [type=submit]'); await a.waitForTimeout(400); await a.locator('[data-lockdest]').first().click();
@@ -36,6 +36,6 @@ await a.click('[data-act=home] >> nth=0'); await settle(a); await shot(a, '7-hom
 console.log('coming up:', await a.locator('.plan-row h3').allInnerTexts());
 await a.click('[data-crew] >> nth=0'); await settle(a);
 // grow
-await a.click('[data-open]'); await a.waitForSelector('.ov-hero, .pass, .passport, .setup').then(() => skipSetup(a)); await settle(a); await a.click('[data-act=growPlan]'); await a.waitForTimeout(600); await settle(a);
+await a.click('[data-open]'); await a.waitForSelector('.ov-hero, .pass, .passport, .setup').then(() => skipSetup(a)); await settle(a); await a.locator('[data-key=fold-pass] summary').click(); await a.click('[data-act=growPlan]'); await a.waitForTimeout(600); await settle(a);
 console.log('after grow nav:', await a.locator('.bottomnav .bn span').allInnerTexts(), '| chip', await a.locator('.pass .label, .pp-k').first().innerText());
 console.log('errors', errs); await b.close();
