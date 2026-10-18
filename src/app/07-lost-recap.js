@@ -65,8 +65,7 @@ function applyHang() {
   const p = S.hangPlan; if (!p) return;
   const keep = (S.trip.itinerary || []).filter(i => i.date !== p.day || i.secret);
   S.hangPlan = null;
-  saveTrip({ itinerary: [...keep, ...p.items.map(i => ({ id: rid(6), date: p.day, ...i, ai: true }))] });
-  flash('Today’s plan is updated.');
+  saveTrip({ itinerary: [...keep, ...p.items.map(i => ({ id: rid(6), date: p.day, ...i, ai: true }))] }).then(ok => ok && flash('Today’s plan is updated.'));
 }
 function recapCard(day) {
   const d = dates(); if (!d || day <= d.start) return '';

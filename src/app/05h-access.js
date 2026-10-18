@@ -60,8 +60,8 @@ async function removeMember(uid) {
   try {
     if (!S.demo) { if (going(m)) logDrop(uid); await S.db.doc(`trips/${S.tid}/members/${uid}`).update({ status: 'out', removed: true }); }
     else { m.status = 'out'; m.removed = true; }
-    saveTrip({ people: { [uid]: null }, left: { [uid]: true }, orgs: { [uid]: null }, ...(tasks.length ? { tasks: Object.fromEntries(tasks.map(x => [x.id, { owner: '' }])) } : {}) });
-    S.confirmRm = null; flash(`${m.nick || 'Someone'} was removed from the ${planWord()}.`);
+    const ok = await saveTrip({ people: { [uid]: null }, left: { [uid]: true }, orgs: { [uid]: null }, ...(tasks.length ? { tasks: Object.fromEntries(tasks.map(x => [x.id, { owner: '' }])) } : {}) });
+    S.confirmRm = null; if (ok) flash(`${m.nick || 'Someone'} was removed from the ${planWord()}.`);
   } catch (e) { flash(writeErr(e)); }
 }
 

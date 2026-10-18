@@ -1249,8 +1249,7 @@ function settleCard(items) {
 function startRunoff() {
   const items = S.trip.pitches?.items || [], ranked = [...items].sort((a, b) => fitScore(b) - fitScore(a) || (b.vibeMatch || 0) - (a.vibeMatch || 0));
   if (ranked.length < 2) return;
-  saveTrip({ runoff: { key: rid(6), ids: [ranked[0].id, ranked[1].id], by: S.uid, at: Date.now() } });
-  flash('Final vote started. Everyone picks one of the top two.');
+  saveTrip({ runoff: { key: rid(6), ids: [ranked[0].id, ranked[1].id], by: S.uid, at: Date.now() } }).then(ok => ok && flash('Final vote started. Everyone picks one of the top two.'));
 }
 
 /* ---------- group fit: evidence, not a score ---------- */
@@ -1342,8 +1341,7 @@ function lockPitch(pid) {
   const ds = [...(S.trip.destinations || [])];
   let d = ds.find(x => x.city.toLowerCase() === p.city.toLowerCase());
   if (!d) { d = { id: rid(6), city: p.city, code: p.code }; ds.push(d); }
-  saveTrip(withLog({ destinations: ds, lockedDest: d.id, lockedDates: { start: p.start, end: p.end } }, { area: 'dest', text: `Locked in: ${p.city}, ${dayRange(p.start, p.end)}`, act: 'all', undo: { k: 'set', patch: { lockedDest: S.trip.lockedDest || null, lockedDates: S.trip.lockedDates || null } } }));
-  flash(`Locked: ${p.city}, ${short(p.start)} – ${short(p.end)}. Time to book flights.`);
+  saveTrip(withLog({ destinations: ds, lockedDest: d.id, lockedDates: { start: p.start, end: p.end } }, { area: 'dest', text: `Locked in: ${p.city}, ${dayRange(p.start, p.end)}`, act: 'all', undo: { k: 'set', patch: { lockedDest: S.trip.lockedDest || null, lockedDates: S.trip.lockedDates || null } } })).then(ok => ok && flash(`Locked: ${p.city}, ${short(p.start)} – ${short(p.end)}. Time to book flights.`));
 }
 // Once a place is locked, lead with it and the next step; the votes and other options
 // are one tap away instead of competing for attention.
@@ -1624,10 +1622,10 @@ async function saveCrew(name) {
   const profiles = {}; for (const m of ms) profiles[m.id] = { nick: m.nick || '', home: m.home || '', venmo: m.venmo || '', cashapp: m.cashapp || '' };
   const cid = S.trip.crewId || rid(10);
   const body = { name: name.slice(0, 40), ids: ms.map(m => m.id), profiles, by: S.uid, at: Date.now() };
-  if (S.demo) { S.crews = [...S.crews.filter(c => c.id !== cid), { id: cid, ...body }]; await saveTrip({ crewId: cid }); flash('Crew saved.'); return; }
+  if (S.demo) { S.crews = [...S.crews.filter(c => c.id !== cid), { id: cid, ...body }]; if (await saveTrip({ crewId: cid })) flash('Crew saved.'); return; }
   try {
     if (S.trip.crewId && S.crews.some(c => c.id === cid)) { const { by, ...rest } = body; await S.db.doc('crews/' + cid).update({ ...rest, people: Object.fromEntries(body.ids.map(id => [id, true])) }); flash(`Updated “${body.name}”.`); return; }
-    await S.db.doc('crews/' + cid).set({ ...body, people: Object.fromEntries(body.ids.map(id => [id, true])) }); await saveTrip({ crewId: cid }); flash(`Saved “${body.name}”. Start the next trip from the home screen.`);
+    await S.db.doc('crews/' + cid).set({ ...body, people: Object.fromEntries(body.ids.map(id => [id, true])) }); if (await saveTrip({ crewId: cid })) flash(`Saved “${body.name}”. Start the next trip from the home screen.`);
   }
   catch (e) { flash(writeErr(e)); }
 }
@@ -1959,6 +1957,13 @@ function moneyRange(s) {
   return [Math.min(...v), Math.max(...v)];
 }
 const planHeads = () => { const h = headcount(); return Math.max(1, h.firm || h.max || active().length); };
+// Who splits a shared cost: those heads, minus a guest of honor whose share the group covers
+// (as expense splits and settle-up do). Never below 1, so a lone covered honoree sees the full price.
+const payHeads = () => {
+  const h = headcount(), n = planHeads(), hon = honoreeFree() && S.members.find(m => m.id === S.trip.honoree);
+  const st = hon ? hon.status || 'maybe' : '', counted = hon && (h.firm ? ['booked', 'confirmed'] : h.max ? ['booked', 'confirmed', 'in'] : ['booked', 'confirmed', 'in', 'maybe']).includes(st);
+  return Math.max(1, n - (counted ? 1 : 0));
+};
 // Sort a logged expense into a cost line by what it was for.
 const CAT_RX = [['travel', /flight|airline|plane|train|bus|amtrak|gas|toll|rental car|car rental/i], ['stay', /airbnb|hotel|hostel|motel|stay|cabin|lodg|vrbo|rent\b/i], ['local', /uber|lyft|taxi|cab\b|transfer|parking|metro|subway/i],
   ['fun', /ticket|tour|cover|club|show|museum|boat|bowling|karaoke|class|entry/i], ['fees', /fee|deposit|cleaning/i], ['food', /dinner|lunch|breakfast|brunch|food|drink|bar|groceries|restaurant|coffee|tab|round|pizza|taco|snack/i]];
@@ -1971,7 +1976,7 @@ function lineFor(title) {
 // What each line has actually cost so far: shared expenses (your share, or the
 // average share) plus, for flights, the price on your boarding pass or in My spend.
 function paidSoFar(who) {
-  const out = {}, other = { n: 0 }, heads = planHeads();
+  const out = {}, other = { n: 0 }, heads = payHeads();
   for (const e of S.expenses) {
     const split = e.split || active().map(m => m.id);
     const share = who === 'me' ? (split.includes(S.uid) ? e.amount / split.length : 0) : e.amount / heads;
@@ -1995,10 +2000,10 @@ function costHints() {
   const t = S.trip, d = dates(), nights = Math.max(1, nightsOf(d)), out = {};
   const fl = (t.deals?.data?.flights || []).map(f => moneyRange(f.roundTrip)).filter(Boolean);
   if (fl.length && size() === 'trip') out.travel = { low: Math.min(...fl.map(r => r[0])), high: Math.max(...fl.map(r => r[1])), src: 'ai', note: 'From the flight search estimates' };
-  if (t.stay && +t.stay.total && !isSmall()) { const n = planHeads(); out.stay = { low: Math.round(t.stay.total / n), high: Math.round(t.stay.total / n), src: t.stay.booked ? 'booked' : 'quote', note: `${t.stay.name}, ${money(t.stay.total)} total ${n === 1 ? "for 1 person" : `split ${n} ways`}` }; return out; }
+  if (t.stay && +t.stay.total && !isSmall()) { const n = payHeads(); out.stay = { low: Math.round(t.stay.total / n), high: Math.round(t.stay.total / n), src: t.stay.booked ? 'booked' : 'quote', note: `${t.stay.name}, ${money(t.stay.total)} total ${n === 1 ? "for 1 person" : `split ${n} ways`}` }; return out; }
   const stays = t.stay ? [t.stay] : (t.stays?.items || []);
   const pn = stays.map(s => moneyRange(s.perNight)).filter(Boolean);
-  if (pn.length && !isSmall()) { const n = planHeads(); out.stay = { low: Math.round(Math.min(...pn.map(r => r[0])) * nights / n), high: Math.round(Math.max(...pn.map(r => r[1])) * nights / n), src: t.stay ? 'quote' : 'ai', note: `${t.stay ? t.stay.name : 'Stay ideas'}, ${nights} night${nights === 1 ? '' : 's'} ${n === 1 ? "for 1 person" : `split ${n} ways`}` }; }
+  if (pn.length && !isSmall()) { const n = payHeads(); out.stay = { low: Math.round(Math.min(...pn.map(r => r[0])) * nights / n), high: Math.round(Math.max(...pn.map(r => r[1])) * nights / n), src: t.stay ? 'quote' : 'ai', note: `${t.stay ? t.stay.name : 'Stay ideas'}, ${nights} night${nights === 1 ? '' : 's'} ${n === 1 ? "for 1 person" : `split ${n} ways`}` }; }
   return out;
 }
 // who: 'crew' (a typical person's range) or 'me' (your own, using your real numbers)
@@ -2182,7 +2187,7 @@ function scenarioEval(sc = {}) {
     const p = (t.pitches?.items || []).find(x => !x.small && x.city.toLowerCase() === dsel.city.toLowerCase()), r = p && moneyRange(p.perPerson);
     if (r) { low = r[0]; high = r[1]; note = 'AI pitch estimate'; } else note = 'No price for this one yet';
   } else {
-    const sum = costSummary(), dayF = (n + 1) / (n0 + 1), nightF = n0 ? n / n0 : 1, heads = planHeads();
+    const sum = costSummary(), dayF = (n + 1) / (n0 + 1), nightF = n0 ? n / n0 : 1, heads = payHeads();
     for (const r of sum.rows) {
       let v = r.v;
       if (r.k === 'stay' && sc.stay) {
@@ -2246,8 +2251,7 @@ function whatifApply(i) {
   if (sc.start || sc.nights != null) patch.lockedDates = { start: r.start, end: r.end };
   if (sc.dest) patch.lockedDest = sc.dest;
   if (!Object.keys(patch).length) { flash('That’s the same as the plan now.'); return; }
-  S.whatif = null; saveTrip(patch);
-  flash(`Done. The plan is now ${[r.dest?.city, isSmall() ? fmt(r.start) : dayRange(r.start, r.end)].filter(Boolean).join(', ')}.`);
+  S.whatif = null; saveTrip(patch).then(ok => ok && flash(`Done. The plan is now ${[r.dest?.city, isSmall() ? fmt(r.start) : dayRange(r.start, r.end)].filter(Boolean).join(', ')}.`));
 }
 
 /* ---------- plan recovery engine ---------- */
@@ -2266,7 +2270,7 @@ function planState(extra) {
   const L = S.trip.lockedDates, ldays = L ? span(L.start, L.end) : null;
   return {
     heads, low: sum.low, high: sum.high, any: sum.any,
-    stayEach: st && +st.total ? Math.round(st.total / heads) : stayRow?.v ? Math.round(stayRow.v.high) : 0,
+    stayEach: st && +st.total ? Math.round(st.total / payHeads()) : stayRow?.v ? Math.round(stayRow.v.high) : 0,
     over: fit.over.map(m => m.id), stretch: fit.stretch.map(m => m.id),
     condOff: active().filter(m => +m.cond?.under > 0 && sum.any && sum.low > +m.cond.under).map(m => m.id),
     hardBudget: sum.any ? budgetFit(sum, extra).hard.map(m => m.id) : [],
@@ -2535,8 +2539,8 @@ async function removeMember(uid) {
   try {
     if (!S.demo) { if (going(m)) logDrop(uid); await S.db.doc(`trips/${S.tid}/members/${uid}`).update({ status: 'out', removed: true }); }
     else { m.status = 'out'; m.removed = true; }
-    saveTrip({ people: { [uid]: null }, left: { [uid]: true }, orgs: { [uid]: null }, ...(tasks.length ? { tasks: Object.fromEntries(tasks.map(x => [x.id, { owner: '' }])) } : {}) });
-    S.confirmRm = null; flash(`${m.nick || 'Someone'} was removed from the ${planWord()}.`);
+    const ok = await saveTrip({ people: { [uid]: null }, left: { [uid]: true }, orgs: { [uid]: null }, ...(tasks.length ? { tasks: Object.fromEntries(tasks.map(x => [x.id, { owner: '' }])) } : {}) });
+    S.confirmRm = null; if (ok) flash(`${m.nick || 'Someone'} was removed from the ${planWord()}.`);
   } catch (e) { flash(writeErr(e)); }
 }
 
@@ -2638,8 +2642,7 @@ function applyOutline() {
   const d = dates(), tpl = S.trip.itinTpl; if (!d || !tpl) return;
   const days = span(d.start, d.end);
   const items = tpl.map(i => ({ id: rid(6), date: days[Math.min(i.day, days.length - 1)], time: hhmm(i.time), title: i.title, kind: i.kind, note: i.note }));
-  saveTrip({ itinerary: [...(S.trip.itinerary || []), ...items], itinTpl: null });
-  flash(`Added ${items.length} stop${items.length === 1 ? '' : 's'} from last time. Change anything that doesn’t fit.`);
+  saveTrip({ itinerary: [...(S.trip.itinerary || []), ...items], itinTpl: null }).then(ok => ok && flash(`Added ${items.length} stop${items.length === 1 ? '' : 's'} from last time. Change anything that doesn’t fit.`));
 }
 
 /* ---------- how we decide ---------- */
@@ -2779,8 +2782,7 @@ function condLines() {
 }
 function toggleConsent(key) {
   const on = !((S.trip.consent || {})[key] || {})[S.uid];
-  saveTrip({ consent: { [key]: { [S.uid]: on || null } } });
-  flash(on ? 'Noted. The crew can lock it now, as far as your limit goes.' : 'Taken back. It’s off the table unless your limit changes.');
+  saveTrip({ consent: { [key]: { [S.uid]: on || null } } }).then(ok => ok && flash(on ? 'Noted. The crew can lock it now, as far as your limit goes.' : 'Taken back. It’s off the table unless your limit changes.'));
 }
 /* ---------- crew DNA ---------- */
 // A living profile of a crew, built only from what the crew has done together in the
@@ -3050,8 +3052,7 @@ function saveItemEdit(id) {
   const moved = date !== old.date || time !== (old.time || '');
   const text = moved ? `${old.title} moved to ${when(date, time)}` : `${old.title} is now ${title}`;
   const fx = [moved ? `Was ${dow(old.date)} ${old.time ? t12(old.time) : 'with no set time'}` : '', title !== old.title && moved ? `Now called ${title}` : ''].filter(Boolean);
-  saveTrip(withLog({ itinerary: (S.trip.itinerary || []).map(i => i.id === id ? { ...i, date, time, title } : i) }, { area: 'plan', text, fx, act: old.secret ? '' : 'all', undo: { k: 'item', item: old } }));
-  flash(`${text}. The crew sees it now.`);
+  saveTrip(withLog({ itinerary: (S.trip.itinerary || []).map(i => i.id === id ? { ...i, date, time, title } : i) }, { area: 'plan', text, fx, act: old.secret ? '' : 'all', undo: { k: 'item', item: old } })).then(ok => ok && flash(`${text}. The crew sees it now.`));
 }
 /* ---------- personal needs ---------- */
 // Food, access and travel needs, so plans work for everyone. Nobody is asked why. Each
@@ -3702,7 +3703,7 @@ const ownStays = () => Object.entries(S.trip.myStays || {}).filter(([, s]) => s)
 const nightsNow = () => Math.max(1, nightsOf(dates()));
 function stayPriceText(s) {
   if (!+s.total) return s.perNight || 'No price yet';
-  const n = nightsNow(), heads = planHeads();
+  const n = nightsNow(), heads = payHeads();
   return `${money(s.total)} total · ${money(s.total / n)}/night · ${money(s.total / heads)} each`;
 }
 function ownStayCard(s, ds, d, n) {
@@ -3761,7 +3762,7 @@ function stayFromOwn(id, s) {
 // once locked: mark it booked with what was paid
 function stayBookedBox(st) {
   if (S.readOnly) return '';
-  if (st.booked) return `<span class="small" style="color:var(--good)"><b>Booked</b>${+st.total ? ` · ${money(st.total)} total, ${money(st.total / planHeads())} each` : ''}${st.bookedBy ? ` · by ${esc(nameOf(st.bookedBy))}` : ''}</span>`;
+  if (st.booked) return `<span class="small" style="color:var(--good)"><b>Booked</b>${+st.total ? ` · ${money(st.total)} total, ${money(st.total / payHeads())} each` : ''}${st.bookedBy ? ` · by ${esc(nameOf(st.bookedBy))}` : ''}</span>`;
   return `<form id="stayBookForm" class="row" style="gap:6px;align-items:flex-end"><label class="field" style="flex:0 1 200px"><span class="label">Booked it? Total paid (${cur()})</span><input id="sb-total" type="number" min="0" inputmode="decimal" value="${+st.total || ''}" placeholder="${+st.total ? '' : 'Total for all nights'}"></label><button class="btn sm" type="submit">Mark as booked</button></form>`;
 }
 
@@ -3832,8 +3833,7 @@ function applyHang() {
   const p = S.hangPlan; if (!p) return;
   const keep = (S.trip.itinerary || []).filter(i => i.date !== p.day || i.secret);
   S.hangPlan = null;
-  saveTrip({ itinerary: [...keep, ...p.items.map(i => ({ id: rid(6), date: p.day, ...i, ai: true }))] });
-  flash('Today’s plan is updated.');
+  saveTrip({ itinerary: [...keep, ...p.items.map(i => ({ id: rid(6), date: p.day, ...i, ai: true }))] }).then(ok => ok && flash('Today’s plan is updated.'));
 }
 function recapCard(day) {
   const d = dates(); if (!d || day <= d.start) return '';
@@ -4286,8 +4286,7 @@ function passSmall() {
 }
 function growPlan() {
   const t = S.trip, to = size() === 'weekend' ? 'trip' : 'weekend', end = t.winEnd < add(TODAY, SIZES[to].win) ? add(TODAY, SIZES[to].win) : t.winEnd;
-  saveTrip({ size: to, nights: SIZES[to].nights, winEnd: end, lockedDates: null });
-  flash(`It’s a ${SIZES[to].label.toLowerCase()} now. Everyone’s votes are kept. Pick the nights in Dates.`);
+  saveTrip({ size: to, nights: SIZES[to].nights, winEnd: end, lockedDates: null }).then(ok => ok && flash(`It’s a ${SIZES[to].label.toLowerCase()} now. Everyone’s votes are kept. Pick the nights in Dates.`));
 }
 
 /* Plan Match for hangouts and days out: the AI pitches whole evenings, the crew swipes */
@@ -4325,8 +4324,7 @@ function lockSmallPitch(p) {
   if (!d) { d = { id: rid(6), city: p.title, code: '' }; ds.push(d); }
   const patch = { destinations: ds, lockedDest: d.id, lockedDates: { start: p.start, end: p.start }, time: p.time || '', venue: p.where || '' };
   if (!(S.trip.itinerary || []).length && p.steps?.length) patch.itinerary = p.steps.map(s => ({ id: rid(6), date: p.start, time: s.time, title: s.title, kind: 'plan', note: '', ai: true }));
-  saveTrip(withLog(patch, { area: 'dest', text: `Locked in: ${p.title}, ${fmt(p.start)}${p.time ? ' at ' + t12(p.time) : ''}`, act: 'all', undo: { k: 'set', patch: { lockedDest: S.trip.lockedDest || null, lockedDates: S.trip.lockedDates || null, time: S.trip.time || '', venue: S.trip.venue || '' } } }));
-  flash(`Locked: ${p.title}, ${fmt(p.start)}${p.time ? ' at ' + t12(p.time) : ''}.`);
+  saveTrip(withLog(patch, { area: 'dest', text: `Locked in: ${p.title}, ${fmt(p.start)}${p.time ? ' at ' + t12(p.time) : ''}`, act: 'all', undo: { k: 'set', patch: { lockedDest: S.trip.lockedDest || null, lockedDates: S.trip.lockedDates || null, time: S.trip.time || '', venue: S.trip.venue || '' } } })).then(ok => ok && flash(`Locked: ${p.title}, ${fmt(p.start)}${p.time ? ' at ' + t12(p.time) : ''}.`));
 }
 
 /* ---------- crews ---------- */

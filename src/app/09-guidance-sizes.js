@@ -106,8 +106,7 @@ function passSmall() {
 }
 function growPlan() {
   const t = S.trip, to = size() === 'weekend' ? 'trip' : 'weekend', end = t.winEnd < add(TODAY, SIZES[to].win) ? add(TODAY, SIZES[to].win) : t.winEnd;
-  saveTrip({ size: to, nights: SIZES[to].nights, winEnd: end, lockedDates: null });
-  flash(`It’s a ${SIZES[to].label.toLowerCase()} now. Everyone’s votes are kept. Pick the nights in Dates.`);
+  saveTrip({ size: to, nights: SIZES[to].nights, winEnd: end, lockedDates: null }).then(ok => ok && flash(`It’s a ${SIZES[to].label.toLowerCase()} now. Everyone’s votes are kept. Pick the nights in Dates.`));
 }
 
 /* Plan Match for hangouts and days out: the AI pitches whole evenings, the crew swipes */
@@ -145,7 +144,6 @@ function lockSmallPitch(p) {
   if (!d) { d = { id: rid(6), city: p.title, code: '' }; ds.push(d); }
   const patch = { destinations: ds, lockedDest: d.id, lockedDates: { start: p.start, end: p.start }, time: p.time || '', venue: p.where || '' };
   if (!(S.trip.itinerary || []).length && p.steps?.length) patch.itinerary = p.steps.map(s => ({ id: rid(6), date: p.start, time: s.time, title: s.title, kind: 'plan', note: '', ai: true }));
-  saveTrip(withLog(patch, { area: 'dest', text: `Locked in: ${p.title}, ${fmt(p.start)}${p.time ? ' at ' + t12(p.time) : ''}`, act: 'all', undo: { k: 'set', patch: { lockedDest: S.trip.lockedDest || null, lockedDates: S.trip.lockedDates || null, time: S.trip.time || '', venue: S.trip.venue || '' } } }));
-  flash(`Locked: ${p.title}, ${fmt(p.start)}${p.time ? ' at ' + t12(p.time) : ''}.`);
+  saveTrip(withLog(patch, { area: 'dest', text: `Locked in: ${p.title}, ${fmt(p.start)}${p.time ? ' at ' + t12(p.time) : ''}`, act: 'all', undo: { k: 'set', patch: { lockedDest: S.trip.lockedDest || null, lockedDates: S.trip.lockedDates || null, time: S.trip.time || '', venue: S.trip.venue || '' } } })).then(ok => ok && flash(`Locked: ${p.title}, ${fmt(p.start)}${p.time ? ' at ' + t12(p.time) : ''}.`));
 }
 

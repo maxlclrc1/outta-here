@@ -186,7 +186,6 @@ function settleCard(items) {
 function startRunoff() {
   const items = S.trip.pitches?.items || [], ranked = [...items].sort((a, b) => fitScore(b) - fitScore(a) || (b.vibeMatch || 0) - (a.vibeMatch || 0));
   if (ranked.length < 2) return;
-  saveTrip({ runoff: { key: rid(6), ids: [ranked[0].id, ranked[1].id], by: S.uid, at: Date.now() } });
-  flash('Final vote started. Everyone picks one of the top two.');
+  saveTrip({ runoff: { key: rid(6), ids: [ranked[0].id, ranked[1].id], by: S.uid, at: Date.now() } }).then(ok => ok && flash('Final vote started. Everyone picks one of the top two.'));
 }
 

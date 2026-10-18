@@ -15,7 +15,7 @@ function scenarioEval(sc = {}) {
     const p = (t.pitches?.items || []).find(x => !x.small && x.city.toLowerCase() === dsel.city.toLowerCase()), r = p && moneyRange(p.perPerson);
     if (r) { low = r[0]; high = r[1]; note = 'AI pitch estimate'; } else note = 'No price for this one yet';
   } else {
-    const sum = costSummary(), dayF = (n + 1) / (n0 + 1), nightF = n0 ? n / n0 : 1, heads = planHeads();
+    const sum = costSummary(), dayF = (n + 1) / (n0 + 1), nightF = n0 ? n / n0 : 1, heads = payHeads();
     for (const r of sum.rows) {
       let v = r.v;
       if (r.k === 'stay' && sc.stay) {
@@ -79,7 +79,6 @@ function whatifApply(i) {
   if (sc.start || sc.nights != null) patch.lockedDates = { start: r.start, end: r.end };
   if (sc.dest) patch.lockedDest = sc.dest;
   if (!Object.keys(patch).length) { flash('That’s the same as the plan now.'); return; }
-  S.whatif = null; saveTrip(patch);
-  flash(`Done. The plan is now ${[r.dest?.city, isSmall() ? fmt(r.start) : dayRange(r.start, r.end)].filter(Boolean).join(', ')}.`);
+  S.whatif = null; saveTrip(patch).then(ok => ok && flash(`Done. The plan is now ${[r.dest?.city, isSmall() ? fmt(r.start) : dayRange(r.start, r.end)].filter(Boolean).join(', ')}.`));
 }
 

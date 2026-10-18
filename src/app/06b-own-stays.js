@@ -18,7 +18,7 @@ const ownStays = () => Object.entries(S.trip.myStays || {}).filter(([, s]) => s)
 const nightsNow = () => Math.max(1, nightsOf(dates()));
 function stayPriceText(s) {
   if (!+s.total) return s.perNight || 'No price yet';
-  const n = nightsNow(), heads = planHeads();
+  const n = nightsNow(), heads = payHeads();
   return `${money(s.total)} total · ${money(s.total / n)}/night · ${money(s.total / heads)} each`;
 }
 function ownStayCard(s, ds, d, n) {
@@ -77,7 +77,7 @@ function stayFromOwn(id, s) {
 // once locked: mark it booked with what was paid
 function stayBookedBox(st) {
   if (S.readOnly) return '';
-  if (st.booked) return `<span class="small" style="color:var(--good)"><b>Booked</b>${+st.total ? ` · ${money(st.total)} total, ${money(st.total / planHeads())} each` : ''}${st.bookedBy ? ` · by ${esc(nameOf(st.bookedBy))}` : ''}</span>`;
+  if (st.booked) return `<span class="small" style="color:var(--good)"><b>Booked</b>${+st.total ? ` · ${money(st.total)} total, ${money(st.total / payHeads())} each` : ''}${st.bookedBy ? ` · by ${esc(nameOf(st.bookedBy))}` : ''}</span>`;
   return `<form id="stayBookForm" class="row" style="gap:6px;align-items:flex-end"><label class="field" style="flex:0 1 200px"><span class="label">Booked it? Total paid (${cur()})</span><input id="sb-total" type="number" min="0" inputmode="decimal" value="${+st.total || ''}" placeholder="${+st.total ? '' : 'Total for all nights'}"></label><button class="btn sm" type="submit">Mark as booked</button></form>`;
 }
 
