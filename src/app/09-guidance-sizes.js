@@ -36,7 +36,8 @@ function checkMilestones() {
   const fresh = done.filter(l => !seen.includes(l));
   if (!fresh.length) return;
   const g = guide();
-  const k = fresh[fresh.length - 1]; showMilestone(k === 'dest' && isSmall() ? 'Plan locked' : DONE_TEXT[k] || 'Step done', g && !g.wait ? g : null);
+  const k = fresh[fresh.length - 1]; // on the plan home the next move is already the big card, so the toast just celebrates
+  showMilestone(k === 'dest' && isSmall() ? 'Plan locked' : DONE_TEXT[k] || 'Step done', g && !g.wait && S.tab !== 'overview' ? g : null);
 }
 let msTimer;
 function showMilestone(title, g) {

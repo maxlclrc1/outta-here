@@ -2761,7 +2761,7 @@ function changesCard() {
     ${c ? `<div class="stack check" style="gap:8px"><span class="label" style="color:var(--accent)">Crew check-in</span><b>${esc(c.q)}</b>
       <div class="ro-opts">${opts.map(([k, l]) => `<button class="ro-opt ${mine === k ? 'on' : ''}" data-check="${k}" aria-pressed="${mine === k}" ${S.readOnly ? 'disabled' : ''}><b>${l}</b><span class="ro-count">${count(k)} vote${count(k) === 1 ? '' : 's'}${mine === k ? ' · yours' : ''}</span></button>`).join('')}</div>
       <div class="row" style="justify-content:space-between;gap:8px"><span class="small muted">${answered} of ${n} answered · ${esc(STYLES[decideOf().style][0])}</span>${isOrganizer() || c.by === S.uid ? '<button class="linkbtn small" data-act="checkClose">Close it</button>' : ''}</div></div>` : ''}
-    ${list.length ? `<div class="stack" style="gap:8px"><div class="row" style="justify-content:space-between"><span class="label">What changed</span><button class="linkbtn small" data-tab="log">See all</button></div><div class="log-list">${logList().slice(0, 3).map(x => logRow(x, { short: true })).join('')}</div></div>` : ''}
+    ${list.length ? `<div class="stack" style="gap:8px"><div class="row" style="justify-content:space-between"><span class="label">Latest from the crew</span><button class="linkbtn small" data-tab="log">See all</button></div><div class="log-list">${logList().slice(0, 3).map(x => logRow(x, { short: true })).join('')}</div></div>` : ''}
   </section>`;
 }
 function recoverAlts() {
@@ -3747,12 +3747,23 @@ function journeyNow() {
 /* ----- the plan home's next move and progress ----- */
 // One card with the single next move (its button is the only bright one), then a compact progress
 // card: the six stages, what else is open, and what's coming up or done, folded.
-function journeyCard() {
+// an icon for each step and stage, so the plan home reads at a glance
+const JICON = { invite: '💌', rsvp: '🙋', honoree: '🎂', dest: '📍', dates: '📅', confirm: '🤝', venue: '📍', flights: '✈️', booked: '🎟️', stay: '🏡', plan: '🗺️', tasks: '✅', meet: '📌', arrivals: '🛬', live: '🎉', beacon: '📡', photos: '📸', settle: '💸', wrapped: '🎬' };
+const JSTAGE_ICON = { gather: '👋', decide: '🗳️', prepare: '🧳', final: '✅', experience: '🎉', after: '📸' };
+// The plan home's one big card is the next move. Under it, one card with how far the plan has come (a road
+// of stages and the plan's tiles); every other open, upcoming and finished step is folded away there.
+function journeyCard(tiles = '') {
   const j = journey(), f = j.focus, fresh = f && S.jLast && S.jLast !== f.k; if (f) S.jLast = f.k;
+  // the road lights up a stage the plan reached since this device last saw it; what was last seen is read
+  // once per visit, so the plan loading in pieces (several renders) doesn't use it up
+  const sk = 'outta_stage_' + S.tid;
+  if (S.jSeen?.tid !== S.tid) { let v = null; try { v = localStorage.getItem(sk); } catch {} S.jSeen = { tid: S.tid, from: v === null ? null : +v }; }
+  try { localStorage.setItem(sk, String(j.si)); } catch {}
+  const leveled = S.jSeen.from !== null && S.jSeen.from < j.si && !calm();
   const waitOn = f && (f.who || []).filter(x => x.id !== S.uid);
   const head = f ? `<section class="j-focus ${f.mine ? 'mine' : ''} ${fresh ? 'fresh' : ''}" data-key="jf-${f.k}">
-      <span class="j-eyebrow">${f.mine ? 'Your move' : 'Up next'}</span>
-      <h2>${esc(f.goal)}</h2>
+      <div class="j-head"><span class="j-ico" aria-hidden="true">${JICON[f.k] || '✨'}</span><div class="stack" style="gap:4px;min-width:0"><span class="j-eyebrow">${f.mine ? 'Your move' : 'Up next'}</span>
+      <h2>${esc(f.goal)}</h2></div></div>
       ${f.why || f.todo ? `<p class="j-why">${esc(f.why || f.todo)}</p>` : ''}
       ${waitOn.length ? `<div class="j-wait">${avStack(waitOn, 5)}<span class="small">Waiting on ${esc(namesOrCount(waitOn))}</span></div>` : ''}
       <div class="j-acts">${f.act()}</div>
@@ -3767,11 +3778,11 @@ function journeyCard() {
       ${s.status === 'ready' || s.status === 'waiting' ? `<button class="btn sm" data-jgo="${s.k}">${s.mine ? 'Do it' : s.status === 'waiting' ? 'See' : 'Open'}</button>` : ''}
     </div>`;
   const progress = `<section class="card ov-progress j-track">
-      <div class="ovp-head"><span class="g-k">Plan progress</span><span class="small muted">${esc(JSTAGE_LABEL[j.stage])} · ${j.si + 1} of ${JSTAGES.length}</span></div>
-      <ol class="j-strip" aria-label="Where the plan is">${JSTAGES.map(([k, l], i) => `<li class="${i < j.si ? 'j-done' : i === j.si ? 'j-cur' : ''}"><i></i><span>${l}</span></li>`).join('')}</ol>
-      ${j.also.length ? `<div class="j-list"><span class="g-k">Also open</span>${j.also.slice(0, 2).map(s => row(s)).join('')}</div>` : ''}
-      ${j.also.length > 2 || j.later.length || j.done.length ? `<details class="j-more" data-key="j-more"><summary class="small">${[j.also.length > 2 && `${j.also.length - 2} more open`, j.later.length && `${j.later.length} coming up`, j.done.length && `${j.done.length} done`].filter(Boolean).join(' · ')}</summary>
-        <div class="j-list">${j.also.slice(2).map(s => row(s)).join('')}${j.later.map(s => row(s, true)).join('')}${j.done.map(s => row(s)).join('')}</div></details>` : ''}
+      <div class="ovp-head"><span class="g-k">The plan so far${leveled ? ' <span class="j-level">🎉 New stage</span>' : ''}</span><span class="small muted">${esc(JSTAGE_LABEL[j.stage])} · ${j.si + 1} of ${JSTAGES.length}</span></div>
+      <ol class="j-strip j-road ${leveled ? 'leveled' : ''}" aria-label="Where the plan is">${JSTAGES.map(([k, l], i) => `<li class="${i < j.si ? 'j-done' : i === j.si ? 'j-cur' : ''}" title="${l}"><i aria-hidden="true">${i < j.si ? '✓' : JSTAGE_ICON[k]}</i><span>${l}</span></li>`).join('')}</ol>
+      ${tiles}
+      ${j.also.length || j.later.length || j.done.length ? `<details class="j-more" data-key="j-more"><summary class="small">Everything else<span class="muted">${[j.also.length && `${j.also.length} open`, j.later.length && `${j.later.length} coming up`, j.done.length && `${j.done.length} done`].filter(Boolean).join(' · ')}</span></summary>
+        <div class="j-list">${j.also.map(s => row(s)).join('')}${j.later.map(s => row(s, true)).join('')}${j.done.map(s => row(s)).join('')}</div></details>` : ''}
     </section>`;
   return `<div class="journey" id="journey">
     ${head}
@@ -3819,7 +3830,7 @@ function coverOf(t, id, photo) {
 // Overlapping avatars; people who haven't said yes are faded.
 function avStack(ms, max = 5) {
   const list = ms.slice(0, max);
-  return `<div class="avstack" aria-hidden="true">${list.map(m => `<span class="av ${m.faded ? 'av-maybe' : ''}" style="background:${colorFor(m.id)}">${esc((m.nick || '').trim()[0]?.toUpperCase() || '')}</span>`).join('')}${ms.length > max ? `<span class="av av-more">+${ms.length - max}</span>` : ''}</div>`;
+  return `<div class="avstack" aria-hidden="true">${list.map(m => `<span class="av ${m.faded ? 'av-maybe' : ''} ${m.lvl ? 'lv-' + m.lvl : ''}" style="background:${colorFor(m.id)}">${esc((m.nick || '').trim()[0]?.toUpperCase() || '')}</span>`).join('')}${ms.length > max ? `<span class="av av-more">+${ms.length - max}</span>` : ''}</div>`;
 }
 function planHero() {
   const t = S.trip, m = mode(), sz = size(), small = isSmall(), d = t.lockedDates, ds = t.lockedDest ? dest() : null, cd = d ? countdown() : null;
@@ -3834,7 +3845,7 @@ function planHero() {
       ${cd ? `<span class="ovh-count ${cd.n === 0 ? 'now' : ''}">${cd.n > 0 ? `<b>${cd.n}</b> ${cd.n === 1 ? 'day' : 'days'} to go` : esc(cd.text)}</span>` : ''}</div>
     <h1 class="ovh-title">${esc(t.name)}</h1>
     <p class="ovh-meta">${meta}</p>
-    <div class="ovh-crew">${avStack([...goers, ...here.filter(x => !going(x)).map(x => ({ ...x, faded: true }))], 6)}<span class="ovh-who">${who}</span>
+    <div class="ovh-crew">${avStack([...goers.map(x => ({ ...x, lvl: x.status })), ...here.filter(x => !going(x)).map(x => ({ ...x, faded: true }))], 6)}<span class="ovh-who">${who}</span>
       ${!onInvite && !S.readOnly && canInvite() ? '<button class="btn sm glass" data-tab="crew">Invite</button>' : ''}</div>
   </section>`;
 }
@@ -3843,27 +3854,31 @@ function ovGlance() {
   const t = S.trip, small = isSmall(), d = t.lockedDates, ms = active(), ds = t.lockedDest ? dest() : null;
   const shared = ms.filter(m => (m.days || []).length).length, ideas = (t.destinations || []).length, pitches = (t.pitches?.items || []).length;
   const b = budgetCap(), all = taskList(), open = all.filter(x => !x.done).length;
-  const tile = (tab, k, v, done) => `<button class="glance ${done ? 'g-done' : ''}" data-tab="${tab}"><span class="g-k">${k}</span><b>${v}</b></button>`;
+  const mineIn = (meDoc()?.days || []).length > 0, myB = hasBudget(S.uid) && !+meDoc()?.budget;
+  const tile = (tab, ic, k, v, done) => `<button class="glance ${done ? 'g-done' : ''}" data-tab="${tab}"><span class="g-ic" aria-hidden="true">${ic}</span><span class="g-k">${k}</span><b>${v}</b></button>`;
   return `<section class="glance-grid" aria-label="At a glance">
-    ${tile('dates', 'When', d ? esc(planWhen(t)) : !shared ? 'Nobody’s shared free days yet' : shared === ms.length ? 'Everyone’s free days are in' : `${shared} of ${ms.length} shared free days`, !!d)}
-    ${tile('match', small ? 'What' : 'Where', ds ? esc(ds.city) : pitches ? `${pitches} to swipe on` : ideas ? `${ideas} idea${ideas === 1 ? '' : 's'} to vote on` : 'No ideas yet', !!ds)}
-    ${paysMode() === 'one' ? tile('cost', 'Money', isPayer() ? 'You’re covering it' : `Covered by ${esc(nameOf(payerId()))}`, true) : paysMode() === 'company' ? tile('cost', 'Money', 'The company’s paying', true) : tile('cost', 'Budget', b ? `${esc(b.label)} a person` : 'Nobody’s set one yet', !!b)}
-    ${tabOn('tasks') ? tile('tasks', 'To-dos', open ? `${open} open` : all.length ? 'All done' : 'Nothing yet', all.length > 0 && !open) : tile('hype', 'Chat', S.feed.length ? `${S.feed.length} message${S.feed.length === 1 ? '' : 's'}` : 'Say hi to the crew', false)}
+    ${tile('dates', '📅', 'When', d ? esc(planWhen(t)) : !mineIn && !S.readOnly ? 'Add your free days' : !shared ? 'Nobody’s shared free days yet' : shared === ms.length ? 'Everyone’s free days are in' : `${shared} of ${ms.length} shared free days`, !!d)}
+    ${tile('match', '📍', small ? 'What' : 'Where', ds ? esc(ds.city) : pitches ? `${pitches} to swipe on` : ideas ? `${ideas} idea${ideas === 1 ? '' : 's'} to vote on` : 'Toss in an idea', !!ds)}
+    ${paysMode() === 'one' ? tile('cost', '💸', 'Money', isPayer() ? 'You’re covering it' : `Covered by ${esc(nameOf(payerId()))}`, true) : paysMode() === 'company' ? tile('cost', '💸', 'Money', 'The company’s paying', true) : tile('cost', '💸', 'Budget', b ? `${esc(b.label)} a person` : myB && !S.readOnly ? 'Set yours' : 'None set yet', !!b)}
+    ${tabOn('tasks') ? tile('tasks', '✅', 'To-dos', open ? `${open} open` : all.length ? 'All done' : 'Add the first one', all.length > 0 && !open) : tile('hype', '💬', 'Chat', S.feed.length ? `${S.feed.length} message${S.feed.length === 1 ? '' : 's'}` : 'Say hi to the crew', false)}
   </section>`;
 }
 function overviewTab() {
   const t = S.trip, welcome = showWelcome();
   // someone who hasn't answered yet sees the invitation first, not the whole planning screen
   if (welcome && !S.peek) return welcomeCard();
-  const me = meDoc(), stage = STAGES.findIndex(([k]) => k === stageOf(t, S.members));
+  const me = meDoc(), stage = STAGES.findIndex(([k]) => k === stageOf(t, S.members)), f = welcome ? null : journey().focus;
+  // when the next move is your own answer, the big card already asks it; the ladder would ask twice
+  const askedAbove = f && f.mine && (f.k === 'rsvp' || f.k === 'confirm');
   return `${welcome ? welcomeCard() : planHero()}
   ${isLive() ? '<div class="row" style="gap:8px"><button class="btn lost-btn" data-act="lostOpen">I’m lost</button><span class="small muted">Sends the crew your spot.</span></div>' : ''}
-  ${welcome ? '' : journeyCard()}
+  ${welcome ? ovGlance() : journeyCard(ovGlance())}
   ${welcome ? '' : changesCard()}
-  ${me && !welcome && !S.readOnly ? `<section class="card ov-me"><span class="g-k">Are you in?</span>${commitLadder()}</section>` : ''}
-  ${ovGlance()}
-  ${S.recover ? recoveryCard() : welcome ? '' : `<details class="ov-fold" data-key="fold-recover"><summary><b>Something changed?</b><span class="small muted">See what it affects before anything moves</span></summary>${recoveryCard()}</details>`}
-  <details class="ov-fold" data-key="fold-pass" ${S.cardUrl ? 'open' : ''}><summary><b>${stage >= 2 ? 'Plan passport' : 'Plan pass'}</b><span class="small muted">Share it, or make a story card</span></summary>${stage >= 2 ? passport() : pass()}</details>`;
+  ${me && !welcome && !S.readOnly && !askedAbove ? `<section class="card ov-me"><span class="g-k">You’re…</span>${commitLadder()}</section>` : ''}
+  <div class="ov-folds">
+  ${S.recover ? recoveryCard() : welcome ? '' : `<details class="ov-fold" data-key="fold-recover"><summary><b>Something changed?</b><span class="small muted">See what it affects first</span></summary>${recoveryCard()}</details>`}
+  <details class="ov-fold" data-key="fold-pass" ${S.cardUrl ? 'open' : ''}><summary><b>${stage >= 2 ? 'Plan passport' : 'Plan pass'}</b><span class="small muted">Share it as a story card</span></summary>${stage >= 2 ? passport() : pass()}</details>
+  </div>`;
 }
 /* ---------- home screen + trip creation ---------- */
 /* ---------- book: flights ---------- */
@@ -4597,7 +4612,8 @@ function checkMilestones() {
   const fresh = done.filter(l => !seen.includes(l));
   if (!fresh.length) return;
   const g = guide();
-  const k = fresh[fresh.length - 1]; showMilestone(k === 'dest' && isSmall() ? 'Plan locked' : DONE_TEXT[k] || 'Step done', g && !g.wait ? g : null);
+  const k = fresh[fresh.length - 1]; // on the plan home the next move is already the big card, so the toast just celebrates
+  showMilestone(k === 'dest' && isSmall() ? 'Plan locked' : DONE_TEXT[k] || 'Step done', g && !g.wait && S.tab !== 'overview' ? g : null);
 }
 let msTimer;
 function showMilestone(title, g) {
