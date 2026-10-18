@@ -284,12 +284,23 @@ function journeyNow() {
 /* ----- the plan home's next move and progress ----- */
 // One card with the single next move (its button is the only bright one), then a compact progress
 // card: the six stages, what else is open, and what's coming up or done, folded.
-function journeyCard() {
+// an icon for each step and stage, so the plan home reads at a glance
+const JICON = { invite: '💌', rsvp: '🙋', honoree: '🎂', dest: '📍', dates: '📅', confirm: '🤝', venue: '📍', flights: '✈️', booked: '🎟️', stay: '🏡', plan: '🗺️', tasks: '✅', meet: '📌', arrivals: '🛬', live: '🎉', beacon: '📡', photos: '📸', settle: '💸', wrapped: '🎬' };
+const JSTAGE_ICON = { gather: '👋', decide: '🗳️', prepare: '🧳', final: '✅', experience: '🎉', after: '📸' };
+// The plan home's one big card is the next move. Under it, one card with how far the plan has come (a road
+// of stages and the plan's tiles); every other open, upcoming and finished step is folded away there.
+function journeyCard(tiles = '') {
   const j = journey(), f = j.focus, fresh = f && S.jLast && S.jLast !== f.k; if (f) S.jLast = f.k;
+  // the road lights up a stage the plan reached since this device last saw it; what was last seen is read
+  // once per visit, so the plan loading in pieces (several renders) doesn't use it up
+  const sk = 'outta_stage_' + S.tid;
+  if (S.jSeen?.tid !== S.tid) { let v = null; try { v = localStorage.getItem(sk); } catch {} S.jSeen = { tid: S.tid, from: v === null ? null : +v }; }
+  try { localStorage.setItem(sk, String(j.si)); } catch {}
+  const leveled = S.jSeen.from !== null && S.jSeen.from < j.si && !calm();
   const waitOn = f && (f.who || []).filter(x => x.id !== S.uid);
   const head = f ? `<section class="j-focus ${f.mine ? 'mine' : ''} ${fresh ? 'fresh' : ''}" data-key="jf-${f.k}">
-      <span class="j-eyebrow">${f.mine ? 'Your move' : 'Up next'}</span>
-      <h2>${esc(f.goal)}</h2>
+      <div class="j-head"><span class="j-ico" aria-hidden="true">${JICON[f.k] || '✨'}</span><div class="stack" style="gap:4px;min-width:0"><span class="j-eyebrow">${f.mine ? 'Your move' : 'Up next'}</span>
+      <h2>${esc(f.goal)}</h2></div></div>
       ${f.why || f.todo ? `<p class="j-why">${esc(f.why || f.todo)}</p>` : ''}
       ${waitOn.length ? `<div class="j-wait">${avStack(waitOn, 5)}<span class="small">Waiting on ${esc(namesOrCount(waitOn))}</span></div>` : ''}
       <div class="j-acts">${f.act()}</div>
@@ -304,11 +315,11 @@ function journeyCard() {
       ${s.status === 'ready' || s.status === 'waiting' ? `<button class="btn sm" data-jgo="${s.k}">${s.mine ? 'Do it' : s.status === 'waiting' ? 'See' : 'Open'}</button>` : ''}
     </div>`;
   const progress = `<section class="card ov-progress j-track">
-      <div class="ovp-head"><span class="g-k">Plan progress</span><span class="small muted">${esc(JSTAGE_LABEL[j.stage])} · ${j.si + 1} of ${JSTAGES.length}</span></div>
-      <ol class="j-strip" aria-label="Where the plan is">${JSTAGES.map(([k, l], i) => `<li class="${i < j.si ? 'j-done' : i === j.si ? 'j-cur' : ''}"><i></i><span>${l}</span></li>`).join('')}</ol>
-      ${j.also.length ? `<div class="j-list"><span class="g-k">Also open</span>${j.also.slice(0, 2).map(s => row(s)).join('')}</div>` : ''}
-      ${j.also.length > 2 || j.later.length || j.done.length ? `<details class="j-more" data-key="j-more"><summary class="small">${[j.also.length > 2 && `${j.also.length - 2} more open`, j.later.length && `${j.later.length} coming up`, j.done.length && `${j.done.length} done`].filter(Boolean).join(' · ')}</summary>
-        <div class="j-list">${j.also.slice(2).map(s => row(s)).join('')}${j.later.map(s => row(s, true)).join('')}${j.done.map(s => row(s)).join('')}</div></details>` : ''}
+      <div class="ovp-head"><span class="g-k">The plan so far${leveled ? ' <span class="j-level">🎉 New stage</span>' : ''}</span><span class="small muted">${esc(JSTAGE_LABEL[j.stage])} · ${j.si + 1} of ${JSTAGES.length}</span></div>
+      <ol class="j-strip j-road ${leveled ? 'leveled' : ''}" aria-label="Where the plan is">${JSTAGES.map(([k, l], i) => `<li class="${i < j.si ? 'j-done' : i === j.si ? 'j-cur' : ''}" title="${l}"><i aria-hidden="true">${i < j.si ? '✓' : JSTAGE_ICON[k]}</i><span>${l}</span></li>`).join('')}</ol>
+      ${tiles}
+      ${j.also.length || j.later.length || j.done.length ? `<details class="j-more" data-key="j-more"><summary class="small">Everything else<span class="muted">${[j.also.length && `${j.also.length} open`, j.later.length && `${j.later.length} coming up`, j.done.length && `${j.done.length} done`].filter(Boolean).join(' · ')}</span></summary>
+        <div class="j-list">${j.also.map(s => row(s)).join('')}${j.later.map(s => row(s, true)).join('')}${j.done.map(s => row(s)).join('')}</div></details>` : ''}
     </section>`;
   return `<div class="journey" id="journey">
     ${head}

@@ -199,7 +199,7 @@ function changesCard() {
     ${c ? `<div class="stack check" style="gap:8px"><span class="label" style="color:var(--accent)">Crew check-in</span><b>${esc(c.q)}</b>
       <div class="ro-opts">${opts.map(([k, l]) => `<button class="ro-opt ${mine === k ? 'on' : ''}" data-check="${k}" aria-pressed="${mine === k}" ${S.readOnly ? 'disabled' : ''}><b>${l}</b><span class="ro-count">${count(k)} vote${count(k) === 1 ? '' : 's'}${mine === k ? ' · yours' : ''}</span></button>`).join('')}</div>
       <div class="row" style="justify-content:space-between;gap:8px"><span class="small muted">${answered} of ${n} answered · ${esc(STYLES[decideOf().style][0])}</span>${isOrganizer() || c.by === S.uid ? '<button class="linkbtn small" data-act="checkClose">Close it</button>' : ''}</div></div>` : ''}
-    ${list.length ? `<div class="stack" style="gap:8px"><div class="row" style="justify-content:space-between"><span class="label">What changed</span><button class="linkbtn small" data-tab="log">See all</button></div><div class="log-list">${logList().slice(0, 3).map(x => logRow(x, { short: true })).join('')}</div></div>` : ''}
+    ${list.length ? `<div class="stack" style="gap:8px"><div class="row" style="justify-content:space-between"><span class="label">Latest from the crew</span><button class="linkbtn small" data-tab="log">See all</button></div><div class="log-list">${logList().slice(0, 3).map(x => logRow(x, { short: true })).join('')}</div></div>` : ''}
   </section>`;
 }
 function recoverAlts() {
