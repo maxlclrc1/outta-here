@@ -83,9 +83,32 @@ Reply with only JSON: {"pitches":[{"city":"","code":"IATA airport code","start":
   });
 }
 async function swipe(pid, v) {
+  votePop(v === 1 ? 'I’d go! ♥' : v === -1 ? 'Passed' : 'Could work ≈', v === 1 ? 'y' : v === -1 ? 'n' : 'm');
   await saveTrip({ swipes: { [pid]: { [S.uid]: v } } });
   const m = matchedPitch();
-  if (m && v === 1 && m.id === pid) flash(`It’s a match! Everyone’s down for ${m.city}.`);
+  if (m && v === 1 && m.id === pid) { celebrate(m.city, GRADS[hashStr(m.city) % GRADS.length][0], 'It’s a match!'); flash(`It’s a match! Everyone’s down for ${m.city}.`); }
+}
+// A vote from the buttons under the card throws the card the same way a swipe does. The vote is applied
+// at once, so the next card is already there; a copy of the old one flies off on top of it.
+function castVote(pid, v, btn) {
+  const card = document.getElementById('pitch');
+  if (card && card.dataset.pid === pid && btn?.classList.contains('swipe-btn')) flyOff(card, v === 1 ? 'yes' : v === -1 ? 'no' : 'meh');
+  return swipe(pid, v);
+}
+function flyOff(card, dir) {
+  if (calm()) return;
+  const r = card.getBoundingClientRect(), ghost = card.cloneNode(true);
+  ghost.removeAttribute('id'); ghost.querySelectorAll('[id]').forEach(e => e.removeAttribute('id'));
+  ghost.classList.remove('dragging'); ghost.classList.add('pitch-ghost', 'fly-' + dir); ghost.setAttribute('aria-hidden', 'true');
+  Object.assign(ghost.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+  document.body.appendChild(ghost); setTimeout(() => ghost.remove(), 400);
+}
+// a quick cheer for a vote, over the bottom of the screen, and a tap on phones
+function votePop(text, kind) {
+  document.querySelector('.vote-pop')?.remove();
+  const el = document.createElement('div'); el.className = `vote-pop vp-${kind}`; el.setAttribute('aria-hidden', 'true'); el.textContent = text;
+  document.body.appendChild(el); setTimeout(() => el.remove(), 1100);
+  if (navigator.vibrate) try { navigator.vibrate(10); } catch {}
 }
 function lockPitch(pid) {
   const p = (S.trip.pitches?.items || []).find(x => x.id === pid); if (!p) return;
@@ -93,7 +116,7 @@ function lockPitch(pid) {
   const ds = [...(S.trip.destinations || [])];
   let d = ds.find(x => x.city.toLowerCase() === p.city.toLowerCase());
   if (!d) { d = { id: rid(6), city: p.city, code: p.code }; ds.push(d); }
-  saveTrip(withLog({ destinations: ds, lockedDest: d.id, lockedDates: { start: p.start, end: p.end } }, { area: 'dest', text: `Locked in: ${p.city}, ${dayRange(p.start, p.end)}`, act: 'all', undo: { k: 'set', patch: { lockedDest: S.trip.lockedDest || null, lockedDates: S.trip.lockedDates || null } } })).then(ok => ok && flash(`Locked: ${p.city}, ${short(p.start)} – ${short(p.end)}. Time to book flights.`));
+  saveTrip(withLog({ destinations: ds, lockedDest: d.id, lockedDates: { start: p.start, end: p.end } }, { area: 'dest', text: `Locked in: ${p.city}, ${dayRange(p.start, p.end)}`, act: 'all', undo: { k: 'set', patch: { lockedDest: S.trip.lockedDest || null, lockedDates: S.trip.lockedDates || null } } })).then(ok => { if (!ok) return; celebrate(p.city, GRADS[hashStr(p.city) % GRADS.length][0], 'Locked in!'); flash(`Locked: ${p.city}, ${short(p.start)} – ${short(p.end)}. Time to book flights.`); });
 }
 // Once a place is locked, lead with it and the next step; the votes and other options
 // are one tap away instead of competing for attention.
@@ -101,51 +124,63 @@ function matchTab() {
   if (!S.trip.lockedDest || S.demo) return matchBody();
   const ds = dest(), d = S.trip.lockedDates, p = (S.trip.pitches?.items || []).find(lockedOn);
   return `<section class="card stack decided-sum"><div class="row" style="justify-content:space-between"><span class="on-pill">Decided</span>${S.readOnly ? '' : '<button class="btn sm ghost" data-act="unlockDest">Change it</button>'}</div>
-    <h2>${esc(ds?.city || '')}</h2><span class="small muted">${[d && dayRange(d.start, d.end), p && p.perPerson && pitchShort(p, p.perPerson + ' each'), p && p.tagline].filter(Boolean).map(esc).join(' · ')}</span></section>
+    <h2>${esc(ds?.city || '')}</h2><span class="small muted">${[d && dayRange(d.start, d.end), p && pitchShort(p, p.perPerson ? p.perPerson + ' each' : ''), p && p.tagline].filter(Boolean).map(esc).join(' · ')}</span></section>
   <details class="card more-opts"><summary>See the votes and other options</summary><div class="stack" style="margin-top:12px">${matchBody()}</div></details>`;
 }
 function matchBody() {
   const items = S.trip.pitches?.items || [], vs = active(), m = matchedPitch();
   const next = items.find(x => !swipeOf(x.id, S.uid));
-  const pitchCard = p => { const [c1, c2] = GRADS[hashStr(p.city) % GRADS.length];
-    return `<article class="pitch" id="pitch" data-key="pitch-${esc(p.id)}" data-pid="${esc(p.id)}">
-      <span class="stamp yes" id="stamp-yes">I'D GO</span><span class="stamp no" id="stamp-no">PASS</span>
+  const pitchCard = p => { const [c1, c2] = GRADS[hashStr(p.city) % GRADS.length], mark = p.small ? '' : p.code || p.city.slice(0, 3).toUpperCase();
+    return `<article class="pitch" id="pitch" data-noanim data-key="pitch-${esc(p.id)}" data-pid="${esc(p.id)}">
+      <span class="stamp yes" id="stamp-yes">I'D GO</span><span class="stamp no" id="stamp-no">PASS</span><span class="stamp meh">COULD WORK</span>
       <div class="pitch-top" style="background:linear-gradient(135deg,${c1},${c2})">
-        <span class="label" style="color:rgba(255,255,255,.8)">${items.indexOf(p) + 1} of ${items.length}</span>
-        ${p.small ? `<h2 style="color:#fff;font-size:34px">${esc(p.title)}</h2>${p.where ? `<span style="color:rgba(255,255,255,.85)">${esc(p.where)}</span>` : ''}` : `<span class="code" style="color:#fff">${esc(p.code || p.city.slice(0, 3).toUpperCase())}</span>
-        <h2 style="color:#fff">${esc(p.city)}</h2>`}
-        <span style="color:#fff;font-weight:600">${esc(p.tagline)}</span>
+        ${mark ? `<span class="p-mark" aria-hidden="true">${esc(mark)}</span>` : ''}
+        <div class="p-top-row"><span class="p-count">${items.indexOf(p) + 1} of ${items.length}</span>${+p.vibeMatch ? `<span class="p-vibe">${Math.round(+p.vibeMatch)}% your vibe</span>` : ''}</div>
+        <h2>${esc(p.small ? p.title : p.city)}</h2>${p.small && p.where ? `<span class="p-where">${esc(p.where)}</span>` : ''}
+        <span class="p-tag">${esc(p.tagline)}</span>
       </div>
       <div class="pitch-body">
-        <div class="facts"><div><span class="label">${p.small ? 'When' : 'Dates'}</span><b>${p.small ? fmt(p.start) + (p.time ? ' · ' + t12(p.time) : '') : short(p.start) + ' → ' + short(p.end)}</b></div>${(pp => `<div class="${pp.split ? '' : 'p-total'}"><span class="label">${pp.label}</span><b>${esc(pp.main)}</b>${pp.split ? '' : `<span class="small muted">${esc(pp.each)}</span>`}</div></div>${pp.split ? '' : `<span class="small pay-who">${esc(pp.who)}</span>`}`)(pitchPay(p))}
+        <div class="facts"><div><span class="label">${p.small ? 'When' : 'Dates'}</span><b>${p.small ? fmt(p.start) + (p.time ? ' · ' + t12(p.time) : '') : short(p.start) + ' → ' + short(p.end)}</b></div>${(pp => `<div class="${pp.split ? '' : pp.missing ? 'p-total p-na' : 'p-total'}"><span class="label">${pp.label}</span><b>${esc(pp.main)}</b>${pp.split ? '' : `<span class="small muted">${esc(pp.each)}</span>`}</div></div>${pp.split ? '' : `<span class="small pay-who">${esc(pp.who)}</span>`}`)(pitchPay(p))}
+        <p class="p-why">${esc(p.why)}</p>
         ${fitChips(p)}
-        <p>${esc(p.why)}</p>
         ${arr(p.highlights).length || p.weather ? `<details class="p-more"><summary class="small">See details</summary>${p.weather ? `<p class="small" style="margin:6px 0 0"><b>Weather:</b> ${esc(p.weather)}</p>` : ''}${arr(p.highlights).length ? `<ul style="margin:6px 0 0;padding-left:18px">${arr(p.highlights).map(h => `<li>${esc(h)}</li>`).join('')}</ul>` : ''}</details>` : ''}
       </div>
     </article>`; };
-  return `${S.sample === null ? whereTab() : ''}<section class="card stack">
-    <div class="row" style="justify-content:space-between"><div class="stack" style="gap:2px"><h2>${isSmall() ? 'Plan Match' : 'Trip Match'}</h2><span class="small muted">The AI pitches ${isSmall() ? 'whole plans' : 'complete trips'} that fit everyone’s budget, free days and vibe. Everyone swipes. If you all say yes to the same one, it’s a match. Not feeling them? Add your own picks below.</span></div>
-      ${S.sample !== null ? `<button class="btn ${items.length ? '' : 'primary'}" data-act="genPitches" ${S.busy.pitch ? 'disabled' : ''}>${S.busy.pitch ? '<i class="spin"></i>Pitching…' : items.length ? 'New pitches' : isSmall() ? 'Pitch us some plans' : 'Pitch us some trips'}</button>` : ''}</div>
-    ${steerField()}
-    ${S.demo ? '' : ruleLine()}
-    ${(() => { const c = S.crews.find(x => x.id === S.trip.crewId); return c && !S.demo ? dnaCard(c, true) : ''; })()}
+  // how far the crew is: every person's swipe on every pitch
+  const total = items.length * vs.length, done = items.reduce((n, p) => n + vs.filter(x => swipeOf(p.id, x.id)).length, 0), left = items.filter(p => !swipeOf(p.id, S.uid)).length;
+  const progress = items.length && vs.length ? `<div class="vprog">
+      <div class="vprog-top"><span><b>${done}/${total}</b> swipes in</span><span class="small ${left ? 'muted' : 'vp-done'}">${left ? `${left} left for you` : done === total ? 'Everyone’s swiped ✓' : 'You’re done ✓'}</span></div>
+      <div class="setup-bar ${done === total ? 'full' : ''}" role="progressbar" aria-label="Swipes in" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${done}"><i style="width:${Math.round(done / total * 100)}%"></i></div>
+      <div class="vprog-crew">${vs.map(x => { const fin = items.every(p => swipeOf(p.id, x.id)); return `<span class="vp-av ${fin ? 'fin' : ''}" style="background:${colorFor(x.id)}" title="${esc(x.nick || 'Someone')}${fin ? ': all swiped' : ''}">${esc((x.nick || '?')[0].toUpperCase())}${fin ? '<i aria-hidden="true">✓</i>' : ''}</span>`; }).join('')}</div>
+    </div>` : '';
+  // your vote on a pitch, changeable any time: pass, could work, yes
+  const voteSeg = p => { const mine = swipeOf(p.id, S.uid);
+    return `<div class="vseg" role="group" aria-label="Your vote on ${esc(pName(p))}">${[[-1, '✕', 'Pass'], [WORKABLE, '≈', 'Could work'], [1, '♥', 'Yes']].map(([v, ic, l]) => `<button class="vs-opt v${v === 1 ? 'y' : v === -1 ? 'n' : 'm'} ${mine === v ? 'on' : ''}" data-swipe="${esc(p.id)}|${v}" aria-pressed="${mine === v}" aria-label="${l}" title="${l}">${ic}</button>`).join('')}</div>`; };
+  const more = `${steerField()}${S.demo ? '' : ruleLine()}${(() => { const c = S.crews.find(x => x.id === S.trip.crewId); return c && !S.demo ? dnaCard(c, true) : ''; })()}<span class="small muted">Not feeling them? Add your own picks below.</span>`;
+  return `${S.sample === null ? whereTab() : ''}<section class="card stack vote-head">
+    <div class="row" style="justify-content:space-between;align-items:flex-start"><div class="stack" style="gap:2px"><h2>${isSmall() ? 'Plan Match' : 'Trip Match'}</h2><span class="small muted">Swipe on ${isSmall() ? 'plans' : 'trips'} picked for the crew. Everyone says yes to the same one? It’s a match.</span></div>
+      ${S.sample !== null ? `<button class="btn ${items.length ? '' : 'primary chunky'}" data-act="genPitches" ${S.busy.pitch ? 'disabled' : ''}>${S.busy.pitch ? '<i class="spin"></i>Pitching…' : items.length ? 'New pitches' : isSmall() ? 'Pitch us some plans' : 'Pitch us some trips'}</button>` : ''}</div>
+    ${progress}
+    ${items.length ? `<details class="m-more" data-key="m-more"><summary class="small">Steer the pitches · how the vote works</summary><div class="stack" style="gap:12px;margin-top:10px">${more}</div></details>` : more}
   </section>
   ${runoffCard()}
-  ${m ? `<section class="match"><span class="label" style="color:rgba(255,255,255,.85)">Everyone swiped yes</span><h1 style="color:#fff">It’s a match!</h1>
+  ${m ? `<section class="match" data-key="match-${esc(m.id)}"><span class="m-confetti" aria-hidden="true">${'<i></i>'.repeat(10)}</span><span class="label" style="color:rgba(255,255,255,.85)">Everyone swiped yes</span><h1 style="color:#fff">It’s a match!</h1>
       <p style="font-size:17px">${esc(m.city)} · ${dayRange(m.start, m.end)}${m.time ? ' · ' + t12(m.time) : ''} · ${esc(pitchShort(m, m.perPerson))}</p>
-      <div>${S.trip.lockedDest && dest()?.city === m.city && S.trip.lockedDates?.start === m.start ? `<span class="on-pill" style="background:#fff;color:#151A33">Locked in</span>` : `<button class="btn" data-lockpitch="${esc(m.id)}">Lock it in</button>`}</div></section>` : ''}
+      <div class="m-crew">${avStack(vs, 8)}</div>
+      <div>${S.trip.lockedDest && dest()?.city === m.city && S.trip.lockedDates?.start === m.start ? `<span class="on-pill" style="background:#fff;color:#151A33">Locked in</span>` : `<button class="btn chunky m-lock" data-lockpitch="${esc(m.id)}">Lock it in</button>`}</div></section>` : ''}
   ${!items.length && S.sample === null ? ''
   : !items.length ? `<div class="empty"><b>No pitches yet.</b><span>The more the crew fills in (${size() === 'trip' ? 'home airports, ' : size() === 'weekend' ? 'where everyone’s coming from, ' : ''}budgets, free days, the vibe quiz), the better the pitches get.</span></div>`
-  : next ? `<section class="stack" style="align-items:center">${pitchCard(next)}
-      <div class="row" style="justify-content:center;gap:22px"><button class="swipe-btn no" data-swipe="${esc(next.id)}|-1" aria-label="Pass">✕</button><button class="swipe-btn meh" data-swipe="${esc(next.id)}|0.5" aria-label="Could work">≈</button><button class="swipe-btn yes" data-swipe="${esc(next.id)}|1" aria-label="I'd go">♥</button></div>
-      <span class="small muted">Swipe right if you’re in, left to pass. ≈ means it could work.</span></section>`
+  : next ? `<section class="stack deck" style="align-items:center">${pitchCard(next)}
+      <div class="vote-row"><button class="swipe-btn no" data-swipe="${esc(next.id)}|-1" aria-label="Pass"><span aria-hidden="true">✕</span><b>Pass</b></button><button class="swipe-btn meh" data-swipe="${esc(next.id)}|0.5" aria-label="Could work"><span aria-hidden="true">≈</span><b>Could work</b></button><button class="swipe-btn yes" data-swipe="${esc(next.id)}|1" aria-label="I'd go"><span aria-hidden="true">♥</span><b>I’d go</b></button></div>
+      <span class="small muted">Or swipe the card: right if you’re in, left to pass.</span></section>`
   : !m && active().length >= 2 ? settleCard(items) : `<div class="empty"><b>You’ve swiped them all.</b><span>Pick one from the scoreboard below and lock it in.</span></div>`}
-  ${items.length ? `<section class="card"><h3 style="margin-bottom:6px">Scoreboard</h3>
+  ${items.length ? `<section class="card scoreboard"><h3 style="margin-bottom:6px">Scoreboard</h3>
     ${[...items].sort((a, b) => fitScore(b) - fitScore(a)).map(p => {
-      const yes = vs.filter(x => swipeOf(p.id, x.id) === 1), waiting = vs.filter(x => !swipeOf(p.id, x.id)), mine = swipeOf(p.id, S.uid);
-      return `<div class="linkrow"><div style="min-width:0"><b>${esc(p.city)}</b> <span class="small muted">${p.start === p.end ? short(p.start) : short(p.start) + ' – ' + short(p.end)} · ${esc(pitchShort(p, p.perPerson))}</span>
+      const yes = vs.filter(x => swipeOf(p.id, x.id) === 1), waiting = vs.filter(x => !swipeOf(p.id, x.id)), mine = swipeOf(p.id, S.uid), n = Math.max(1, vs.length);
+      return `<div class="linkrow sb-row ${lockedOn(p) ? 'is-locked' : ''}"><div class="sb-main"><b>${esc(p.city)}</b> <span class="small muted">${p.start === p.end ? short(p.start) : short(p.start) + ' – ' + short(p.end)} · ${esc(pitchShort(p, p.perPerson))}</span>
+        <div class="vbar" aria-hidden="true"><i class="y" style="width:${yes.length / n * 100}%"></i><i class="m" style="width:${workableOf(p) / n * 100}%"></i></div>
         <div class="small muted">${yes.length} yes · ${workableOf(p)} could work${waiting.length ? ` · waiting on ${waiting.map(x => esc(x.nick || 'Someone')).join(', ')}` : ''}</div>${fitChips(p)}${lockedOn(p) ? '' : ruleChip('pitch', p.id)}</div>
-        <div class="row" style="gap:6px">${mine ? `<button class="chip ${mine === 1 ? 'on' : ''}" data-swipe="${esc(p.id)}|${mine === 1 ? -1 : 1}" title="Tap to change">${mine === 1 ? '♥ Yes' : mine === WORKABLE ? '≈ Could work' : '✕ Pass'}</button>` : ''}<div class="bar" style="width:80px"><i style="width:${yes.length / Math.max(1, vs.length) * 100}%"></i></div>${lockedOn(p) ? '<span class="pill lvl-confirmed">Locked</span>' : S.readOnly ? '' : `<button class="btn sm ${yes.length && !S.trip.lockedDest ? 'primary' : ''}" data-lockpitch="${esc(p.id)}">Lock it in</button>`}</div></div>`; }).join('')}
+        <div class="sb-side">${mine && !S.readOnly ? voteSeg(p) : ''}${lockedOn(p) ? '<span class="pill lvl-confirmed">Locked</span>' : S.readOnly ? '' : `<button class="btn sm chunky ${yes.length && !S.trip.lockedDest ? 'primary' : ''}" data-lockpitch="${esc(p.id)}">Lock it in</button>`}</div></div>`; }).join('')}
   </section>` : ''}
   ${S.sample === null ? '' : whereTab()}`;
 }
@@ -157,7 +192,7 @@ function bindSwipe() {
   el.addEventListener('pointermove', e => { if (x0 === null) return; dx = e.clientX - x0; el.style.transform = `translateX(${dx}px) rotate(${dx / 18}deg)`; yes.style.opacity = Math.max(0, Math.min(1, dx / 100)); no.style.opacity = Math.max(0, Math.min(1, -dx / 100)); });
   const end = () => {
     if (x0 === null) return; x0 = null; el.classList.remove('dragging');
-    if (Math.abs(dx) > 100) { el.style.transform = `translateX(${dx > 0 ? 600 : -600}px) rotate(${dx > 0 ? 30 : -30}deg)`; const pid = el.dataset.pid; setTimeout(() => swipe(pid, dx > 0 ? 1 : -1), 180); }
+    if (Math.abs(dx) > 100) { flyOff(el, dx > 0 ? 'yes' : 'no'); swipe(el.dataset.pid, dx > 0 ? 1 : -1); }
     else { el.style.transform = ''; yes.style.opacity = 0; no.style.opacity = 0; }
   };
   el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);

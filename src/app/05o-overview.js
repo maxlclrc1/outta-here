@@ -23,7 +23,7 @@ function planHero() {
   const photo = [...S.photos].filter(p => p.asset).sort((a, b) => (b.at || 0) - (a.at || 0))[0]?.asset;
   const cv = coverOf(t, S.tid, photo);
   const meta = [ds && esc(ds.city), d && esc(planWhen(t))].filter(Boolean).join(' · ') || (small ? 'Picking the plan and the day' : 'Picking where and when');
-  const who = here.length <= 1 ? 'Just you so far' : `${goers.length} going${maybes ? ` · ${maybes} maybe` : ''}`;
+  const kids = kidsWith(goers), who = here.length <= 1 && !kids ? 'Just you so far' : `${goers.length + kids} going${partyNote(goers.length, kids)}${maybes ? ` · ${maybes} maybe` : ''}`;
   const onInvite = journey().focus?.k === 'invite';
   return `<section class="ov-hero ${cv.cls}" style="${cv.style}">
     <div class="ovh-top"><span class="ovh-chip">${esc(modeLabel(m, sz))}</span>${!modeLabel(m, sz).toLowerCase().includes(SIZES[sz].label.toLowerCase()) ? `<span class="ovh-chip soft">${esc(SIZES[sz].label)}</span>` : ''}

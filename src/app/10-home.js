@@ -274,10 +274,10 @@ function newTripForm() {
     </form>`);
 }
 // The moment a plan is made: its name lands on a burst of its color, then the plan opens underneath.
-function celebrate(title, color) {
+function celebrate(title, color, label = 'It’s on') {
   if (calm()) return;
   const el = document.createElement('div'); el.className = 'launch'; el.setAttribute('aria-hidden', 'true'); el.style.setProperty('--pc', color);
-  el.innerHTML = `<div class="launch-in"><span>It’s on</span><b>${esc(title)}</b></div>${'<i></i>'.repeat(12)}`;
+  el.innerHTML = `<div class="launch-in"><span>${esc(label)}</span><b>${esc(title)}</b></div>${'<i></i>'.repeat(12)}`;
   document.body.appendChild(el); setTimeout(() => el.remove(), 1700);
 }
 async function createTrip() {

@@ -742,7 +742,7 @@ function crewTab() {
     <div class="row" style="justify-content:space-between;margin-bottom:6px"><h2>The crew</h2><span class="small muted">Invite more with the card above</span></div>
     ${S.members.length ? S.members.filter(x => !x.removed).map(x => `<div class="crew-row">
       <div class="av" style="background:${colorFor(x.id)}">${esc((x.nick || '?')[0].toUpperCase())}</div>
-      <div style="min-width:0"><b>${esc(x.nick || 'Someone')}${x.id === S.uid ? ' <span class="muted small">(you)</span>' : ''}</b>
+      <div style="min-width:0"><b>${esc(x.nick || 'Someone')}${withKids(x)}${x.id === S.uid ? ' <span class="muted small">(you)</span>' : ''}</b>
         <div class="small muted">${x.home && !isSmall() ? (size() === 'trip' ? '✈ ' : 'from ') + esc(x.home) + ' · ' : ''}${(x.days || []).length} ${(x.days || []).length === 1 ? 'day' : 'days'} free · ${(x.votes || []).length ? 'voted' : 'no vote yet'}${x.budget || x.budgetSet ? ' · budget set' : ''}</div></div>
       <div class="cr-side"><span class="pill lvl-${x.status || 'maybe'}">${LEVEL_LABEL[x.status || 'maybe']}</span>${x.id === S.trip.createdBy || (S.trip.orgs || {})[x.id] ? '<span class="small muted">Organizer</span>' : ''}
         ${isOrganizer() && !S.demo && x.id !== S.uid && x.id !== S.trip.createdBy ? (S.confirmRm === x.id ? `<span class="row" style="gap:4px"><button class="btn sm danger-fill" data-rmdo="${esc(x.id)}">Remove</button><button class="btn sm ghost" data-act="rmCancel">Cancel</button></span>` : `<span class="row" style="gap:8px"><button class="linkbtn small" data-mkorg="${esc(x.id)}">${(S.trip.orgs || {})[x.id] ? 'Not organizer' : 'Make organizer'}</button><button class="linkbtn small" data-rmmember="${esc(x.id)}">Remove</button></span>`) : ''}</div>
@@ -791,13 +791,14 @@ function datesBody() {
     <div class="card stack">
       <h2>${isSmall() ? 'Best day' : 'Best dates'}</h2>${S.demo ? '' : ruleLine()}
       ${t.lockedDates ? `<div class="banner"><span><b>Locked:</b> ${dayRange(t.lockedDates.start, t.lockedDates.end)}</span><button class="btn sm" data-act="unlockDates">Unlock</button></div>` : ''}
-      ${best.length ? best.map((w, i) => `<div class="stack" style="gap:6px;${i ? 'border-top:1px solid var(--line);padding-top:12px' : ''}">
-        <div class="row" style="justify-content:space-between"><b class="mono">${dayRange(w.start, w.end)}</b><span class="small"><b>${w.ok.length}/${ms.length}</b> can go</span></div>
+      ${best.length ? best.map((w, i) => `<div class="stack bw ${i === 0 ? 'bw-top' : ''} ${w.ok.length === ms.length ? 'bw-all' : ''}" style="gap:6px">
+        <div class="row" style="justify-content:space-between"><b class="mono">${dayRange(w.start, w.end)}</b><span class="small bw-n"><b>${w.ok.length}/${ms.length}</b> can go</span></div>
         <div class="bar"><i style="width:${Math.round(w.ok.length / max * 100)}%"></i></div>
+        <div class="bw-crew">${avStack([...w.ok, ...w.miss.map(m => ({ ...m, faded: true }))], 8)}</div>
         ${w.miss.length ? `<span class="small muted">Missing: ${w.miss.map(m => esc(m.nick || 'Someone')).join(', ')}</span>` : `<span class="small" style="color:var(--good)">Everyone can make it</span>`}
         ${w.late.length || w.early.length || w.pref.length ? `<span class="small muted">${[w.late.length && `${esc(listNames(w.late))} ${w.late.length === 1 ? 'arrives' : 'arrive'} a day late`, w.early.length && `${esc(listNames(w.early))} ${w.early.length === 1 ? 'leaves' : 'leave'} a day early`, w.pref.length && `★ ${w.pref.length === ms.length ? 'everyone prefers' : w.pref.length + ' prefer'} ${isSmall() ? 'this day' : 'these dates'}`].filter(Boolean).join(' · ')}</span>` : ''}
         ${t.lockedDates && t.lockedDates.start === w.start && t.lockedDates.end === w.end ? '' : ruleChip('dates', w.start + '|' + w.end)}
-        <div>${t.lockedDates && t.lockedDates.start === w.start && t.lockedDates.end === w.end ? '<span class="pill in">Locked</span>' : `<button class="btn sm ${i === 0 && !t.lockedDates ? 'primary' : ''}" data-lockdates="${w.start}|${w.end}">${t.lockedDates ? 'Switch to these' : isSmall() ? 'Lock this day' : 'Lock these dates'}</button>`}</div>
+        <div>${t.lockedDates && t.lockedDates.start === w.start && t.lockedDates.end === w.end ? '<span class="pill in">Locked</span>' : `<button class="btn sm chunky ${i === 0 && !t.lockedDates ? 'primary' : ''}" data-lockdates="${w.start}|${w.end}">${t.lockedDates ? 'Switch to these' : isSmall() ? 'Lock this day' : 'Lock these dates'}</button>`}</div>
       </div>`).join('') : `<div class="empty">${(() => { const f = shorterFit(); return f
         ? `<b>No ${nightsSet(t) ? nightsSet(t) + '-night stretch' : 'day'} works yet</b><span>But a ${f.n}-night trip, ${fmt(f.w.start)} → ${fmt(f.w.end)}, works for ${f.w.ok.length} of ${ms.length}.</span><button class="btn sm primary" data-setnights="${f.n}">Switch to ${f.n} night${f.n === 1 ? '' : 's'}</button>`
         : `<span>No ${nightsSet(t) ? nightsSet(t) + '-night stretch' : 'day'} overlaps yet. Once people tap their free days, the best windows show up here.</span>`; })()}</div>`}
@@ -1105,18 +1106,48 @@ function setupView() {
       p: 'A few taps. It shapes what the AI pitches and the crew’s vibe.',
       c: quiz().map(q => `<div class="q"><span class="small"><b>${esc(q.q)}</b></span><div class="row" style="gap:6px">${q.o.map(o => `<button class="chip ${mq[q.k] === o ? 'on' : ''}" data-quiz="${q.k}|${esc(o)}">${esc(o)}</button>`).join('')}</div></div>`).join('') },
   }[k];
+  const done = setupAnswered(k), pct = setupPct();
   return `${topBar()}
   <section class="setup">
     <div class="setup-top"><span class="label">${esc(S.trip.name)} · Step ${i + 1} of ${steps.length}</span><button class="linkbtn small muted" data-act="setupLater">Do this later</button></div>
-    <div class="setup-prog" aria-hidden="true">${steps.map((s, j) => `<i class="${j <= i ? 'on' : ''}"></i>`).join('')}</div>
-    <h1>${step.h}</h1>
-    <p class="muted">${step.p}</p>
-    <div class="stack setup-body">${step.c}</div>
+    <div class="setup-bar ${pct >= 100 ? 'full' : ''}" role="progressbar" aria-label="Your answers" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}"><i style="width:${pct}%"></i></div>
+    <div class="setup-step" data-key="setup-${k}">
+      ${S.setup.joined && i === 0 ? `<span class="setup-hi">🎉 You’re ${S.setup.joined === 'in' ? 'in' : 'on the list'}! ${steps.length} quick ${steps.length === 1 ? 'question' : 'questions'} and you’re done.</span>` : ''}
+      <span class="setup-ico" aria-hidden="true">${SETUP_ICONS[k]}</span>
+      <h1>${step.h}</h1>
+      <p class="muted">${step.p}</p>
+      <div class="stack setup-body">${step.c}</div>
+    </div>
   </section>
   <div class="setup-nav"><div class="setup-nav-in">
-    ${i ? '<button class="btn ghost big" data-act="setupBack">Back</button>' : ''}<span style="flex:1"></span>
-    <button class="btn primary big" data-act="setupNext">${last ? 'Done' : 'Next'}</button>
+    ${S.setup.praise ? `<span class="setup-praise" data-key="praise-${S.setup.n}" aria-live="polite">${esc(S.setup.praise)}</span>` : ''}
+    ${i ? '<button class="btn ghost big setup-back" data-act="setupBack" aria-label="Back">←</button>' : ''}
+    <button class="btn primary big setup-go ${done ? '' : 'skip'}" data-act="setupNext">${setupGoLabel(done, last)}</button>
   </div></div>`;
+}
+// The setup reads like a run of quick wins: the bar grows the moment a question is answered (and is full
+// once the last one is), "Continue" turns into "Skip" when nothing's picked, and each answer gets a cheer.
+const SETUP_ICONS = { days: '📅', home: '📍', budget: '💸', vibe: '✨' };
+const PRAISE = ['Nice!', 'Love it!', 'Great pick!', 'Got it!', 'Ooh, nice.'];
+const setupGoLabel = (done, last) => done ? (last ? 'Finish' : 'Continue') : (last ? 'Skip and finish' : 'Skip');
+function setupAnswered(k) {
+  const m = meDoc() || {}, typed = id => DRAFT[id] ?? $('#' + id)?.value;
+  if (k === 'days') return (m.days || []).length > 0;
+  if (k === 'home') return !!String(typed('me-home') ?? m.home ?? '').trim();
+  if (k === 'budget') return +(typed('me-budget') || m.budget || 0) > 0;
+  if (k === 'vibe') return Object.values(m.quiz || {}).some(Boolean);
+  return false;
+}
+function setupPct() {
+  const steps = setupSteps(), i = Math.min(S.setup.step, steps.length - 1);
+  return (i + (setupAnswered(steps[i]) ? 1 : 0)) / steps.length * 100;
+}
+// typing doesn't re-render, so the bar and the button catch up here
+function setupLive() {
+  if (!S.setup) return;
+  const steps = setupSteps(), i = Math.min(S.setup.step, steps.length - 1), pct = setupPct(), bar = $('.setup-bar'), go = $('.setup-go'), done = setupAnswered(steps[i]);
+  if (bar) { bar.querySelector('i').style.width = pct + '%'; bar.classList.toggle('full', pct >= 100); bar.setAttribute('aria-valuenow', Math.round(pct)); }
+  if (go) { go.textContent = setupGoLabel(done, i === steps.length - 1); go.classList.toggle('skip', !done); }
 }
 function setupSave() {
   const h = $('#me-home'), b = $('#me-budget');
@@ -1125,10 +1156,15 @@ function setupSave() {
   delete DRAFT['me-home']; delete DRAFT['me-budget'];
 }
 function setupGo(dir) {
+  const steps = setupSteps(), n = steps.length, k = steps[Math.min(S.setup.step, n - 1)], won = dir > 0 && setupAnswered(k);
   setupSave();
-  const n = setupSteps().length, next = S.setup.step + dir;
-  if (next >= n) { S.setup = null; S.tab = 'overview'; flash(`You’re all set. Here’s the ${planWord()}.`); }
-  else S.setup.step = Math.max(0, next);
+  const next = S.setup.step + dir, joined = S.setup.joined;
+  if (won && navigator.vibrate) try { navigator.vibrate(12); } catch {}
+  if (next >= n) {
+    S.setup = null; S.tab = 'overview';
+    celebrate('You’re all set!', planColor(S.trip), joined ? 'Welcome to the crew' : 'Nice work');
+    flash(`You’re all set. Here’s the ${planWord()}.`);
+  } else { S.setup.step = Math.max(0, next); S.setup.n = (S.setup.n || 0) + 1; S.setup.praise = won ? PRAISE[S.setup.n % PRAISE.length] : ''; }
   render(); window.scrollTo({ top: 0 });
 }
 function startSetup() {
@@ -1168,17 +1204,20 @@ function welcomeCard() {
     <div class="ovh-top"><span class="ovh-chip">${host ? `${esc(host.nick || 'A friend')} invited you` : 'You’re invited'}</span><span class="ovh-chip soft">${esc(modeLabel(mode(), size()))}</span></div>
     <h1 class="ovh-title">${esc(t.name)}</h1>
     <p class="ovh-meta">${[esc(sz.label) + (crew ? ' with ' + esc(crew.name) : ''), esc(when), ds && esc(ds.city)].filter(Boolean).join(' · ')}</p>
-    ${ins.length ? `<div class="ovh-crew">${avStack(ins, 6)}<span class="ovh-who">${ins.length} in so far</span></div>` : ''}
+    ${ins.length ? `<div class="ovh-crew">${avStack(ins, 6)}<span class="ovh-who">${ins.length + kidsWith(ins)} in so far${partyNote(ins.length, kidsWith(ins))}</span></div>` : ''}
     ${S.trip.rsvpBy && TODAY <= S.trip.rsvpBy ? `<span class="small ovh-note"><b>Answer by ${fmt(S.trip.rsvpBy)}</b> so the crew knows how many to plan for.</span>` : ''}
     <div class="welcome-acts"><button class="btn primary big" data-join="in">I’m in</button><button class="btn big glass" data-join="maybe">Maybe</button><button class="btn ghost big glass" data-join="out">Can’t make it</button></div>
     ${t.crewId ? `<span class="small ovh-note">Saying you’re in also adds you to ${crew ? esc(crew.name) : 'the crew'}, so you’re part of their next plans too.</span>` : ''}
   </section>
   ${S.peek ? '' : '<button class="linkbtn small peek" data-act="peek">Look around the plan first</button>'}`;
 }
+// Saying yes goes straight into the quick setup, which opens with the welcome itself; setup starts
+// before the answer is saved, so no "step done" banner or toast lands on top of it.
 function joinPlan(status) {
+  if (status !== 'out' && !S.demo && !S.readOnly) { document.querySelector('.milestone')?.remove(); S.setup = { step: 0, joined: status }; }
   saveMe({ status, seen: true }, true);
-  if (status !== 'out') { joinCrewQuiet(S.trip.crewId); startSetup(); }
-  flash(status === 'in' ? 'You’re in. A few quick questions first.' : status === 'maybe' ? 'Marked as maybe. A few quick questions so the plan fits you too.' : 'Got it. The crew will see you can’t make it.');
+  if (status !== 'out') { joinCrewQuiet(S.trip.crewId); window.scrollTo({ top: 0 }); }
+  if (!S.setup) flash(status === 'in' ? 'You’re in.' : status === 'maybe' ? 'Marked as maybe.' : 'Got it. The crew will see you can’t make it.');
 }
 
 /* ---------- plan match: learning and settling disagreements ---------- */
@@ -1229,7 +1268,7 @@ function runoffCard() {
     <h2>${ro.winner ? `${esc(pName(ro.winner))} wins` : 'Pick one'}</h2>
     <p class="small muted">${ro.winner ? `${ro.count(ro.winner.id)} to ${ro.count(other.id)}.` : 'Nothing got a yes from everyone, so the top two go head to head. Most votes wins.'}</p>
     <div class="ro-opts">${ro.ps.map(p => `<button class="ro-opt ${ro.mine === p.id ? 'on' : ''} ${ro.winner === p ? 'win' : ''}" data-runoff="${esc(p.id)}" aria-pressed="${ro.mine === p.id}" ${ro.winner || S.readOnly ? 'disabled' : ''}>
-      <b>${esc(pName(p))}</b><span class="small">${p.start === p.end ? fmt(p.start) + (p.time ? ' · ' + t12(p.time) : '') : short(p.start) + ' – ' + short(p.end)} · ${esc(p.perPerson ? pitchShort(p, p.perPerson) : '?')}</span>
+      <b>${esc(pName(p))}</b><span class="small">${p.start === p.end ? fmt(p.start) + (p.time ? ' · ' + t12(p.time) : '') : short(p.start) + ' – ' + short(p.end)} · ${esc(pitchShort(p, p.perPerson || '?'))}</span>
       <span class="ro-count">${ro.count(p.id)} vote${ro.count(p.id) === 1 ? '' : 's'}${ro.mine === p.id ? ' · yours' : ''}</span></button>`).join('')}</div>
     ${ro.winner ? (lockedOn(ro.winner) ? '<span class="pill in" style="align-self:flex-start">Locked in</span>' : `<div><button class="btn primary" data-lockpitch="${esc(ro.winner.id)}">Lock in ${esc(pName(ro.winner))}</button></div>`)
       : `<span class="small muted">${ro.mine ? 'Waiting on ' + ro.waiting.map(m => esc(m.nick || 'Someone')).join(', ') : 'Tap the one you’d rather do.'}</span>`}
@@ -1352,9 +1391,32 @@ Reply with only JSON: {"pitches":[{"city":"","code":"IATA airport code","start":
   });
 }
 async function swipe(pid, v) {
+  votePop(v === 1 ? 'I’d go! ♥' : v === -1 ? 'Passed' : 'Could work ≈', v === 1 ? 'y' : v === -1 ? 'n' : 'm');
   await saveTrip({ swipes: { [pid]: { [S.uid]: v } } });
   const m = matchedPitch();
-  if (m && v === 1 && m.id === pid) flash(`It’s a match! Everyone’s down for ${m.city}.`);
+  if (m && v === 1 && m.id === pid) { celebrate(m.city, GRADS[hashStr(m.city) % GRADS.length][0], 'It’s a match!'); flash(`It’s a match! Everyone’s down for ${m.city}.`); }
+}
+// A vote from the buttons under the card throws the card the same way a swipe does. The vote is applied
+// at once, so the next card is already there; a copy of the old one flies off on top of it.
+function castVote(pid, v, btn) {
+  const card = document.getElementById('pitch');
+  if (card && card.dataset.pid === pid && btn?.classList.contains('swipe-btn')) flyOff(card, v === 1 ? 'yes' : v === -1 ? 'no' : 'meh');
+  return swipe(pid, v);
+}
+function flyOff(card, dir) {
+  if (calm()) return;
+  const r = card.getBoundingClientRect(), ghost = card.cloneNode(true);
+  ghost.removeAttribute('id'); ghost.querySelectorAll('[id]').forEach(e => e.removeAttribute('id'));
+  ghost.classList.remove('dragging'); ghost.classList.add('pitch-ghost', 'fly-' + dir); ghost.setAttribute('aria-hidden', 'true');
+  Object.assign(ghost.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+  document.body.appendChild(ghost); setTimeout(() => ghost.remove(), 400);
+}
+// a quick cheer for a vote, over the bottom of the screen, and a tap on phones
+function votePop(text, kind) {
+  document.querySelector('.vote-pop')?.remove();
+  const el = document.createElement('div'); el.className = `vote-pop vp-${kind}`; el.setAttribute('aria-hidden', 'true'); el.textContent = text;
+  document.body.appendChild(el); setTimeout(() => el.remove(), 1100);
+  if (navigator.vibrate) try { navigator.vibrate(10); } catch {}
 }
 function lockPitch(pid) {
   const p = (S.trip.pitches?.items || []).find(x => x.id === pid); if (!p) return;
@@ -1362,7 +1424,7 @@ function lockPitch(pid) {
   const ds = [...(S.trip.destinations || [])];
   let d = ds.find(x => x.city.toLowerCase() === p.city.toLowerCase());
   if (!d) { d = { id: rid(6), city: p.city, code: p.code }; ds.push(d); }
-  saveTrip(withLog({ destinations: ds, lockedDest: d.id, lockedDates: { start: p.start, end: p.end } }, { area: 'dest', text: `Locked in: ${p.city}, ${dayRange(p.start, p.end)}`, act: 'all', undo: { k: 'set', patch: { lockedDest: S.trip.lockedDest || null, lockedDates: S.trip.lockedDates || null } } })).then(ok => ok && flash(`Locked: ${p.city}, ${short(p.start)} – ${short(p.end)}. Time to book flights.`));
+  saveTrip(withLog({ destinations: ds, lockedDest: d.id, lockedDates: { start: p.start, end: p.end } }, { area: 'dest', text: `Locked in: ${p.city}, ${dayRange(p.start, p.end)}`, act: 'all', undo: { k: 'set', patch: { lockedDest: S.trip.lockedDest || null, lockedDates: S.trip.lockedDates || null } } })).then(ok => { if (!ok) return; celebrate(p.city, GRADS[hashStr(p.city) % GRADS.length][0], 'Locked in!'); flash(`Locked: ${p.city}, ${short(p.start)} – ${short(p.end)}. Time to book flights.`); });
 }
 // Once a place is locked, lead with it and the next step; the votes and other options
 // are one tap away instead of competing for attention.
@@ -1370,51 +1432,63 @@ function matchTab() {
   if (!S.trip.lockedDest || S.demo) return matchBody();
   const ds = dest(), d = S.trip.lockedDates, p = (S.trip.pitches?.items || []).find(lockedOn);
   return `<section class="card stack decided-sum"><div class="row" style="justify-content:space-between"><span class="on-pill">Decided</span>${S.readOnly ? '' : '<button class="btn sm ghost" data-act="unlockDest">Change it</button>'}</div>
-    <h2>${esc(ds?.city || '')}</h2><span class="small muted">${[d && dayRange(d.start, d.end), p && p.perPerson && pitchShort(p, p.perPerson + ' each'), p && p.tagline].filter(Boolean).map(esc).join(' · ')}</span></section>
+    <h2>${esc(ds?.city || '')}</h2><span class="small muted">${[d && dayRange(d.start, d.end), p && pitchShort(p, p.perPerson ? p.perPerson + ' each' : ''), p && p.tagline].filter(Boolean).map(esc).join(' · ')}</span></section>
   <details class="card more-opts"><summary>See the votes and other options</summary><div class="stack" style="margin-top:12px">${matchBody()}</div></details>`;
 }
 function matchBody() {
   const items = S.trip.pitches?.items || [], vs = active(), m = matchedPitch();
   const next = items.find(x => !swipeOf(x.id, S.uid));
-  const pitchCard = p => { const [c1, c2] = GRADS[hashStr(p.city) % GRADS.length];
-    return `<article class="pitch" id="pitch" data-key="pitch-${esc(p.id)}" data-pid="${esc(p.id)}">
-      <span class="stamp yes" id="stamp-yes">I'D GO</span><span class="stamp no" id="stamp-no">PASS</span>
+  const pitchCard = p => { const [c1, c2] = GRADS[hashStr(p.city) % GRADS.length], mark = p.small ? '' : p.code || p.city.slice(0, 3).toUpperCase();
+    return `<article class="pitch" id="pitch" data-noanim data-key="pitch-${esc(p.id)}" data-pid="${esc(p.id)}">
+      <span class="stamp yes" id="stamp-yes">I'D GO</span><span class="stamp no" id="stamp-no">PASS</span><span class="stamp meh">COULD WORK</span>
       <div class="pitch-top" style="background:linear-gradient(135deg,${c1},${c2})">
-        <span class="label" style="color:rgba(255,255,255,.8)">${items.indexOf(p) + 1} of ${items.length}</span>
-        ${p.small ? `<h2 style="color:#fff;font-size:34px">${esc(p.title)}</h2>${p.where ? `<span style="color:rgba(255,255,255,.85)">${esc(p.where)}</span>` : ''}` : `<span class="code" style="color:#fff">${esc(p.code || p.city.slice(0, 3).toUpperCase())}</span>
-        <h2 style="color:#fff">${esc(p.city)}</h2>`}
-        <span style="color:#fff;font-weight:600">${esc(p.tagline)}</span>
+        ${mark ? `<span class="p-mark" aria-hidden="true">${esc(mark)}</span>` : ''}
+        <div class="p-top-row"><span class="p-count">${items.indexOf(p) + 1} of ${items.length}</span>${+p.vibeMatch ? `<span class="p-vibe">${Math.round(+p.vibeMatch)}% your vibe</span>` : ''}</div>
+        <h2>${esc(p.small ? p.title : p.city)}</h2>${p.small && p.where ? `<span class="p-where">${esc(p.where)}</span>` : ''}
+        <span class="p-tag">${esc(p.tagline)}</span>
       </div>
       <div class="pitch-body">
-        <div class="facts"><div><span class="label">${p.small ? 'When' : 'Dates'}</span><b>${p.small ? fmt(p.start) + (p.time ? ' · ' + t12(p.time) : '') : short(p.start) + ' → ' + short(p.end)}</b></div>${(pp => `<div class="${pp.split ? '' : 'p-total'}"><span class="label">${pp.label}</span><b>${esc(pp.main)}</b>${pp.split ? '' : `<span class="small muted">${esc(pp.each)}</span>`}</div></div>${pp.split ? '' : `<span class="small pay-who">${esc(pp.who)}</span>`}`)(pitchPay(p))}
+        <div class="facts"><div><span class="label">${p.small ? 'When' : 'Dates'}</span><b>${p.small ? fmt(p.start) + (p.time ? ' · ' + t12(p.time) : '') : short(p.start) + ' → ' + short(p.end)}</b></div>${(pp => `<div class="${pp.split ? '' : pp.missing ? 'p-total p-na' : 'p-total'}"><span class="label">${pp.label}</span><b>${esc(pp.main)}</b>${pp.split ? '' : `<span class="small muted">${esc(pp.each)}</span>`}</div></div>${pp.split ? '' : `<span class="small pay-who">${esc(pp.who)}</span>`}`)(pitchPay(p))}
+        <p class="p-why">${esc(p.why)}</p>
         ${fitChips(p)}
-        <p>${esc(p.why)}</p>
         ${arr(p.highlights).length || p.weather ? `<details class="p-more"><summary class="small">See details</summary>${p.weather ? `<p class="small" style="margin:6px 0 0"><b>Weather:</b> ${esc(p.weather)}</p>` : ''}${arr(p.highlights).length ? `<ul style="margin:6px 0 0;padding-left:18px">${arr(p.highlights).map(h => `<li>${esc(h)}</li>`).join('')}</ul>` : ''}</details>` : ''}
       </div>
     </article>`; };
-  return `${S.sample === null ? whereTab() : ''}<section class="card stack">
-    <div class="row" style="justify-content:space-between"><div class="stack" style="gap:2px"><h2>${isSmall() ? 'Plan Match' : 'Trip Match'}</h2><span class="small muted">The AI pitches ${isSmall() ? 'whole plans' : 'complete trips'} that fit everyone’s budget, free days and vibe. Everyone swipes. If you all say yes to the same one, it’s a match. Not feeling them? Add your own picks below.</span></div>
-      ${S.sample !== null ? `<button class="btn ${items.length ? '' : 'primary'}" data-act="genPitches" ${S.busy.pitch ? 'disabled' : ''}>${S.busy.pitch ? '<i class="spin"></i>Pitching…' : items.length ? 'New pitches' : isSmall() ? 'Pitch us some plans' : 'Pitch us some trips'}</button>` : ''}</div>
-    ${steerField()}
-    ${S.demo ? '' : ruleLine()}
-    ${(() => { const c = S.crews.find(x => x.id === S.trip.crewId); return c && !S.demo ? dnaCard(c, true) : ''; })()}
+  // how far the crew is: every person's swipe on every pitch
+  const total = items.length * vs.length, done = items.reduce((n, p) => n + vs.filter(x => swipeOf(p.id, x.id)).length, 0), left = items.filter(p => !swipeOf(p.id, S.uid)).length;
+  const progress = items.length && vs.length ? `<div class="vprog">
+      <div class="vprog-top"><span><b>${done}/${total}</b> swipes in</span><span class="small ${left ? 'muted' : 'vp-done'}">${left ? `${left} left for you` : done === total ? 'Everyone’s swiped ✓' : 'You’re done ✓'}</span></div>
+      <div class="setup-bar ${done === total ? 'full' : ''}" role="progressbar" aria-label="Swipes in" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${done}"><i style="width:${Math.round(done / total * 100)}%"></i></div>
+      <div class="vprog-crew">${vs.map(x => { const fin = items.every(p => swipeOf(p.id, x.id)); return `<span class="vp-av ${fin ? 'fin' : ''}" style="background:${colorFor(x.id)}" title="${esc(x.nick || 'Someone')}${fin ? ': all swiped' : ''}">${esc((x.nick || '?')[0].toUpperCase())}${fin ? '<i aria-hidden="true">✓</i>' : ''}</span>`; }).join('')}</div>
+    </div>` : '';
+  // your vote on a pitch, changeable any time: pass, could work, yes
+  const voteSeg = p => { const mine = swipeOf(p.id, S.uid);
+    return `<div class="vseg" role="group" aria-label="Your vote on ${esc(pName(p))}">${[[-1, '✕', 'Pass'], [WORKABLE, '≈', 'Could work'], [1, '♥', 'Yes']].map(([v, ic, l]) => `<button class="vs-opt v${v === 1 ? 'y' : v === -1 ? 'n' : 'm'} ${mine === v ? 'on' : ''}" data-swipe="${esc(p.id)}|${v}" aria-pressed="${mine === v}" aria-label="${l}" title="${l}">${ic}</button>`).join('')}</div>`; };
+  const more = `${steerField()}${S.demo ? '' : ruleLine()}${(() => { const c = S.crews.find(x => x.id === S.trip.crewId); return c && !S.demo ? dnaCard(c, true) : ''; })()}<span class="small muted">Not feeling them? Add your own picks below.</span>`;
+  return `${S.sample === null ? whereTab() : ''}<section class="card stack vote-head">
+    <div class="row" style="justify-content:space-between;align-items:flex-start"><div class="stack" style="gap:2px"><h2>${isSmall() ? 'Plan Match' : 'Trip Match'}</h2><span class="small muted">Swipe on ${isSmall() ? 'plans' : 'trips'} picked for the crew. Everyone says yes to the same one? It’s a match.</span></div>
+      ${S.sample !== null ? `<button class="btn ${items.length ? '' : 'primary chunky'}" data-act="genPitches" ${S.busy.pitch ? 'disabled' : ''}>${S.busy.pitch ? '<i class="spin"></i>Pitching…' : items.length ? 'New pitches' : isSmall() ? 'Pitch us some plans' : 'Pitch us some trips'}</button>` : ''}</div>
+    ${progress}
+    ${items.length ? `<details class="m-more" data-key="m-more"><summary class="small">Steer the pitches · how the vote works</summary><div class="stack" style="gap:12px;margin-top:10px">${more}</div></details>` : more}
   </section>
   ${runoffCard()}
-  ${m ? `<section class="match"><span class="label" style="color:rgba(255,255,255,.85)">Everyone swiped yes</span><h1 style="color:#fff">It’s a match!</h1>
+  ${m ? `<section class="match" data-key="match-${esc(m.id)}"><span class="m-confetti" aria-hidden="true">${'<i></i>'.repeat(10)}</span><span class="label" style="color:rgba(255,255,255,.85)">Everyone swiped yes</span><h1 style="color:#fff">It’s a match!</h1>
       <p style="font-size:17px">${esc(m.city)} · ${dayRange(m.start, m.end)}${m.time ? ' · ' + t12(m.time) : ''} · ${esc(pitchShort(m, m.perPerson))}</p>
-      <div>${S.trip.lockedDest && dest()?.city === m.city && S.trip.lockedDates?.start === m.start ? `<span class="on-pill" style="background:#fff;color:#151A33">Locked in</span>` : `<button class="btn" data-lockpitch="${esc(m.id)}">Lock it in</button>`}</div></section>` : ''}
+      <div class="m-crew">${avStack(vs, 8)}</div>
+      <div>${S.trip.lockedDest && dest()?.city === m.city && S.trip.lockedDates?.start === m.start ? `<span class="on-pill" style="background:#fff;color:#151A33">Locked in</span>` : `<button class="btn chunky m-lock" data-lockpitch="${esc(m.id)}">Lock it in</button>`}</div></section>` : ''}
   ${!items.length && S.sample === null ? ''
   : !items.length ? `<div class="empty"><b>No pitches yet.</b><span>The more the crew fills in (${size() === 'trip' ? 'home airports, ' : size() === 'weekend' ? 'where everyone’s coming from, ' : ''}budgets, free days, the vibe quiz), the better the pitches get.</span></div>`
-  : next ? `<section class="stack" style="align-items:center">${pitchCard(next)}
-      <div class="row" style="justify-content:center;gap:22px"><button class="swipe-btn no" data-swipe="${esc(next.id)}|-1" aria-label="Pass">✕</button><button class="swipe-btn meh" data-swipe="${esc(next.id)}|0.5" aria-label="Could work">≈</button><button class="swipe-btn yes" data-swipe="${esc(next.id)}|1" aria-label="I'd go">♥</button></div>
-      <span class="small muted">Swipe right if you’re in, left to pass. ≈ means it could work.</span></section>`
+  : next ? `<section class="stack deck" style="align-items:center">${pitchCard(next)}
+      <div class="vote-row"><button class="swipe-btn no" data-swipe="${esc(next.id)}|-1" aria-label="Pass"><span aria-hidden="true">✕</span><b>Pass</b></button><button class="swipe-btn meh" data-swipe="${esc(next.id)}|0.5" aria-label="Could work"><span aria-hidden="true">≈</span><b>Could work</b></button><button class="swipe-btn yes" data-swipe="${esc(next.id)}|1" aria-label="I'd go"><span aria-hidden="true">♥</span><b>I’d go</b></button></div>
+      <span class="small muted">Or swipe the card: right if you’re in, left to pass.</span></section>`
   : !m && active().length >= 2 ? settleCard(items) : `<div class="empty"><b>You’ve swiped them all.</b><span>Pick one from the scoreboard below and lock it in.</span></div>`}
-  ${items.length ? `<section class="card"><h3 style="margin-bottom:6px">Scoreboard</h3>
+  ${items.length ? `<section class="card scoreboard"><h3 style="margin-bottom:6px">Scoreboard</h3>
     ${[...items].sort((a, b) => fitScore(b) - fitScore(a)).map(p => {
-      const yes = vs.filter(x => swipeOf(p.id, x.id) === 1), waiting = vs.filter(x => !swipeOf(p.id, x.id)), mine = swipeOf(p.id, S.uid);
-      return `<div class="linkrow"><div style="min-width:0"><b>${esc(p.city)}</b> <span class="small muted">${p.start === p.end ? short(p.start) : short(p.start) + ' – ' + short(p.end)} · ${esc(pitchShort(p, p.perPerson))}</span>
+      const yes = vs.filter(x => swipeOf(p.id, x.id) === 1), waiting = vs.filter(x => !swipeOf(p.id, x.id)), mine = swipeOf(p.id, S.uid), n = Math.max(1, vs.length);
+      return `<div class="linkrow sb-row ${lockedOn(p) ? 'is-locked' : ''}"><div class="sb-main"><b>${esc(p.city)}</b> <span class="small muted">${p.start === p.end ? short(p.start) : short(p.start) + ' – ' + short(p.end)} · ${esc(pitchShort(p, p.perPerson))}</span>
+        <div class="vbar" aria-hidden="true"><i class="y" style="width:${yes.length / n * 100}%"></i><i class="m" style="width:${workableOf(p) / n * 100}%"></i></div>
         <div class="small muted">${yes.length} yes · ${workableOf(p)} could work${waiting.length ? ` · waiting on ${waiting.map(x => esc(x.nick || 'Someone')).join(', ')}` : ''}</div>${fitChips(p)}${lockedOn(p) ? '' : ruleChip('pitch', p.id)}</div>
-        <div class="row" style="gap:6px">${mine ? `<button class="chip ${mine === 1 ? 'on' : ''}" data-swipe="${esc(p.id)}|${mine === 1 ? -1 : 1}" title="Tap to change">${mine === 1 ? '♥ Yes' : mine === WORKABLE ? '≈ Could work' : '✕ Pass'}</button>` : ''}<div class="bar" style="width:80px"><i style="width:${yes.length / Math.max(1, vs.length) * 100}%"></i></div>${lockedOn(p) ? '<span class="pill lvl-confirmed">Locked</span>' : S.readOnly ? '' : `<button class="btn sm ${yes.length && !S.trip.lockedDest ? 'primary' : ''}" data-lockpitch="${esc(p.id)}">Lock it in</button>`}</div></div>`; }).join('')}
+        <div class="sb-side">${mine && !S.readOnly ? voteSeg(p) : ''}${lockedOn(p) ? '<span class="pill lvl-confirmed">Locked</span>' : S.readOnly ? '' : `<button class="btn sm chunky ${yes.length && !S.trip.lockedDest ? 'primary' : ''}" data-lockpitch="${esc(p.id)}">Lock it in</button>`}</div></div>`; }).join('')}
   </section>` : ''}
   ${S.sample === null ? '' : whereTab()}`;
 }
@@ -1426,7 +1500,7 @@ function bindSwipe() {
   el.addEventListener('pointermove', e => { if (x0 === null) return; dx = e.clientX - x0; el.style.transform = `translateX(${dx}px) rotate(${dx / 18}deg)`; yes.style.opacity = Math.max(0, Math.min(1, dx / 100)); no.style.opacity = Math.max(0, Math.min(1, -dx / 100)); });
   const end = () => {
     if (x0 === null) return; x0 = null; el.classList.remove('dragging');
-    if (Math.abs(dx) > 100) { el.style.transform = `translateX(${dx > 0 ? 600 : -600}px) rotate(${dx > 0 ? 30 : -30}deg)`; const pid = el.dataset.pid; setTimeout(() => swipe(pid, dx > 0 ? 1 : -1), 180); }
+    if (Math.abs(dx) > 100) { flyOff(el, dx > 0 ? 'yes' : 'no'); swipe(el.dataset.pid, dx > 0 ? 1 : -1); }
     else { el.style.transform = ''; yes.style.opacity = 0; no.style.opacity = 0; }
   };
   el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
@@ -1996,15 +2070,38 @@ const LEVEL_HELP = { maybe: 'Into it, not sure yet', in: 'Planning to come', con
 const isOrganizer = () => S.demo || S.trip?.createdBy === S.uid || !!(S.trip?.orgs || {})[S.uid];
 const undecided = () => S.members.filter(m => !m.status || m.status === 'maybe');
 const NUDGE_REST = 12 * 36e5;
+// Who's coming. Three different counts, kept apart on purpose:
+// - the level counts and firm/max are ADULTS, one per person in the plan (votes, free days and "Can come"
+//   are about these, and planHeads/payHeads, which split costs and budgets, still use them);
+// - kids: on family plans, the kids each adult brings, counted at their adult's level;
+// - party: adults + kids, the size of the group that's actually coming, for attendance displays.
 function headcount() {
-  const c = k => S.members.filter(m => (m.status || 'maybe') === k).length;
+  const at = k => S.members.filter(m => (m.status || 'maybe') === k), c = k => at(k).length, kc = k => kidsWith(at(k));
   const h = { booked: c('booked'), confirmed: c('confirmed'), going: c('in'), interested: c('maybe'), out: c('out') };
-  return { ...h, firm: h.booked + h.confirmed, max: h.booked + h.confirmed + h.going };
+  const firm = h.booked + h.confirmed, max = firm + h.going;
+  const kids = { booked: kc('booked'), confirmed: kc('confirmed'), going: kc('in') }, kf = kids.booked + kids.confirmed, km = kf + kids.going;
+  return { ...h, firm, max, kids: { ...kids, firm: kf, max: km }, party: { firm: firm + kf, max: max + km } };
 }
+// Kids an adult is bringing (family plans): just a count on their own record, no accounts, RSVPs,
+// budgets or days of their own; they follow their adult. Missing means 0. Not yet in any headcount.
+const KIDS_MAX = 12;
+const kidsOf = m => Math.max(0, Math.min(KIDS_MAX, Math.floor(+m?.kids || 0)));
+const kidsOn = () => planGroup() === 'family';
+// the kids that come with these adults (0 outside family plans, whatever is saved)
+const kidsWith = (ms, t = S.trip) => planGroup(t) === 'family' ? ms.reduce((n, m) => n + kidsOf(m), 0) : 0;
+// " (4 adults, 3 kids)" after a party total, or nothing when there are no kids
+const partyNote = (adults, kids) => kids ? ` (${adults} ${adults === 1 ? 'adult' : 'adults'}, ${kids} ${kids === 1 ? 'kid' : 'kids'})` : '';
+const withKids = m => { const n = kidsOn() ? kidsOf(m) : 0; return n ? ` + ${n} ${n === 1 ? 'kid' : 'kids'}` : ''; };
+function kidsStep() {
+  const n = kidsOf(meDoc());
+  return `<div class="kids-step" role="group" aria-label="Bringing kids?"><span class="small">Bringing kids?</span>
+    <button class="kid-btn" data-kids="-1" aria-label="One kid fewer" ${n ? '' : 'disabled'}>−</button><b class="kids-n" aria-live="polite">${n}</b><button class="kid-btn" data-kids="1" aria-label="One more kid" ${n < KIDS_MAX ? '' : 'disabled'}>+</button></div>`;
+}
+function setKids(n) { n = Math.max(0, Math.min(KIDS_MAX, n)); if (n !== kidsOf(meDoc())) saveMe({ kids: n }, true); }
 function commitLadder() {
   const m = meDoc(), cur = m ? m.status || 'maybe' : null, i = LEVELS.findIndex(([k]) => k === cur);
   return `<div class="ladder-wrap"><div class="ladder" role="group" aria-label="How sure are you?">${LEVELS.map(([k, l], j) => `<button class="rung ${j <= i ? 'on' : ''} ${j === i ? 'cur' : ''}" data-status="${k}" aria-pressed="${j === i}" title="${LEVEL_HELP[k]}">${l}</button>`).join('')}</div>
-    <div class="row" style="justify-content:space-between;gap:8px"><span class="small muted">${cur && cur !== 'out' ? esc(LEVEL_HELP[cur]) : cur === 'out' ? 'You said you can’t go.' : 'How sure are you?'}</span><button class="linkbtn small muted" data-status="out">${cur === 'out' ? '' : 'Can’t make it'}</button></div></div>`;
+    <div class="row" style="justify-content:space-between;gap:8px"><span class="small muted">${cur && cur !== 'out' ? esc(LEVEL_HELP[cur]) : cur === 'out' ? 'You said you can’t go.' : 'How sure are you?'}</span><button class="linkbtn small muted" data-status="out">${cur === 'out' ? '' : 'Can’t make it'}</button></div>${kidsOn() && cur !== 'out' ? kidsStep() : ''}</div>`;
 }
 function rsvpCard() {
   const t = S.trip, und = undecided(), org = isOrganizer(), by = t.rsvpBy, late = by && TODAY > by, h = headcount();
@@ -2013,8 +2110,8 @@ function rsvpCard() {
   return `<section class="card stack rsvp">
     <div class="row" style="justify-content:space-between"><h2>Who’s coming</h2>${by ? `<span class="pill ${late ? 'out' : 'maybe'}">${late ? 'Answers closed ' + short(by) : 'Answer by ' + short(by)}</span>` : ''}</div>
     ${meDoc() && !S.readOnly && STAGES.findIndex(([k]) => k === stageOf(S.trip, S.members)) >= 2 ? commitLadder() : ''}
-    <div class="hc">${blocks.map(([k, n]) => `<div class="hc-b lvl-${k} ${n ? '' : 'zero'}"><b>${n}</b><span>${LEVEL_LABEL[k]}</span></div>`).join('')}</div>
-    <p class="small muted">${h.firm ? `Plan for <b>${h.firm}</b> ${h.firm === 1 ? 'person' : 'people'}${h.going ? `, up to <b>${h.max}</b> if everyone going confirms` : ''}.` : h.going ? `Nobody has confirmed yet. <b>${h.going}</b> ${h.going === 1 ? 'is' : 'are'} planning to come.` : 'Nobody has said they’re coming yet.'} Stays and costs use this number.</p>
+    <div class="hc">${blocks.map(([k, n]) => { const kn = h.kids[k === 'in' ? 'going' : k] || 0; return `<div class="hc-b lvl-${k} ${n ? '' : 'zero'}"><b>${n}</b><span>${LEVEL_LABEL[k]}</span>${kn ? `<span class="hc-k">+${kn} ${kn === 1 ? 'kid' : 'kids'}</span>` : ''}</div>`; }).join('')}</div>
+    <p class="small muted">${h.firm ? `Plan for <b>${h.party.firm}</b> ${h.party.firm === 1 ? 'person' : 'people'}${partyNote(h.firm, h.kids.firm)}${h.going ? `, up to <b>${h.party.max}</b> if everyone going confirms` : ''}.` : h.going ? `Nobody has confirmed yet. <b>${h.party.max}</b> ${h.party.max === 1 ? 'is' : 'are'} planning to come${partyNote(h.going, h.kids.going)}.` : 'Nobody has said they’re coming yet.'} ${h.kids.max ? 'Stays and costs still count adults only for now.' : 'Stays and costs use this number.'}</p>
     ${condLines()}
     ${org ? `<div class="stack" style="gap:10px;border-top:1px solid var(--line);padding-top:12px">
       <div class="row" style="gap:8px;align-items:flex-end"><label class="field" style="flex:0 1 190px"><span class="label">Everyone answers by</span><input id="rsvp-by" type="date" value="${esc(by || '')}" min="${TODAY}"></label>${by ? '<button class="btn sm ghost" data-act="rsvpClear">No deadline</button>' : ''}</div>
@@ -2125,6 +2222,9 @@ function moneyRange(s) {
   const v = n.map(Number).filter(x => x > 0).slice(0, 2); if (!v.length) return null;
   return [Math.min(...v), Math.max(...v)];
 }
+// How many people the plan's costs and budgets are shared over: attending ADULTS (headcount's firm/max),
+// not the party size. Kids aren't priced yet, so they don't change cost totals, shares or budgets
+// (lib/pays.ts headsOf mirrors this for the server's budget check).
 const planHeads = () => { const h = headcount(); return Math.max(1, h.firm || h.max || active().length); };
 // Who splits a shared cost: those heads, minus a guest of honor whose share the group covers
 // (as expense splits and settle-up do). Never below 1, so a lone covered honoree sees the full price.
@@ -2264,17 +2364,19 @@ function budgetCapShared() {
 }
 const rangeText = (lo, hi) => `${money(lo)}${hi !== lo ? '–' + money(hi) : ''}`;
 // A per-person price as the plan's payment mode reads it. Splitting: per person, as before. One person
-// or the company paying: the total for everyone leads (per person × the headcount, as on the cost card),
-// with the per-person amount as context. `text` is a pitch's own price when it has no number in it.
+// or the company paying: an approximate total for everyone leads (per person × the headcount, as on the
+// cost card), with the per-person estimate as context. With no number to multiply there's no total, and
+// it says so rather than passing a per-person price off as the group's. `text` is a pitch's own price.
 function priceFor(lo, hi, text) {
-  const pm = paysMode(), heads = planHeads();
-  if (pm === 'split' || !(lo || hi)) return { split: true, label: 'Per person', main: text || (lo || hi ? rangeText(lo, hi) : '?'), short: (text || rangeText(lo, hi)) + ' each' };
-  const main = rangeText(Math.round(lo * heads), Math.round(hi * heads)), each = `${heads} × ${rangeText(lo, hi)} each`;
-  return pm === 'one'
-    ? { label: 'For everyone', main, each, who: isPayer() ? 'You’re covering everyone' : `${nameOf(payerId())} covers everyone`, short: `${main} for everyone` }
-    : { label: 'Company total', main, each, who: 'A company expense, not anyone’s own budget', short: `${main} company total` };
+  const pm = paysMode(), heads = planHeads(), n = lo || hi;
+  if (pm === 'split') return { split: true, label: 'Per person', main: text || (n ? rangeText(lo, hi) : '?'), short: (text || rangeText(lo, hi)) + ' each' };
+  const one = pm === 'one', label = one ? 'For everyone' : 'Company total';
+  const who = one ? (isPayer() ? 'You’re covering everyone' : `${nameOf(payerId())} covers everyone`) : 'A company expense, not anyone’s own budget';
+  if (!n) return { missing: true, label, who, main: 'Total not available', each: text ? `The price given (“${text}”) has no number to total` : 'No per-person price yet, so no total', short: 'total not available yet' };
+  const main = '≈ ' + rangeText(Math.round(lo * heads), Math.round(hi * heads));
+  return { label, who, main, each: `Estimate: ${heads} × ${rangeText(lo, hi)} each, not a booking price`, short: `${main} ${one ? 'for everyone' : 'company total'}` };
 }
-const pitchPay = p => { const r = moneyRange(p.perPerson); return r ? priceFor(r[0], r[1], p.perPerson) : priceFor(0, 0, p.perPerson); };
+const pitchPay = p => { const r = moneyRange(p.perPerson); return r ? priceFor(r[0], r[1], p.perPerson) : priceFor(0, 0, p.perPerson || ''); };
 // When one person covers everyone, the others just see that it's covered.
 function coveredCard() {
   const who = esc(nameOf(payerId()));
@@ -2373,11 +2475,13 @@ function scenarioEval(sc = {}) {
   const can = days.length ? vs.filter(m => fitOf(m, days)) : [];
   const prefer = days.length ? vs.filter(m => days.some(x => (m.pref || []).includes(x))) : [];
   const curDest = dest(), dsel = sc.dest ? (t.destinations || []).find(d => d.id === sc.dest) : curDest;
-  let low = 0, high = 0, note = '';
+  // basis: where the price comes from ('lines' = the All-in cost lines, 'pitch' = an AI pitch's own price);
+  // complete: no major line is missing. Only prices with the same basis, both complete, compare fairly.
+  let low = 0, high = 0, note = '', basis = null, complete = false;
   if (sc.dest && dsel && dsel.id !== curDest?.id) {
     // a different destination: only priced if a pitch for it has a price
     const p = (t.pitches?.items || []).find(x => !x.small && x.city.toLowerCase() === dsel.city.toLowerCase()), r = p && moneyRange(p.perPerson);
-    if (r) { low = r[0]; high = r[1]; note = 'AI pitch estimate'; } else note = 'No price for this one yet';
+    if (r) { low = r[0]; high = r[1]; note = 'The AI pitch’s own estimate'; basis = 'pitch'; complete = true; } else note = 'No price for this one yet';
   } else {
     const sum = costSummary(), dayF = (n + 1) / (n0 + 1), nightF = n0 ? n / n0 : 1, heads = payHeads();
     for (const r of sum.rows) {
@@ -2391,10 +2495,12 @@ function scenarioEval(sc = {}) {
       low += v.low * f; high += v.high * f;
     }
     low = Math.round(low * (1 + sum.buffer / 100)); high = Math.round(high * (1 + sum.buffer / 100));
+    basis = 'lines'; complete = sum.any && !sum.missing.length;
     if (!sum.any) note = 'Fill in All-in cost to compare prices';
+    else if (sum.missing.length) note = `Partial: no ${sum.missing.map(r => r.label.toLowerCase()).join(', ')} yet`;
   }
   const priced = low || high, fit = priced ? budgetFit({ low, high }) : null;
-  return { start, end, n, can, prefer, dest: dsel, low, high, priced, fit, note, stay: sc.stay || '' };
+  return { start, end, n, can, prefer, dest: dsel, low, high, priced, fit, note, basis: priced ? basis : null, complete: !!priced && complete, stay: sc.stay || '' };
 }
 function whatifTab() {
   const t = S.trip, small = isSmall(), base = scenarioEval({}), scs = S.whatif || [{}];
@@ -2420,6 +2526,10 @@ function whatifTab() {
     </div>`;
   // prices follow who pays: per person when splitting, the total for everyone when one person or the company pays
   const pm = paysMode(), pr = r => priceFor(r.low, r.high), tot = r => pm === 'split' ? r.high : Math.round(r.high * planHeads());
+  // a price difference is only shown between like-for-like prices, so a partial one never reads as cheaper
+  const fair = c => c.r.complete && base.complete && c.r.basis === base.basis, part = c => c.r.priced && !c.r.complete ? '<span class="small muted">On a partial price</span>' : '';
+  const why = cols.filter(c => !c.cur && !fair(c) && (c.r.priced || base.priced)).map(c => !c.r.priced ? `${c.label} has no price yet` : c.r.basis !== base.basis && base.priced ? `${c.label} uses ${c.r.basis === 'pitch' ? 'an AI pitch’s estimate' : 'your cost lines'}, Now uses ${base.basis === 'pitch' ? 'an AI pitch’s estimate' : 'your cost lines'}` : !c.r.complete ? `${c.label} is missing costs` : '');
+  if (why.length) why.unshift(!base.priced ? 'Now has no price yet' : !base.complete ? 'Now is missing costs' : '');
   const row = (label, f) => `<div class="wi-row"><span class="wi-k">${label}</span>${cols.map(c => `<div class="wi-v">${f(c)}</div>`).join('')}</div>`;
   return `<section class="card stack whatif">
     <div class="stack" style="gap:2px"><h2>What if we changed this?</h2><span class="small muted">Try a different ${small ? 'day or plan' : 'start, length, place or stay'} and see what it does to who can come and what it costs. Nothing changes until you pick one.</span></div>
@@ -2430,11 +2540,12 @@ function whatifTab() {
       ${dests.length ? row(small ? 'Plan' : 'Where', c => esc(c.r.dest?.city || '—')) : ''}
       ${row('Can come', c => `<b>${c.r.can.length}/${vs.length}</b>${c.cur ? '' : diff(c.r.can.length, base.can.length, (a, b) => (a > b ? '+' : '') + (a - b), (a, b) => a > b)}${vs.filter(m => !c.r.can.includes(m)).length && c.r.start ? `<span class="small muted">Not ${esc(listNames(vs.filter(m => !c.r.can.includes(m))))}</span>` : ''}`)}
       ${row('Prefer it', c => `${c.r.prefer.length}/${vs.length}`)}
-      ${row(pm === 'one' ? 'Everyone, all in' : pm === 'company' ? 'Company total' : 'Each, all in', c => c.r.priced ? `<b>${pr(c.r).main}</b>${c.cur || !base.priced ? '' : diff(tot(c.r), tot(base), (a, b) => (a > b ? '+' : '−') + money(Math.abs(a - b)), (a, b) => a < b)}${pm === 'split' ? '' : `<span class="small muted">${esc(pr(c.r).each)}</span>`}${c.r.note ? `<span class="small muted">${esc(c.r.note)}</span>` : ''}` : `<span class="small muted">${esc(c.r.note || 'Unknown')}</span>`)}
-      ${pm === 'company' ? '' : pm === 'one' ? row(isPayer() ? 'Your total budget' : 'Total budget', c => c.r.fit && c.r.fit.n ? (c.r.fit.over.length ? '<span class="small" style="color:#C2383A">Over</span>' : c.r.fit.stretch.length ? 'A stretch' : 'Fits') : '<span class="small muted">—</span>') : row('Fits budgets', c => c.r.fit && c.r.fit.n ? `${c.r.fit.fits.length}/${vs.length}${c.r.fit.over.length ? `<span class="small" style="color:#C2383A">Over for ${esc(budgetWho(c.r.fit.over))}</span>` : ''}` : '<span class="small muted">—</span>')}
+      ${row(pm === 'one' ? 'Everyone, all in' : pm === 'company' ? 'Company total' : 'Each, all in', c => c.r.priced ? `<b>${pr(c.r).main}</b>${c.cur || !fair(c) ? '' : diff(tot(c.r), tot(base), (a, b) => (a > b ? '+' : '−') + money(Math.abs(a - b)), (a, b) => a < b)}${pm === 'split' ? '' : `<span class="small muted">${esc(pr(c.r).each)}</span>`}${c.r.note ? `<span class="small muted">${esc(c.r.note)}</span>` : ''}` : `${pm === 'split' ? '' : '<b class="muted">Total not available</b>'}<span class="small muted">${esc(c.r.note || 'Unknown')}</span>`)}
+      ${pm === 'company' ? '' : pm === 'one' ? row(isPayer() ? 'Your total budget' : 'Total budget', c => c.r.fit && c.r.fit.n ? (c.r.fit.over.length ? '<span class="small" style="color:#C2383A">Over</span>' : c.r.fit.stretch.length ? 'A stretch' : 'Fits') + part(c) : '<span class="small muted">—</span>') : row('Fits budgets', c => c.r.fit && c.r.fit.n ? `${c.r.fit.fits.length}/${vs.length}${c.r.fit.over.length ? `<span class="small" style="color:#C2383A">Over for ${esc(budgetWho(c.r.fit.over))}</span>` : ''}${part(c)}` : '<span class="small muted">—</span>')}
       ${S.readOnly ? '' : `<div class="wi-row"><span class="wi-k"></span>${cols.map(c => `<div class="wi-v">${c.cur ? '' : `<button class="btn sm primary" data-wiapply="${c.i}">Make this the plan</button>`}</div>`).join('')}</div>`}
     </div>
-    ${pm === 'split' ? '' : `<span class="small muted">${esc(priceFor(1, 1).who)}. Totals are the per-person estimate × ${planHeads()} ${planHeads() === 1 ? 'person' : 'people'}.</span>`}
+    ${why.filter(Boolean).length ? `<div class="cost-flag soft wi-unfair"><b>Not a like-for-like price comparison.</b> ${esc(why.filter(Boolean).join('; '))}. Don’t read the prices as a ranking until they’re complete.</div>` : ''}
+    ${pm === 'split' ? '' : `<span class="small muted">${esc(priceFor(1, 1).who)}. Totals are approximate: the per-person estimate × ${planHeads()} ${planHeads() === 1 ? 'person' : 'people'}.</span>`}
     ${scs.length < 2 ? '<div><button class="btn sm" data-act="wiAdd">+ Compare another</button></div>' : ''}
   </section>`;
 }
@@ -3716,7 +3827,7 @@ function planHero() {
   const photo = [...S.photos].filter(p => p.asset).sort((a, b) => (b.at || 0) - (a.at || 0))[0]?.asset;
   const cv = coverOf(t, S.tid, photo);
   const meta = [ds && esc(ds.city), d && esc(planWhen(t))].filter(Boolean).join(' · ') || (small ? 'Picking the plan and the day' : 'Picking where and when');
-  const who = here.length <= 1 ? 'Just you so far' : `${goers.length} going${maybes ? ` · ${maybes} maybe` : ''}`;
+  const kids = kidsWith(goers), who = here.length <= 1 && !kids ? 'Just you so far' : `${goers.length + kids} going${partyNote(goers.length, kids)}${maybes ? ` · ${maybes} maybe` : ''}`;
   const onInvite = journey().focus?.k === 'invite';
   return `<section class="ov-hero ${cv.cls}" style="${cv.style}">
     <div class="ovh-top"><span class="ovh-chip">${esc(modeLabel(m, sz))}</span>${!modeLabel(m, sz).toLowerCase().includes(SIZES[sz].label.toLowerCase()) ? `<span class="ovh-chip soft">${esc(SIZES[sz].label)}</span>` : ''}
@@ -4606,7 +4717,7 @@ function lockSmallPitch(p) {
   if (!d) { d = { id: rid(6), city: p.title, code: '' }; ds.push(d); }
   const patch = { destinations: ds, lockedDest: d.id, lockedDates: { start: p.start, end: p.start }, time: p.time || '', venue: p.where || '' };
   if (!(S.trip.itinerary || []).length && p.steps?.length) patch.itinerary = p.steps.filter(s => !isDropped(s)).map(s => ({ id: rid(6), date: p.start, time: s.time, title: s.title, kind: 'plan', note: '', ai: true }));
-  saveTrip(withLog(patch, { area: 'dest', text: `Locked in: ${p.title}, ${fmt(p.start)}${p.time ? ' at ' + t12(p.time) : ''}`, act: 'all', undo: { k: 'set', patch: { lockedDest: S.trip.lockedDest || null, lockedDates: S.trip.lockedDates || null, time: S.trip.time || '', venue: S.trip.venue || '' } } })).then(ok => ok && flash(`Locked: ${p.title}, ${fmt(p.start)}${p.time ? ' at ' + t12(p.time) : ''}.`));
+  saveTrip(withLog(patch, { area: 'dest', text: `Locked in: ${p.title}, ${fmt(p.start)}${p.time ? ' at ' + t12(p.time) : ''}`, act: 'all', undo: { k: 'set', patch: { lockedDest: S.trip.lockedDest || null, lockedDates: S.trip.lockedDates || null, time: S.trip.time || '', venue: S.trip.venue || '' } } })).then(ok => { if (!ok) return; celebrate(p.title, planColor(S.trip), 'Locked in!'); flash(`Locked: ${p.title}, ${fmt(p.start)}${p.time ? ' at ' + t12(p.time) : ''}.`); });
 }
 
 /* ---------- crews ---------- */
@@ -4885,10 +4996,10 @@ function newTripForm() {
     </form>`);
 }
 // The moment a plan is made: its name lands on a burst of its color, then the plan opens underneath.
-function celebrate(title, color) {
+function celebrate(title, color, label = 'It’s on') {
   if (calm()) return;
   const el = document.createElement('div'); el.className = 'launch'; el.setAttribute('aria-hidden', 'true'); el.style.setProperty('--pc', color);
-  el.innerHTML = `<div class="launch-in"><span>It’s on</span><b>${esc(title)}</b></div>${'<i></i>'.repeat(12)}`;
+  el.innerHTML = `<div class="launch-in"><span>${esc(label)}</span><b>${esc(title)}</b></div>${'<i></i>'.repeat(12)}`;
   document.body.appendChild(el); setTimeout(() => el.remove(), 1700);
 }
 async function createTrip() {
@@ -5146,6 +5257,7 @@ app.addEventListener('click', e => {
   if (ds.act === 'applyOutline') return applyOutline();
   if (ds.act === 'dropOutline') return saveTrip({ itinTpl: null });
   if (ds.status) return setStatus(ds.status);
+  if (ds.kids) return setKids(kidsOf(meDoc()) + +ds.kids);
   if (ds.act === 'rsvpNudge') return rsvpNudge();
   if (ds.act === 'rsvpCountOut') return rsvpCountOut();
   if (ds.act === 'rsvpClear') return saveTrip({ rsvpBy: null });
@@ -5196,7 +5308,7 @@ app.addEventListener('click', e => {
   if (ds.consent) return toggleConsent(ds.consent);
   if (ds.need) { const [sec, k] = ds.need.split('|'); return toggleNeed(sec, k); }
   if (ds.decide) { if (!isOrganizer() || ds.decide === decideOf().style) return; return saveTrip(withLog({ decide: { style: ds.decide, ...(ds.decide === 'pick' && !decideOf().by ? { by: add(TODAY, 3) } : {}) } }, { area: 'rules', text: `How we decide: ${STYLES[ds.decide][0]}`, act: 'all', undo: { k: 'set', patch: { decide: { style: decideOf().style } } } })); }
-  if (ds.lockdates) { const [start, end] = ds.lockdates.split('|'); return saveTrip(withLog({ lockedDates: { start, end } }, { area: 'dates', text: `${start === end ? 'Day' : 'Dates'} locked: ${dayRange(start, end)}`, act: 'all', undo: { k: 'set', patch: { lockedDates: S.trip.lockedDates || null } } })); }
+  if (ds.lockdates) { const [start, end] = ds.lockdates.split('|'); return saveTrip(withLog({ lockedDates: { start, end } }, { area: 'dates', text: `${start === end ? 'Day' : 'Dates'} locked: ${dayRange(start, end)}`, act: 'all', undo: { k: 'set', patch: { lockedDates: S.trip.lockedDates || null } } })).then(ok => ok && celebrate(dayRange(start, end), planColor(S.trip), start === end ? 'Day locked!' : 'Dates locked!')); }
   if (ds.act === 'unlockDates') return saveTrip(withLog({ lockedDates: null }, { area: 'dates', text: 'Dates unlocked', act: 'all', undo: { k: 'set', patch: { lockedDates: S.trip.lockedDates || null } } }));
   if (ds.vote) { const set = new Set(meDoc()?.votes || []); set.has(ds.vote) ? set.delete(ds.vote) : set.add(ds.vote); return saveMe({ votes: [...set] }, true); }
   if (ds.lockdest) return saveTrip(withLog({ lockedDest: ds.lockdest }, { area: 'dest', text: `${isSmall() ? 'Plan' : 'Destination'} locked: ${(S.trip.destinations || []).find(x => x.id === ds.lockdest)?.city || ''}`, act: 'all', undo: { k: 'set', patch: { lockedDest: S.trip.lockedDest || null } } }));
@@ -5238,7 +5350,7 @@ app.addEventListener('click', e => {
   if (ds.setpays) { const k = ds.setpays; return saveTrip({ pays: k, ...(k === 'one' && !S.trip.payer ? { payer: S.trip.createdBy || S.uid } : {}) }); }
   if (ds.setmode) { S.wrapI = 0; return saveTrip({ mode: ds.setmode }); }
   if (ds.reveal) { const it = (S.trip.itinerary || []).map(i => i.id === ds.reveal ? { ...i, revealed: true } : i); flash('Surprise revealed.'); return saveTrip({ itinerary: it }); }
-  if (ds.swipe) { const [pid, v] = ds.swipe.split('|'); return swipe(pid, +v); }
+  if (ds.swipe) { const [pid, v] = ds.swipe.split('|'); return castVote(pid, +v, t); }
   if (ds.lockpitch) return lockPitch(ds.lockpitch);
   if (ds.checkin) { const c = { text: ds.checkin, at: Date.now() }; return saveMe({ checkin: c, checkins: [...(meDoc()?.checkins || []), c].slice(-40) }, true); }
   if (ds.act === 'clearMeet') return saveTrip(withLog({ meet: null }, { area: 'meet', text: 'Meeting point cleared', act: 'all', undo: { k: 'set', patch: { meet: S.trip.meet } } }));
@@ -5390,6 +5502,7 @@ const DRAFT = {};
 app.addEventListener('input', e => {
   if (e.target.id && e.target.type !== 'file') DRAFT[e.target.id] = e.target.value;
   // the new plan's cover preview shows the name as it's typed
+  if (e.target.id === 'me-home' || e.target.id === 'me-budget') setupLive();
   if (e.target.id === 'nt-name') { const t = $('.nf-pv-title'), v = e.target.value.trim(); if (t) { t.textContent = v || e.target.placeholder; t.classList.toggle('is-ph', !v); } }
 });
 const clearDrafts = f => f.querySelectorAll('[id]').forEach(el => delete DRAFT[el.id]);

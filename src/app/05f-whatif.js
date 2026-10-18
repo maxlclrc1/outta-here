@@ -9,11 +9,13 @@ function scenarioEval(sc = {}) {
   const can = days.length ? vs.filter(m => fitOf(m, days)) : [];
   const prefer = days.length ? vs.filter(m => days.some(x => (m.pref || []).includes(x))) : [];
   const curDest = dest(), dsel = sc.dest ? (t.destinations || []).find(d => d.id === sc.dest) : curDest;
-  let low = 0, high = 0, note = '';
+  // basis: where the price comes from ('lines' = the All-in cost lines, 'pitch' = an AI pitch's own price);
+  // complete: no major line is missing. Only prices with the same basis, both complete, compare fairly.
+  let low = 0, high = 0, note = '', basis = null, complete = false;
   if (sc.dest && dsel && dsel.id !== curDest?.id) {
     // a different destination: only priced if a pitch for it has a price
     const p = (t.pitches?.items || []).find(x => !x.small && x.city.toLowerCase() === dsel.city.toLowerCase()), r = p && moneyRange(p.perPerson);
-    if (r) { low = r[0]; high = r[1]; note = 'AI pitch estimate'; } else note = 'No price for this one yet';
+    if (r) { low = r[0]; high = r[1]; note = 'The AI pitch’s own estimate'; basis = 'pitch'; complete = true; } else note = 'No price for this one yet';
   } else {
     const sum = costSummary(), dayF = (n + 1) / (n0 + 1), nightF = n0 ? n / n0 : 1, heads = payHeads();
     for (const r of sum.rows) {
@@ -27,10 +29,12 @@ function scenarioEval(sc = {}) {
       low += v.low * f; high += v.high * f;
     }
     low = Math.round(low * (1 + sum.buffer / 100)); high = Math.round(high * (1 + sum.buffer / 100));
+    basis = 'lines'; complete = sum.any && !sum.missing.length;
     if (!sum.any) note = 'Fill in All-in cost to compare prices';
+    else if (sum.missing.length) note = `Partial: no ${sum.missing.map(r => r.label.toLowerCase()).join(', ')} yet`;
   }
   const priced = low || high, fit = priced ? budgetFit({ low, high }) : null;
-  return { start, end, n, can, prefer, dest: dsel, low, high, priced, fit, note, stay: sc.stay || '' };
+  return { start, end, n, can, prefer, dest: dsel, low, high, priced, fit, note, basis: priced ? basis : null, complete: !!priced && complete, stay: sc.stay || '' };
 }
 function whatifTab() {
   const t = S.trip, small = isSmall(), base = scenarioEval({}), scs = S.whatif || [{}];
@@ -56,6 +60,10 @@ function whatifTab() {
     </div>`;
   // prices follow who pays: per person when splitting, the total for everyone when one person or the company pays
   const pm = paysMode(), pr = r => priceFor(r.low, r.high), tot = r => pm === 'split' ? r.high : Math.round(r.high * planHeads());
+  // a price difference is only shown between like-for-like prices, so a partial one never reads as cheaper
+  const fair = c => c.r.complete && base.complete && c.r.basis === base.basis, part = c => c.r.priced && !c.r.complete ? '<span class="small muted">On a partial price</span>' : '';
+  const why = cols.filter(c => !c.cur && !fair(c) && (c.r.priced || base.priced)).map(c => !c.r.priced ? `${c.label} has no price yet` : c.r.basis !== base.basis && base.priced ? `${c.label} uses ${c.r.basis === 'pitch' ? 'an AI pitch’s estimate' : 'your cost lines'}, Now uses ${base.basis === 'pitch' ? 'an AI pitch’s estimate' : 'your cost lines'}` : !c.r.complete ? `${c.label} is missing costs` : '');
+  if (why.length) why.unshift(!base.priced ? 'Now has no price yet' : !base.complete ? 'Now is missing costs' : '');
   const row = (label, f) => `<div class="wi-row"><span class="wi-k">${label}</span>${cols.map(c => `<div class="wi-v">${f(c)}</div>`).join('')}</div>`;
   return `<section class="card stack whatif">
     <div class="stack" style="gap:2px"><h2>What if we changed this?</h2><span class="small muted">Try a different ${small ? 'day or plan' : 'start, length, place or stay'} and see what it does to who can come and what it costs. Nothing changes until you pick one.</span></div>
@@ -66,11 +74,12 @@ function whatifTab() {
       ${dests.length ? row(small ? 'Plan' : 'Where', c => esc(c.r.dest?.city || '—')) : ''}
       ${row('Can come', c => `<b>${c.r.can.length}/${vs.length}</b>${c.cur ? '' : diff(c.r.can.length, base.can.length, (a, b) => (a > b ? '+' : '') + (a - b), (a, b) => a > b)}${vs.filter(m => !c.r.can.includes(m)).length && c.r.start ? `<span class="small muted">Not ${esc(listNames(vs.filter(m => !c.r.can.includes(m))))}</span>` : ''}`)}
       ${row('Prefer it', c => `${c.r.prefer.length}/${vs.length}`)}
-      ${row(pm === 'one' ? 'Everyone, all in' : pm === 'company' ? 'Company total' : 'Each, all in', c => c.r.priced ? `<b>${pr(c.r).main}</b>${c.cur || !base.priced ? '' : diff(tot(c.r), tot(base), (a, b) => (a > b ? '+' : '−') + money(Math.abs(a - b)), (a, b) => a < b)}${pm === 'split' ? '' : `<span class="small muted">${esc(pr(c.r).each)}</span>`}${c.r.note ? `<span class="small muted">${esc(c.r.note)}</span>` : ''}` : `<span class="small muted">${esc(c.r.note || 'Unknown')}</span>`)}
-      ${pm === 'company' ? '' : pm === 'one' ? row(isPayer() ? 'Your total budget' : 'Total budget', c => c.r.fit && c.r.fit.n ? (c.r.fit.over.length ? '<span class="small" style="color:#C2383A">Over</span>' : c.r.fit.stretch.length ? 'A stretch' : 'Fits') : '<span class="small muted">—</span>') : row('Fits budgets', c => c.r.fit && c.r.fit.n ? `${c.r.fit.fits.length}/${vs.length}${c.r.fit.over.length ? `<span class="small" style="color:#C2383A">Over for ${esc(budgetWho(c.r.fit.over))}</span>` : ''}` : '<span class="small muted">—</span>')}
+      ${row(pm === 'one' ? 'Everyone, all in' : pm === 'company' ? 'Company total' : 'Each, all in', c => c.r.priced ? `<b>${pr(c.r).main}</b>${c.cur || !fair(c) ? '' : diff(tot(c.r), tot(base), (a, b) => (a > b ? '+' : '−') + money(Math.abs(a - b)), (a, b) => a < b)}${pm === 'split' ? '' : `<span class="small muted">${esc(pr(c.r).each)}</span>`}${c.r.note ? `<span class="small muted">${esc(c.r.note)}</span>` : ''}` : `${pm === 'split' ? '' : '<b class="muted">Total not available</b>'}<span class="small muted">${esc(c.r.note || 'Unknown')}</span>`)}
+      ${pm === 'company' ? '' : pm === 'one' ? row(isPayer() ? 'Your total budget' : 'Total budget', c => c.r.fit && c.r.fit.n ? (c.r.fit.over.length ? '<span class="small" style="color:#C2383A">Over</span>' : c.r.fit.stretch.length ? 'A stretch' : 'Fits') + part(c) : '<span class="small muted">—</span>') : row('Fits budgets', c => c.r.fit && c.r.fit.n ? `${c.r.fit.fits.length}/${vs.length}${c.r.fit.over.length ? `<span class="small" style="color:#C2383A">Over for ${esc(budgetWho(c.r.fit.over))}</span>` : ''}${part(c)}` : '<span class="small muted">—</span>')}
       ${S.readOnly ? '' : `<div class="wi-row"><span class="wi-k"></span>${cols.map(c => `<div class="wi-v">${c.cur ? '' : `<button class="btn sm primary" data-wiapply="${c.i}">Make this the plan</button>`}</div>`).join('')}</div>`}
     </div>
-    ${pm === 'split' ? '' : `<span class="small muted">${esc(priceFor(1, 1).who)}. Totals are the per-person estimate × ${planHeads()} ${planHeads() === 1 ? 'person' : 'people'}.</span>`}
+    ${why.filter(Boolean).length ? `<div class="cost-flag soft wi-unfair"><b>Not a like-for-like price comparison.</b> ${esc(why.filter(Boolean).join('; '))}. Don’t read the prices as a ranking until they’re complete.</div>` : ''}
+    ${pm === 'split' ? '' : `<span class="small muted">${esc(priceFor(1, 1).who)}. Totals are approximate: the per-person estimate × ${planHeads()} ${planHeads() === 1 ? 'person' : 'people'}.</span>`}
     ${scs.length < 2 ? '<div><button class="btn sm" data-act="wiAdd">+ Compare another</button></div>' : ''}
   </section>`;
 }
