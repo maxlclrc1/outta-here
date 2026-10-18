@@ -204,15 +204,15 @@ function pickSizeStep() {
 function modePicker() {
   return `${topBar()}${stepHead(`What kind of ${SIZES[S.newSize || 'trip'].label.toLowerCase()} is this?`, 'backSize')}
   <p class="muted">We’ll tune the AI picks, the awards and the features to your group.</p>
-  <div class="modes">${Object.entries(MODES).map(([k, v]) => `<button class="mode" data-mode="${k}" style="--mc:${v.color}"><b>${esc(modeLabel(v, S.newSize))}</b><span class="small muted">${esc(v.desc)}</span>${v.honoree ? `<span class="label" style="color:color-mix(in oklab,var(--mc) 70%,var(--ink))">Guest of honor mode</span>` : ''}</button>`).join('')}</div>`;
+  <div class="modes">${Object.entries(MODES).map(([k, v]) => `<button class="mode" data-mode="${k}" style="--mc:${v.color}"><b>${esc(modeLabel(v, S.newSize))}</b><span class="small muted">${esc(modeDesc(v, S.newSize))}</span>${v.honoree ? `<span class="label" style="color:color-mix(in oklab,var(--mc) 70%,var(--ink))">Guest of honor mode</span>` : ''}</button>`).join('')}</div>`;
 }
 function newTripForm() {
   const sz = SIZES[S.newSize || 'trip'], small = ['hangout', 'day'].includes(S.newSize), m = MODES[S.newMode] || MODES.friends, crew = S.crews.find(c => c.id === S.newCrew);
   const start = small ? TODAY : add(TODAY, 30), end = add(start, sz.win + (small ? 0 : 15));
   let city = ''; try { city = localStorage.getItem('outta_city') || ''; } catch {}
-  const ph = { bachelorette: 'Sarah’s Last Fling', bachelor: 'Mike’s Last Ride', birthday: 'Dev turns 30', family: 'Family beach week', work: 'Q3 team offsite', festival: 'Coachella weekend', sports: 'Super Bowl trip', couples: 'Couples in Tulum', college: 'Spring break ’27' }[S.newMode] || sz.ph;
-  return `${topBar()}${stepHead('The basics', small ? 'backSize' : 'backModes')}
-  ${crew || !small ? `<div class="row" style="gap:8px">${!small ? `<span class="mode-chip" style="--mc:${m.color}">${esc(modeLabel(m, S.newSize))}</span>` : ''}${crew ? `<span class="small muted">Everyone in <b>${esc(crew.name)}</b> is added automatically.</span>` : ''}</div>` : ''}
+  const ph = small ? ({ birthday: 'Dev’s birthday dinner', family: 'Sunday family dinner', work: 'Team lunch' }[S.newMode] || sz.ph) : { bachelorette: 'Sarah’s Last Fling', bachelor: 'Mike’s Last Ride', birthday: 'Dev turns 30', family: 'Family beach week', work: 'Q3 team offsite', festival: 'Coachella weekend', sports: 'Super Bowl trip', couples: 'Couples in Tulum', college: 'Spring break ’27' }[S.newMode] || sz.ph;
+  return `${topBar()}${stepHead('The basics', 'backModes')}
+  <div class="row" style="gap:8px"><span class="mode-chip" style="--mc:${m.color}">${esc(modeLabel(m, S.newSize))}</span>${crew ? `<span class="small muted">Everyone in <b>${esc(crew.name)}</b> is added automatically.</span>` : ''}</div>
   <section class="card stack">
     <form id="newTrip" class="stack">
       <label class="field"><span class="label">Name it</span><input id="nt-name" required maxlength="60" placeholder="${esc(ph)}"></label>
@@ -245,7 +245,7 @@ async function createTrip() {
   const id = rid(10);
   const currency = CUR_CODES.includes($('#nt-cur')?.value) ? $('#nt-cur').value : myCur(); try { localStorage.setItem('outta_lastcur', currency); } catch {}
   const trip = { name: name.slice(0, 60), size: sz, city, currency, winStart: a, winEnd: b, nights: small ? 0 : +($('#nt-nights')?.value || SIZES[sz].nights), destinations: [], vibes: [], itinerary: [], lockedDates: null, lockedDest: null,
-    mode: small ? 'friends' : (S.newMode || 'friends'), honoreeName: ($('#nt-honoree')?.value || '').trim().slice(0, 40), honoreeFree: true, people: { [S.uid]: true }, createdBy: S.uid, createdAt: Date.now() };
+    mode: S.newMode || 'friends', honoreeName: ($('#nt-honoree')?.value || '').trim().slice(0, 40), honoreeFree: true, people: { [S.uid]: true }, createdBy: S.uid, createdAt: Date.now() };
   try {
     await S.db.doc('trips/' + id).set(trip);
     const crew = S.crews.find(c => c.id === S.newCrew);

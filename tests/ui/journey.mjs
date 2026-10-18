@@ -21,7 +21,7 @@ const home = async p => { await p.click('.bottomnav [data-sec=home]').catch(() =
 const create = async (p, size, name, opts = {}) => {
   if (await p.locator('[data-act=home]').count()) { await p.locator('[data-act=home]').first().dispatchEvent('click'); await settle(p); }
   await p.click('[data-act=newTrip]'); await settle(p); await p.click(`[data-size=${size}]`); await settle(p);
-  if (opts.mode) { await p.click(`[data-mode=${opts.mode}]`); await settle(p); } else if (!['hangout', 'day'].includes(size)) { await p.locator('[data-mode]').first().click(); await settle(p); }
+  if (opts.mode) { await p.click(`[data-mode=${opts.mode}]`); await settle(p); } else { await p.locator('[data-mode]').first().click(); await settle(p); }
   await p.fill('#nt-name', name); if (await p.locator('#nt-city').count()) await p.fill('#nt-city', 'Brooklyn');
   await p.click('#newTrip [type=submit]'); await p.waitForSelector('.setup'); await skipSetup(p); await settle(p);
   return (await p.evaluate(() => location.hash));

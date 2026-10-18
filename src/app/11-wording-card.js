@@ -2,7 +2,7 @@
 function draftNight() {
   const d = dates(); if (!d) return;
   const spots = (S.trip.spots?.items || []).map(s => s.name).join('; ');
-  const prompt = `Plan ${size() === 'hangout' ? 'this evening' : 'this day out'} for a friend group: 3–5 stops with times, in order, close to each other.
+  const prompt = `Plan ${size() === 'hangout' ? 'this evening' : 'this day out'} for a ${planKind().group}: 3–5 stops with times, in order, close to each other.
 ${context()}
 Spots the crew likes: ${spots || 'none yet, suggest real places'}
 Reply with only JSON: {"items":[{"time":"HH:MM","title":"short title with the place name","kind":"food|activity|nightlife|chill","note":"one short line"}]}`;

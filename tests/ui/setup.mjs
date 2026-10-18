@@ -30,7 +30,7 @@ await a.click('[data-act=home] >> nth=0'); await settle(a);
 await a.click('[data-act=newCrew] >> nth=0'); await a.fill('#nc-name', 'Taco Crew'); await a.click('#newCrewForm [type=submit]'); await a.waitForSelector('text=Invite to the crew'); await settle(a);
 const crewHash = await a.evaluate(() => location.hash);
 const j = await mk('Jay', crewHash); await j.waitForSelector('text=Invite to the crew'); await settle(j);
-await a.click('[data-startcrew] >> nth=0'); await settle(a); await a.click('[data-size=hangout]'); await settle(a);
+await a.click('[data-startcrew] >> nth=0'); await settle(a); await a.click('[data-size=hangout]'); await settle(a); await a.click('[data-mode=friends]'); await settle(a);
 await a.fill('#nt-name', 'Friday tacos'); await a.fill('#nt-city', 'Brooklyn'); await a.click('#newTrip [type=submit]'); await a.waitForSelector('.setup'); await settle(a);
 console.log('hangout steps:', await a.locator('.setup-prog i').count());
 await a.click('[data-act=setupLater]'); await settle(a); console.log('later → pass:', await a.locator('.pass').count(), '| toast:', await a.locator('#toast').innerText());

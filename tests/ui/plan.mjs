@@ -13,7 +13,7 @@ const j = await mk('Jay'); await j.goto((process.env.BASE || 'http://localhost:3
 console.log('jay crew members:', await j.locator('section.stack .chip').allInnerTexts());
 // Ali plans a hangout from the crew page
 await a.click('[data-startcrew] >> nth=0'); await settle(a); await shot(a, '3-size');
-await a.click('[data-size=hangout]'); await settle(a);
+await a.click('[data-size=hangout]'); await settle(a); await a.click('[data-mode=friends]'); await settle(a);
 await a.fill('#nt-name', 'Friday tacos'); await a.fill('#nt-city', 'Brooklyn'); await a.click('#newTrip [type=submit]'); await a.waitForSelector('.pass, .passport, .setup').then(() => skipSetup(a)); await settle(a);
 await shot(a, '4-hangout-overview');
 console.log('nav sections:', await a.locator('.bottomnav .bn span').allInnerTexts());

@@ -16,7 +16,7 @@ const mk = async (name, link) => {
   await p.goto((process.env.BASE || 'http://localhost:3000') + '/' + (link || '')); await p.fill('#join-name', name); await p.click('.join-card [type=submit]'); await settle(p); return p;
 };
 const a = await mk('Ali');
-await a.click('[data-act=newTrip]'); await settle(a); await a.click('[data-size=hangout]'); await settle(a);
+await a.click('[data-act=newTrip]'); await settle(a); await a.click('[data-size=hangout]'); await settle(a); await a.click('[data-mode=friends]'); await settle(a);
 await a.fill('#nt-name', 'Saturday'); await a.fill('#nt-city', 'Brooklyn'); await a.click('#newTrip [type=submit]'); await a.waitForSelector('.pass, .passport, .setup').then(() => skipSetup(a)); await settle(a);
 const tid = await a.evaluate(() => location.hash);
 const j = await mk('Jay', tid), k = await mk('Kim', tid);

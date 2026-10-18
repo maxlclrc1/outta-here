@@ -114,17 +114,17 @@ function genPlanPitches() {
   takeNote();
   const opts = dateOptions().slice(0, 4); if (!opts.length) { flash('Set which days could work first.'); return; }
   const t = S.trip, b = budgetCap(), evening = size() === 'hangout';
-  const prompt = `You're pitching plans to a friend group. Each person swipes yes or no, like a dating app, so make every pitch specific, fun and honest.
-Plan type: ${evening ? 'one evening out or in' : 'a full day out'}${mode().label !== 'Friends trip' ? ` (${mode().label}. ${mode().ai})` : ''}.
+  const prompt = `You're pitching plans to a ${planKind().group}. Each person swipes yes or no, like a dating app, so make every pitch specific, fun and honest.
+Plan type: ${evening ? 'one evening out or in' : 'a full day out'}${mode() !== MODES.friends ? ` (${modeLabel(mode(), size())}. ${modeAi()})` : ''}.
 City: ${t.city || 'unknown, assume a big US city'}.
 Crew: ${active().length} people. Max spend per person: ${b ? `${b.label}; keep it at or under ${money(b.cap)}` : 'not set, keep it moderate'}.
-${blend() ? 'Crew vibe quiz:\n' + blendText() : 'Vibe: fun, social'}
+${blend() ? 'Crew vibe quiz:\n' + blendText() : 'Vibe: ' + vibeDefault('small')}
 Ideas the crew already suggested: ${(t.destinations || []).map(d => d.city).join(', ') || 'none'}
 ${pitchMemory()}
 Day options (use one exactly per pitch):
 ${opts.map((o, i) => `${i + 1}) ${o.start} (${dow(o.start)}, ${o.ok}/${active().length} free)`).join('\n')}
 
-Give 6 different plans that use real, well-known places in that city: mix a dinner-and-drinks night, an activity (bowling, karaoke, a class, a show), something low-key, and something new. Prefer the days most people can make.
+Give 6 different plans that use real, well-known places in that city: mix ${planKind().smallMix || 'a dinner-and-drinks night, an activity (bowling, karaoke, a class, a show), something low-key, and something new'}. Prefer the days most people can make.
 Reply with only JSON: {"pitches":[{"title":"the plan in 2-5 words","tagline":"punchy, 4-9 words","where":"main place or neighborhood","date":"YYYY-MM-DD","time":"HH:MM start","perPerson":"$25–40","vibeMatch":82,"why":"one or two sentences on why this crew would love it","steps":[{"time":"HH:MM","title":"place or activity"}],"weather":"short, or empty if it's indoors"}]}`;
   askAI('pitch', prompt, data => {
     const valid = new Map(opts.map(o => [o.start, o]));
