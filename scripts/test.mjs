@@ -31,6 +31,7 @@ const SERVER = [
   ['plan-values', 'tests/plan-values.mjs'],
   ['undo', 'tests/undo.mjs'],
   ['budget-pays', 'tests/budget-pays.mjs'],
+  ['member-kids', 'tests/member-kids.mjs'],
   ['plan-delete', 'tests/plan-delete.mjs'],
   ['invite-key', 'tests/invite-key.mjs'],
   ['identity', 'tests/identity.mjs'],

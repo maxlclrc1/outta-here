@@ -12,10 +12,22 @@ function headcount() {
   const h = { booked: c('booked'), confirmed: c('confirmed'), going: c('in'), interested: c('maybe'), out: c('out') };
   return { ...h, firm: h.booked + h.confirmed, max: h.booked + h.confirmed + h.going };
 }
+// Kids an adult is bringing (family plans): just a count on their own record, no accounts, RSVPs,
+// budgets or days of their own; they follow their adult. Missing means 0. Not yet in any headcount.
+const KIDS_MAX = 12;
+const kidsOf = m => Math.max(0, Math.min(KIDS_MAX, Math.floor(+m?.kids || 0)));
+const kidsOn = () => planGroup() === 'family';
+const withKids = m => { const n = kidsOn() ? kidsOf(m) : 0; return n ? ` + ${n} ${n === 1 ? 'kid' : 'kids'}` : ''; };
+function kidsStep() {
+  const n = kidsOf(meDoc());
+  return `<div class="kids-step" role="group" aria-label="Bringing kids?"><span class="small">Bringing kids?</span>
+    <button class="kid-btn" data-kids="-1" aria-label="One kid fewer" ${n ? '' : 'disabled'}>−</button><b class="kids-n" aria-live="polite">${n}</b><button class="kid-btn" data-kids="1" aria-label="One more kid" ${n < KIDS_MAX ? '' : 'disabled'}>+</button></div>`;
+}
+function setKids(n) { n = Math.max(0, Math.min(KIDS_MAX, n)); if (n !== kidsOf(meDoc())) saveMe({ kids: n }, true); }
 function commitLadder() {
   const m = meDoc(), cur = m ? m.status || 'maybe' : null, i = LEVELS.findIndex(([k]) => k === cur);
   return `<div class="ladder-wrap"><div class="ladder" role="group" aria-label="How sure are you?">${LEVELS.map(([k, l], j) => `<button class="rung ${j <= i ? 'on' : ''} ${j === i ? 'cur' : ''}" data-status="${k}" aria-pressed="${j === i}" title="${LEVEL_HELP[k]}">${l}</button>`).join('')}</div>
-    <div class="row" style="justify-content:space-between;gap:8px"><span class="small muted">${cur && cur !== 'out' ? esc(LEVEL_HELP[cur]) : cur === 'out' ? 'You said you can’t go.' : 'How sure are you?'}</span><button class="linkbtn small muted" data-status="out">${cur === 'out' ? '' : 'Can’t make it'}</button></div></div>`;
+    <div class="row" style="justify-content:space-between;gap:8px"><span class="small muted">${cur && cur !== 'out' ? esc(LEVEL_HELP[cur]) : cur === 'out' ? 'You said you can’t go.' : 'How sure are you?'}</span><button class="linkbtn small muted" data-status="out">${cur === 'out' ? '' : 'Can’t make it'}</button></div>${kidsOn() && cur !== 'out' ? kidsStep() : ''}</div>`;
 }
 function rsvpCard() {
   const t = S.trip, und = undecided(), org = isOrganizer(), by = t.rsvpBy, late = by && TODAY > by, h = headcount();

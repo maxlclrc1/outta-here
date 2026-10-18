@@ -742,7 +742,7 @@ function crewTab() {
     <div class="row" style="justify-content:space-between;margin-bottom:6px"><h2>The crew</h2><span class="small muted">Invite more with the card above</span></div>
     ${S.members.length ? S.members.filter(x => !x.removed).map(x => `<div class="crew-row">
       <div class="av" style="background:${colorFor(x.id)}">${esc((x.nick || '?')[0].toUpperCase())}</div>
-      <div style="min-width:0"><b>${esc(x.nick || 'Someone')}${x.id === S.uid ? ' <span class="muted small">(you)</span>' : ''}</b>
+      <div style="min-width:0"><b>${esc(x.nick || 'Someone')}${withKids(x)}${x.id === S.uid ? ' <span class="muted small">(you)</span>' : ''}</b>
         <div class="small muted">${x.home && !isSmall() ? (size() === 'trip' ? '✈ ' : 'from ') + esc(x.home) + ' · ' : ''}${(x.days || []).length} ${(x.days || []).length === 1 ? 'day' : 'days'} free · ${(x.votes || []).length ? 'voted' : 'no vote yet'}${x.budget || x.budgetSet ? ' · budget set' : ''}</div></div>
       <div class="cr-side"><span class="pill lvl-${x.status || 'maybe'}">${LEVEL_LABEL[x.status || 'maybe']}</span>${x.id === S.trip.createdBy || (S.trip.orgs || {})[x.id] ? '<span class="small muted">Organizer</span>' : ''}
         ${isOrganizer() && !S.demo && x.id !== S.uid && x.id !== S.trip.createdBy ? (S.confirmRm === x.id ? `<span class="row" style="gap:4px"><button class="btn sm danger-fill" data-rmdo="${esc(x.id)}">Remove</button><button class="btn sm ghost" data-act="rmCancel">Cancel</button></span>` : `<span class="row" style="gap:8px"><button class="linkbtn small" data-mkorg="${esc(x.id)}">${(S.trip.orgs || {})[x.id] ? 'Not organizer' : 'Make organizer'}</button><button class="linkbtn small" data-rmmember="${esc(x.id)}">Remove</button></span>`) : ''}</div>
@@ -2001,10 +2001,22 @@ function headcount() {
   const h = { booked: c('booked'), confirmed: c('confirmed'), going: c('in'), interested: c('maybe'), out: c('out') };
   return { ...h, firm: h.booked + h.confirmed, max: h.booked + h.confirmed + h.going };
 }
+// Kids an adult is bringing (family plans): just a count on their own record, no accounts, RSVPs,
+// budgets or days of their own; they follow their adult. Missing means 0. Not yet in any headcount.
+const KIDS_MAX = 12;
+const kidsOf = m => Math.max(0, Math.min(KIDS_MAX, Math.floor(+m?.kids || 0)));
+const kidsOn = () => planGroup() === 'family';
+const withKids = m => { const n = kidsOn() ? kidsOf(m) : 0; return n ? ` + ${n} ${n === 1 ? 'kid' : 'kids'}` : ''; };
+function kidsStep() {
+  const n = kidsOf(meDoc());
+  return `<div class="kids-step" role="group" aria-label="Bringing kids?"><span class="small">Bringing kids?</span>
+    <button class="kid-btn" data-kids="-1" aria-label="One kid fewer" ${n ? '' : 'disabled'}>−</button><b class="kids-n" aria-live="polite">${n}</b><button class="kid-btn" data-kids="1" aria-label="One more kid" ${n < KIDS_MAX ? '' : 'disabled'}>+</button></div>`;
+}
+function setKids(n) { n = Math.max(0, Math.min(KIDS_MAX, n)); if (n !== kidsOf(meDoc())) saveMe({ kids: n }, true); }
 function commitLadder() {
   const m = meDoc(), cur = m ? m.status || 'maybe' : null, i = LEVELS.findIndex(([k]) => k === cur);
   return `<div class="ladder-wrap"><div class="ladder" role="group" aria-label="How sure are you?">${LEVELS.map(([k, l], j) => `<button class="rung ${j <= i ? 'on' : ''} ${j === i ? 'cur' : ''}" data-status="${k}" aria-pressed="${j === i}" title="${LEVEL_HELP[k]}">${l}</button>`).join('')}</div>
-    <div class="row" style="justify-content:space-between;gap:8px"><span class="small muted">${cur && cur !== 'out' ? esc(LEVEL_HELP[cur]) : cur === 'out' ? 'You said you can’t go.' : 'How sure are you?'}</span><button class="linkbtn small muted" data-status="out">${cur === 'out' ? '' : 'Can’t make it'}</button></div></div>`;
+    <div class="row" style="justify-content:space-between;gap:8px"><span class="small muted">${cur && cur !== 'out' ? esc(LEVEL_HELP[cur]) : cur === 'out' ? 'You said you can’t go.' : 'How sure are you?'}</span><button class="linkbtn small muted" data-status="out">${cur === 'out' ? '' : 'Can’t make it'}</button></div>${kidsOn() && cur !== 'out' ? kidsStep() : ''}</div>`;
 }
 function rsvpCard() {
   const t = S.trip, und = undecided(), org = isOrganizer(), by = t.rsvpBy, late = by && TODAY > by, h = headcount();
@@ -5157,6 +5169,7 @@ app.addEventListener('click', e => {
   if (ds.act === 'applyOutline') return applyOutline();
   if (ds.act === 'dropOutline') return saveTrip({ itinTpl: null });
   if (ds.status) return setStatus(ds.status);
+  if (ds.kids) return setKids(kidsOf(meDoc()) + +ds.kids);
   if (ds.act === 'rsvpNudge') return rsvpNudge();
   if (ds.act === 'rsvpCountOut') return rsvpCountOut();
   if (ds.act === 'rsvpClear') return saveTrip({ rsvpBy: null });

@@ -155,6 +155,8 @@ export function checkWrite(op: 'set' | 'update' | 'delete', p: string, data: Jso
       if (!inTrip(tid, u, t)) throw deny();
       if (op === 'delete' && !isOrg(t, u)) throw deny();
       if (data && 'removed' in data && !isOrg(t, u)) throw deny('Only organizers can remove people.');
+      // kids come with their adult, and only that adult says how many (organizers included)
+      if (data && 'kids' in data) throw deny('Only they can change how many kids they’re bringing.');
       // someone else's record: only whether they're coming (drop-outs, counting people out,
       // removing). Their votes, free days and limits are theirs to change.
       if (prev && Object.keys(data || {}).some(k => !OTHERS_MAY.includes(k))) throw deny('You can only change your own votes, days and limits.');

@@ -65,6 +65,7 @@ app.addEventListener('click', e => {
   if (ds.act === 'applyOutline') return applyOutline();
   if (ds.act === 'dropOutline') return saveTrip({ itinTpl: null });
   if (ds.status) return setStatus(ds.status);
+  if (ds.kids) return setKids(kidsOf(meDoc()) + +ds.kids);
   if (ds.act === 'rsvpNudge') return rsvpNudge();
   if (ds.act === 'rsvpCountOut') return rsvpCountOut();
   if (ds.act === 'rsvpClear') return saveTrip({ rsvpBy: null });
