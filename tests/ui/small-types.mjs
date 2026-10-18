@@ -25,7 +25,7 @@ async function create(sz, mode, name) {
   await home(); await p.click('[data-act=newTrip]'); await settle(p); await p.click(`[data-size=${sz}]`); await settle(p);
   const labels = await p.locator('[data-mode] b').allInnerTexts();
   await p.click(`[data-mode=${mode}]`); await settle(p);
-  const chip = (await p.locator('.mode-chip').first().textContent()).trim();
+  const chip = (await p.locator('.nf-preview .ovh-chip').first().textContent()).trim();
   await p.fill('#nt-name', name); await p.fill('#nt-city', 'Denver'); await p.click('#newTrip [type=submit]'); await p.waitForSelector('.setup');
   return { labels, chip, tid: await finish((await p.evaluate(() => location.hash)).slice(1)) };
 }
