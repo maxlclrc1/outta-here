@@ -1,7 +1,7 @@
 /* ---------- money: spend-o-meter + group pot ---------- */
 function myShare() {
   let share = 0;
-  for (const e of S.expenses) { let sp = (e.split || []).filter(Boolean); if (honoreeFree() && sp.length > 1) sp = sp.filter(id => id !== S.trip.honoree); if (sp.includes(S.uid)) share += e.amount / sp.length; }
+  for (const e of S.expenses) { const sp = expenseShare(e); if (sp.includes(S.uid)) share += e.amount / sp.length; }
   return share;
 }
 function meterTab() {
@@ -14,6 +14,7 @@ function meterTab() {
   const R = 70, C = 2 * Math.PI * R, arc = Math.min(1, pct) * C;
   return `<section class="card stack meter-card">
     <div class="row" style="justify-content:space-between"><h2>My spend</h2><span class="small muted">Only you see this page</span></div>
+    ${paysMode() === 'one' && !isPayer() ? `<div class="banner"><span><b>Covered by ${esc(nameOf(payerId()))}.</b> Group costs aren’t on you. This page is for anything you spend on yourself.</span></div>` : paysMode() === 'company' ? `<div class="banner"><span><b>The company’s paying.</b> This page is for anything you spend on yourself.</span></div>` : ''}
     ${isHonoree() && honoreeFree() ? `<div class="banner"><span><b>You’re covered.</b> As the ${esc(mode().honoree)}, your share of group costs is split across the crew.</span></div>` : ''}
     <div class="meter-row">
       <svg viewBox="0 0 180 180" width="170" height="170" class="ring" role="img" aria-label="${budget ? Math.round(pct * 100) + '% of budget spent' : 'No budget set'}">

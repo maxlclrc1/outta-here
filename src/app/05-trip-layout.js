@@ -176,7 +176,33 @@ const modeDesc = (v, sz) => isSmallSize(sz) && v.small?.desc || v.desc;
 const modeAi = () => isSmall() && mode().small?.ai || mode().ai;
 const honoreeMode = () => !!mode().honoree;
 const isHonoree = () => honoreeMode() && S.trip.honoree && S.trip.honoree === S.uid;
-const honoreeFree = () => honoreeMode() && S.trip.honoree && S.trip.honoreeFree !== false;
+// Who pays (trip.pays): 'split' (each person pays their share: the original behavior, and what a plan
+// without the setting does), 'one' (trip.payer covers everyone) or 'company' (people pay and claim it back).
+const PAYS = ['split', 'one', 'company'];
+const paysMode = (t = S.trip) => PAYS.includes(t?.pays) ? t.pays : 'split';
+const payerId = (t = S.trip) => paysMode(t) === 'one' ? t.payer || t.createdBy : null;
+const isPayer = (uid = S.uid) => paysMode() !== 'one' || payerId() === uid;
+// whether someone is asked for, and planned around, a personal budget
+const hasBudget = uid => paysMode() === 'split' || isPayer(uid) && paysMode() === 'one';
+const paysDefault = (mode, sz) => { const g = planGroup({ mode }); return g === 'family' ? 'one' : g === 'work' ? 'company' : 'split'; };
+// the creation question is skipped for small friends plans (they split)
+const asksPays = (mode, sz) => !(isSmallSize(sz) && planGroup({ mode }) === 'friends');
+// The choices, in each kind of plan's order and words: [short label, what it means]
+const PAYS_COPY = {
+  friends: { order: ['split', 'one', 'company'], split: ['Everyone pays their own way', 'Costs are split, and each person sees their share'], one: ['I’m treating everyone', 'You see the total; everyone else sees it’s covered'] },
+  celebration: { order: ['split', 'one', 'company'], split: ['We’re splitting it', 'Everyone pays their share (the guest of honor can be covered)'], one: ['One person’s treating', 'They see the total; everyone else is covered'] },
+  family: { order: ['one', 'split', 'company'], one: ['I’m covering it', 'You see the total; everyone else is covered'], split: ['We’re splitting it', 'Each person pays their share'] },
+  work: { order: ['company', 'split', 'one'], company: ['The company’s paying', 'No personal budgets; log what you pay to claim it back'], split: ['We’re splitting it', 'Each person pays their share'], one: ['I’m covering it', 'You see the total; the team is covered'] },
+};
+const paysCopy = (k, mode) => (PAYS_COPY[planGroup({ mode })] || PAYS_COPY.friends)[k] || { split: ['We’re splitting it', 'Each person pays their share'], one: ['One person’s covering it', 'They see the total; everyone else is covered'], company: ['A company’s paying', 'No personal budgets; expenses are claimed back'] }[k];
+// the guest of honor's share is only covered by the group when the group is splitting
+const honoreeFree = () => honoreeMode() && S.trip.honoree && S.trip.honoreeFree !== false && paysMode() === 'split';
+// Who shares an expense: as logged when splitting; the payer when one person covers everything (so anyone
+// who paid gets paid back by them); and nobody else under 'company' (people claim it back instead).
+function expenseShare(e) {
+  const m = paysMode(); if (m === 'one') return [payerId()]; if (m === 'company') return [e.paidBy].filter(Boolean);
+  let sp = (e.split || []).filter(Boolean); if (honoreeFree() && sp.length > 1) sp = sp.filter(id => id !== S.trip.honoree); return sp;
+}
 const visItems = () => (S.trip.itinerary || []).map(i => i.secret && !i.revealed && isHonoree() ? { ...i, title: 'Surprise', note: 'Your crew planned something. No peeking.', kind: 'surprise', hidden: true } : i);
 
 /* ---------- layout: sections ---------- */
@@ -229,6 +255,14 @@ function tripView() {
 }
 
 /* the plan home (overviewTab) is in 05o-overview.js */
+// Settings: who's paying. Organizers change it; everyone sees what it is.
+function paysCard() {
+  const cur = paysMode(), g = PAYS_COPY[planGroup()] || PAYS_COPY.friends, org = isOrganizer() && !S.readOnly;
+  return `<section class="card stack pays-card"><h3>Who’s paying?</h3>
+    <div class="nf-pays">${g.order.map(k => { const [l, d] = paysCopy(k, S.trip.mode); return `<button class="nf-pay ${cur === k ? 'on' : ''}" data-setpays="${k}" ${org ? '' : 'disabled'} aria-pressed="${cur === k}"><b>${esc(l)}</b><span>${esc(d)}</span></button>`; }).join('')}</div>
+    ${cur === 'one' ? `<label class="field" style="flex:none;max-width:320px"><span class="label">Who’s covering it</span><select id="set-payer" ${org ? '' : 'disabled'}>${S.members.filter(m => !m.removed && m.status !== 'out').map(m => `<option value="${esc(m.id)}" ${payerId() === m.id ? 'selected' : ''}>${esc(m.nick || 'Someone')}${m.id === S.uid ? ' (you)' : ''}</option>`).join('')}</select></label>` : ''}
+    <p class="small muted">${org ? 'Changing it doesn’t change any amounts people logged; it changes who’s asked for a budget and how expenses are settled.' : 'Organizers can change this.'}</p></section>`;
+}
 function settingsTab() {
   const m = mode();
   return `<section class="card stack"><h3>Plan size</h3><div class="row" style="gap:6px">${Object.entries(SIZES).map(([k, v]) => `<button class="chip ${size() === k ? 'on' : ''}" data-setsize="${k}">${esc(v.label)}</button>`).join('')}</div><p class="small muted">Changing the size keeps everyone’s votes and free days.</p></section>
@@ -237,9 +271,10 @@ function settingsTab() {
     <div class="modes compact">${Object.entries(MODES).map(([k, v]) => `<button class="mode ${S.trip.mode === k || (!S.trip.mode && k === 'friends') ? 'on' : ''}" data-setmode="${k}" style="--mc:${v.color}"><b>${esc(modeLabel(v, size()))}</b></button>`).join('')}</div>
     ${m.honoree ? `<div class="row" style="gap:10px">
       <label class="field"><span class="label">The ${esc(m.honoree)}</span><select id="set-honoree"><option value="">Pick someone</option>${S.members.map(x => `<option value="${esc(x.id)}" ${S.trip.honoree === x.id ? 'selected' : ''}>${esc(x.nick || 'Someone')}</option>`).join('')}</select></label>
-      <label class="row small" style="gap:8px;flex:1 1 200px"><input type="checkbox" id="set-free" style="width:auto" ${S.trip.honoreeFree !== false ? 'checked' : ''}> The ${esc(m.honoree)} pays nothing (their share is split across everyone else)</label></div>
+      ${paysMode() !== 'split' ? '' : `<label class="row small" style="gap:8px;flex:1 1 200px"><input type="checkbox" id="set-free" style="width:auto" ${S.trip.honoreeFree !== false ? 'checked' : ''}> The ${esc(m.honoree)} pays nothing (their share is split across everyone else)</label>`}</div>
       <p class="small muted">Surprise plans and the planners-only chat are hidden from the ${esc(m.honoree)} in the app.</p>` : ''}
   </section>
+  ${paysCard()}
   ${decideCard()}
   ${S.demo ? '' : S.repeat ? repeatDialog() : `<section class="card row repeat-cta"><span><b>Do this again?</b> <span class="small muted">Start a new ${planWord()} with the same to-dos, outline and packing list. Dates, prices and who’s coming start fresh.</span></span><button class="btn" data-act="repeatOpen">Repeat this ${planWord()}</button></section>`}
   ${templateCard()}

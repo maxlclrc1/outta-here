@@ -3,7 +3,7 @@
 // before the full plan with every tab opens up.
 const showWelcome = () => S.membersIn && !S.demo && !S.readOnly && (!meDoc() || (meDoc().status === 'maybe' && !meDoc().seen));
 // family and team plans don't ask the vibe questions up front (they're still in Things to do)
-const setupSteps = () => ['days', ...(isSmall() ? [] : ['home']), 'budget', ...(['family', 'work'].includes(planGroup()) ? [] : ['vibe'])];
+const setupSteps = () => ['days', ...(isSmall() ? [] : ['home']), ...(hasBudget(S.uid) ? ['budget'] : []), ...(['family', 'work'].includes(planGroup()) ? [] : ['vibe'])];
 const BUDGETS = { hangout: [30, 60, 100], day: [50, 100, 200], weekend: [250, 450, 700], trip: [600, 1000, 1600] };
 function dayPicker() {
   const t = S.trip, days = span(t.winStart, t.winEnd), mine = new Set(meDoc()?.days || []), pref = new Set(meDoc()?.pref || []);

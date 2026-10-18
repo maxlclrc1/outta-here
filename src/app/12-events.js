@@ -37,7 +37,7 @@ app.addEventListener('click', e => {
   if (ds.act === 'newCrew') { S.crewView = null; S.creating = 'newCrew'; render(); setTimeout(() => $('#nc-name')?.focus(), 50); return; }
   if (ds.crew) return openCrew(ds.crew);
   if (ds.act === 'copyCrewInvite') { const c = S.crews.find(x => x.id === ds.cid); return sendInvite(crewInviteText(c), crewLink(ds.cid), c?.name || 'Outta Here'); }
-  if (ds.mode) { S.newMode = ds.mode; S.creating = 'form'; render(); window.scrollTo({ top: 0 }); return; }
+  if (ds.mode) { S.newMode = ds.mode; S.newPays = null; S.creating = 'form'; render(); window.scrollTo({ top: 0 }); return; }
   if (ds.act === 'backModes') { S.creating = 'mode'; return render(); }
   if (ds.when) { const [x, y] = ds.when.split('|'); for (const [id, v] of [['nt-start', x], ['nt-end', y]]) { const el = $('#' + id); if (el) el.value = v; DRAFT[id] = v; } return render(); }
   if (ds.act === 'cancelNew') { S.creating = null; S.newCrew = null; S.newSize = null; return render(); }
@@ -154,6 +154,7 @@ app.addEventListener('click', e => {
   if (ds.act === 'wrapNext') { S.wrapI = (S.wrapI || 0) + 1; return render(); }
   if (ds.act === 'wrapPrev') { S.wrapI = Math.max(0, (S.wrapI || 0) - 1); return render(); }
   if (ds.act === 'wrappedCard') return makeWrappedCard();
+  if (ds.setpays) { const k = ds.setpays; return saveTrip({ pays: k, ...(k === 'one' && !S.trip.payer ? { payer: S.trip.createdBy || S.uid } : {}) }); }
   if (ds.setmode) { S.wrapI = 0; return saveTrip({ mode: ds.setmode }); }
   if (ds.reveal) { const it = (S.trip.itinerary || []).map(i => i.id === ds.reveal ? { ...i, revealed: true } : i); flash('Surprise revealed.'); return saveTrip({ itinerary: it }); }
   if (ds.swipe) { const [pid, v] = ds.swipe.split('|'); return swipe(pid, +v); }
@@ -244,6 +245,8 @@ app.addEventListener('change', e => {
   if (id === 'me-budget') saveMe({ budget: Math.max(0, Math.round(+e.target.value || 0)) }, true, true);
   if (id === 'ph-files') { const files = [...e.target.files]; e.target.value = ''; once('photos-up', () => uploadPhotos(files)); return; }
   if (id === 'set-honoree') { saveTrip({ honoree: e.target.value || null }); return; }
+  if (id === 'set-payer') { if (e.target.value) saveTrip({ payer: e.target.value }); return; }
+  if (e.target.name === 'nt-pays') { S.newPays = e.target.value; return render(); }
   if (id === 'set-free') { saveTrip({ honoreeFree: e.target.checked }); return; }
   if (id === 'pot-keeper') { saveTrip({ potKeeper: e.target.value }); return; }
   if (id === 'tk-file') { S.tkFile = e.target.files[0] || null; render(); }

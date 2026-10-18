@@ -92,7 +92,7 @@ async function setupSteps(sz, mode) {
   return (await p.locator('.setup-top .label').textContent()).replace(/^.*Step /, 'Step ');
 }
 expect('family trip setup skips the vibe questions (3 steps)', (await setupSteps('trip', 'family')) === 'Step 1 of 3');
-expect('team offsite setup skips them too', (await setupSteps('trip', 'work')) === 'Step 1 of 3');
+expect('team offsite setup skips them too, and the budget (the company pays)', (await setupSteps('trip', 'work')) === 'Step 1 of 2');
 expect('friends trip setup keeps them (4 steps)', (await setupSteps('trip', 'friends')) === 'Step 1 of 4');
 
 expect('no page errors', !errs.length, errs.join('; '));

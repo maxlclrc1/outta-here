@@ -182,7 +182,7 @@ function nudges() {
     const todo = [];
     if (m.status === 'maybe') todo.push('say if you’re in');
     if (!(m.days || []).length && !S.trip.lockedDates) todo.push(isSmall() ? 'say which days work' : 'pick your dates');
-    if (!m.budget && !m.budgetSet) todo.push('set your budget');
+    if (!m.budget && !m.budgetSet && hasBudget(m.id)) todo.push('set your budget');
     if (hasDest && !(m.votes || []).length && !S.trip.lockedDest) todo.push(isSmall() ? 'vote on the plan' : 'vote on where');
     if (size() === 'trip' && booking_time() && going(m) && !tk[m.id]) todo.push('book your flight and upload your boarding pass');
     if (!['family', 'work'].includes(planGroup()) && quiz().some(q => !q.o.includes((m.quiz || {})[q.k]))) todo.push('take the vibe quiz');
@@ -192,7 +192,7 @@ function nudges() {
 function settle() {
   const net = {};
   for (const e of S.expenses) {
-    let split = (e.split || []).filter(Boolean); if (honoreeFree() && split.length > 1) split = split.filter(id => id !== S.trip.honoree); if (!split.length || !(e.amount > 0)) continue;
+    const split = expenseShare(e); if (!split.length || !(e.amount > 0)) continue;
     net[e.paidBy] = (net[e.paidBy] || 0) + e.amount;
     for (const id of split) net[id] = (net[id] || 0) - e.amount / split.length;
   }
@@ -945,12 +945,15 @@ function payLinks(toId, amt, note) {
 }
 
 function moneyTab() {
-  const ms = active();
+  const ms = active(), pm = paysMode(), payer = esc(nameOf(payerId()));
   const split = S.split || new Set(ms.map(m => m.id).filter(id => !(honoreeFree() && id === S.trip.honoree)));
-  const { out } = settle();
+  const { out: all } = settle(), out = pm === 'one' && !isPayer() ? all.filter(t => t.from === S.uid || t.to === S.uid) : all;
+  // under a company, each person's total is what they claim back
+  const claims = pm === 'company' ? Object.entries(S.expenses.reduce((a, e) => (e.paidBy && (a[e.paidBy] = (a[e.paidBy] || 0) + (+e.amount || 0)), a), {})).sort((a, b) => b[1] - a[1]) : [];
   const total = S.expenses.reduce((a, e) => a + (+e.amount || 0), 0);
   const exps = [...S.expenses].sort((a, b) => (b.at || 0) - (a.at || 0));
-  return `<section class="card stack">
+  return `${pm === 'one' ? `<div class="banner"><span>${isPayer() ? `<b>You’re covering this ${planWord()}.</b> When someone pays for something, you pay them back.` : `<b>Covered by ${payer}.</b> If you pay for something for the group, log it and ${payer} pays you back.`}</span></div>` : pm === 'company' ? `<div class="banner"><span><b>The company’s paying.</b> Log what you pay for the group, then claim it back.</span></div>` : ''}
+  <section class="card stack">
     <div class="row" style="justify-content:space-between"><h2>${isSmall() ? 'Expenses' : 'Trip expenses'}</h2><span class="mono">${money2(total)} total ${alsoMine(total)}</span></div>
     <form id="expForm" class="stack">
       <div class="row" style="align-items:flex-end">
@@ -958,14 +961,14 @@ function moneyTab() {
         <label class="field"><span class="label">Amount</span><input id="ex-amt" type="number" min="0.01" step="0.01" inputmode="decimal" required placeholder="340"></label>
         <label class="field"><span class="label">Paid by</span><select id="ex-by">${ms.map(m => `<option value="${esc(m.id)}" ${m.id === S.uid ? 'selected' : ''}>${esc(m.nick || 'Someone')}</option>`).join('')}</select></label>
       </div>
-      <div><span class="label">Split between</span><div class="row" style="gap:6px;margin-top:6px">${ms.map(m => `<button type="button" class="chip ${split.has(m.id) ? 'on' : ''}" data-split="${esc(m.id)}">${esc(m.nick || 'Someone')}</button>`).join('')}</div></div>
+      ${pm !== 'split' ? '' : `<div><span class="label">Split between</span><div class="row" style="gap:6px;margin-top:6px">${ms.map(m => `<button type="button" class="chip ${split.has(m.id) ? 'on' : ''}" data-split="${esc(m.id)}">${esc(m.nick || 'Someone')}</button>`).join('')}</div></div>`}
       <div><button class="btn primary" type="submit">Add expense</button></div>
     </form>
-    ${exps.length ? `<div>${exps.map(e => `<div class="linkrow"><div style="min-width:0"><b>${esc(e.title)}</b><div class="small muted">${esc(nameOf(e.paidBy))} paid · split ${(e.split || []).length} ways · ${money2(e.amount / Math.max(1, (e.split || []).length))} each</div></div>
+    ${exps.length ? `<div>${exps.map(e => `<div class="linkrow"><div style="min-width:0"><b>${esc(e.title)}</b><div class="small muted">${esc(nameOf(e.paidBy))} paid · ${pm === 'one' ? `covered by ${payer}` : pm === 'company' ? 'to claim back' : `split ${(e.split || []).length} ways · ${money2(e.amount / Math.max(1, (e.split || []).length))} each`}</div></div>
       <div class="row" style="gap:6px"><span class="mono">${money2(e.amount)}</span><button class="x" data-delexp="${esc(e.id)}" aria-label="Remove ${esc(e.title)}">×</button></div></div>`).join('')}</div>`
       : `<p class="small muted">No expenses yet. Log anything someone pays for the group.</p>`}
   </section>
-  ${exps.length ? `<section class="card stack"><h2>Settle up</h2>
+  ${pm === 'company' ? (claims.length ? `<section class="card stack"><h2>To claim back</h2><div>${claims.map(([id, a]) => `<div class="linkrow"><b>${esc(nameOf(id))}${id === S.uid ? ' (you)' : ''}</b><span class="mono">${money2(a)}</span></div>`).join('')}</div><p class="small muted">What each person paid for the group. Claim it through your company’s expenses.</p></section>` : '') : exps.length && (pm === 'split' || out.length || isPayer()) ? `<section class="card stack"><h2>${pm === 'one' ? 'Paying people back' : 'Settle up'}</h2>
     ${out.length ? `<div>${out.map(t => `<div class="linkrow"><div><b>${esc(nameOf(t.from))}</b> pays <b>${esc(nameOf(t.to))}</b> <span class="mono">${money2(t.amt)}</span></div>${t.from === S.uid ? `<div class="row" style="gap:6px">${payLinks(t.to, t.amt, S.trip.name)}</div>` : ''}</div>`).join('')}</div>` : '<p class="small" style="color:var(--good)">Everyone’s even.</p>'}
     <p class="small muted">The fewest payments that square everyone up.</p></section>` : ''}`;
 }
@@ -1073,7 +1076,7 @@ async function delTicket() {
 // before the full plan with every tab opens up.
 const showWelcome = () => S.membersIn && !S.demo && !S.readOnly && (!meDoc() || (meDoc().status === 'maybe' && !meDoc().seen));
 // family and team plans don't ask the vibe questions up front (they're still in Things to do)
-const setupSteps = () => ['days', ...(isSmall() ? [] : ['home']), 'budget', ...(['family', 'work'].includes(planGroup()) ? [] : ['vibe'])];
+const setupSteps = () => ['days', ...(isSmall() ? [] : ['home']), ...(hasBudget(S.uid) ? ['budget'] : []), ...(['family', 'work'].includes(planGroup()) ? [] : ['vibe'])];
 const BUDGETS = { hangout: [30, 60, 100], day: [50, 100, 200], weekend: [250, 450, 700], trip: [600, 1000, 1600] };
 function dayPicker() {
   const t = S.trip, days = span(t.winStart, t.winEnd), mine = new Set(meDoc()?.days || []), pref = new Set(meDoc()?.pref || []);
@@ -1804,7 +1807,33 @@ const modeDesc = (v, sz) => isSmallSize(sz) && v.small?.desc || v.desc;
 const modeAi = () => isSmall() && mode().small?.ai || mode().ai;
 const honoreeMode = () => !!mode().honoree;
 const isHonoree = () => honoreeMode() && S.trip.honoree && S.trip.honoree === S.uid;
-const honoreeFree = () => honoreeMode() && S.trip.honoree && S.trip.honoreeFree !== false;
+// Who pays (trip.pays): 'split' (each person pays their share: the original behavior, and what a plan
+// without the setting does), 'one' (trip.payer covers everyone) or 'company' (people pay and claim it back).
+const PAYS = ['split', 'one', 'company'];
+const paysMode = (t = S.trip) => PAYS.includes(t?.pays) ? t.pays : 'split';
+const payerId = (t = S.trip) => paysMode(t) === 'one' ? t.payer || t.createdBy : null;
+const isPayer = (uid = S.uid) => paysMode() !== 'one' || payerId() === uid;
+// whether someone is asked for, and planned around, a personal budget
+const hasBudget = uid => paysMode() === 'split' || isPayer(uid) && paysMode() === 'one';
+const paysDefault = (mode, sz) => { const g = planGroup({ mode }); return g === 'family' ? 'one' : g === 'work' ? 'company' : 'split'; };
+// the creation question is skipped for small friends plans (they split)
+const asksPays = (mode, sz) => !(isSmallSize(sz) && planGroup({ mode }) === 'friends');
+// The choices, in each kind of plan's order and words: [short label, what it means]
+const PAYS_COPY = {
+  friends: { order: ['split', 'one', 'company'], split: ['Everyone pays their own way', 'Costs are split, and each person sees their share'], one: ['I’m treating everyone', 'You see the total; everyone else sees it’s covered'] },
+  celebration: { order: ['split', 'one', 'company'], split: ['We’re splitting it', 'Everyone pays their share (the guest of honor can be covered)'], one: ['One person’s treating', 'They see the total; everyone else is covered'] },
+  family: { order: ['one', 'split', 'company'], one: ['I’m covering it', 'You see the total; everyone else is covered'], split: ['We’re splitting it', 'Each person pays their share'] },
+  work: { order: ['company', 'split', 'one'], company: ['The company’s paying', 'No personal budgets; log what you pay to claim it back'], split: ['We’re splitting it', 'Each person pays their share'], one: ['I’m covering it', 'You see the total; the team is covered'] },
+};
+const paysCopy = (k, mode) => (PAYS_COPY[planGroup({ mode })] || PAYS_COPY.friends)[k] || { split: ['We’re splitting it', 'Each person pays their share'], one: ['One person’s covering it', 'They see the total; everyone else is covered'], company: ['A company’s paying', 'No personal budgets; expenses are claimed back'] }[k];
+// the guest of honor's share is only covered by the group when the group is splitting
+const honoreeFree = () => honoreeMode() && S.trip.honoree && S.trip.honoreeFree !== false && paysMode() === 'split';
+// Who shares an expense: as logged when splitting; the payer when one person covers everything (so anyone
+// who paid gets paid back by them); and nobody else under 'company' (people claim it back instead).
+function expenseShare(e) {
+  const m = paysMode(); if (m === 'one') return [payerId()]; if (m === 'company') return [e.paidBy].filter(Boolean);
+  let sp = (e.split || []).filter(Boolean); if (honoreeFree() && sp.length > 1) sp = sp.filter(id => id !== S.trip.honoree); return sp;
+}
 const visItems = () => (S.trip.itinerary || []).map(i => i.secret && !i.revealed && isHonoree() ? { ...i, title: 'Surprise', note: 'Your crew planned something. No peeking.', kind: 'surprise', hidden: true } : i);
 
 /* ---------- layout: sections ---------- */
@@ -1857,6 +1886,14 @@ function tripView() {
 }
 
 /* the plan home (overviewTab) is in 05o-overview.js */
+// Settings: who's paying. Organizers change it; everyone sees what it is.
+function paysCard() {
+  const cur = paysMode(), g = PAYS_COPY[planGroup()] || PAYS_COPY.friends, org = isOrganizer() && !S.readOnly;
+  return `<section class="card stack pays-card"><h3>Who’s paying?</h3>
+    <div class="nf-pays">${g.order.map(k => { const [l, d] = paysCopy(k, S.trip.mode); return `<button class="nf-pay ${cur === k ? 'on' : ''}" data-setpays="${k}" ${org ? '' : 'disabled'} aria-pressed="${cur === k}"><b>${esc(l)}</b><span>${esc(d)}</span></button>`; }).join('')}</div>
+    ${cur === 'one' ? `<label class="field" style="flex:none;max-width:320px"><span class="label">Who’s covering it</span><select id="set-payer" ${org ? '' : 'disabled'}>${S.members.filter(m => !m.removed && m.status !== 'out').map(m => `<option value="${esc(m.id)}" ${payerId() === m.id ? 'selected' : ''}>${esc(m.nick || 'Someone')}${m.id === S.uid ? ' (you)' : ''}</option>`).join('')}</select></label>` : ''}
+    <p class="small muted">${org ? 'Changing it doesn’t change any amounts people logged; it changes who’s asked for a budget and how expenses are settled.' : 'Organizers can change this.'}</p></section>`;
+}
 function settingsTab() {
   const m = mode();
   return `<section class="card stack"><h3>Plan size</h3><div class="row" style="gap:6px">${Object.entries(SIZES).map(([k, v]) => `<button class="chip ${size() === k ? 'on' : ''}" data-setsize="${k}">${esc(v.label)}</button>`).join('')}</div><p class="small muted">Changing the size keeps everyone’s votes and free days.</p></section>
@@ -1865,9 +1902,10 @@ function settingsTab() {
     <div class="modes compact">${Object.entries(MODES).map(([k, v]) => `<button class="mode ${S.trip.mode === k || (!S.trip.mode && k === 'friends') ? 'on' : ''}" data-setmode="${k}" style="--mc:${v.color}"><b>${esc(modeLabel(v, size()))}</b></button>`).join('')}</div>
     ${m.honoree ? `<div class="row" style="gap:10px">
       <label class="field"><span class="label">The ${esc(m.honoree)}</span><select id="set-honoree"><option value="">Pick someone</option>${S.members.map(x => `<option value="${esc(x.id)}" ${S.trip.honoree === x.id ? 'selected' : ''}>${esc(x.nick || 'Someone')}</option>`).join('')}</select></label>
-      <label class="row small" style="gap:8px;flex:1 1 200px"><input type="checkbox" id="set-free" style="width:auto" ${S.trip.honoreeFree !== false ? 'checked' : ''}> The ${esc(m.honoree)} pays nothing (their share is split across everyone else)</label></div>
+      ${paysMode() !== 'split' ? '' : `<label class="row small" style="gap:8px;flex:1 1 200px"><input type="checkbox" id="set-free" style="width:auto" ${S.trip.honoreeFree !== false ? 'checked' : ''}> The ${esc(m.honoree)} pays nothing (their share is split across everyone else)</label>`}</div>
       <p class="small muted">Surprise plans and the planners-only chat are hidden from the ${esc(m.honoree)} in the app.</p>` : ''}
   </section>
+  ${paysCard()}
   ${decideCard()}
   ${S.demo ? '' : S.repeat ? repeatDialog() : `<section class="card row repeat-cta"><span><b>Do this again?</b> <span class="small muted">Start a new ${planWord()} with the same to-dos, outline and packing list. Dates, prices and who’s coming start fresh.</span></span><button class="btn" data-act="repeatOpen">Repeat this ${planWord()}</button></section>`}
   ${templateCard()}
@@ -2210,17 +2248,27 @@ function budgetCapShared() {
   return b ? { cap: b.lo, lo: b.lo, hi: b.hi, n: b.n, label: `${money(b.lo)}–${money(b.hi)}` } : null;
 }
 const rangeText = (lo, hi) => `${money(lo)}${hi !== lo ? '–' + money(hi) : ''}`;
+// When one person covers everyone, the others just see that it's covered.
+function coveredCard() {
+  const who = esc(nameOf(payerId()));
+  return `<section class="card stack covered"><span class="g-k">The money</span><h2>Covered by ${who}</h2>
+    <p class="muted">${who} is paying for this ${planWord()}, so there’s no budget to set and nothing to split. If you pay for something for the group, log it in Expenses and ${who} pays you back.</p>
+    <div><button class="btn sm" data-tab="money">Expenses</button></div></section>`;
+}
 function costTab() {
-  const sum = costSummary(), me = costSummary(S.trip, 'me'), fit = budgetFit(sum), ro = S.readOnly, mine = meDoc(), myB = +mine?.budget || 0;
+  const pm = paysMode(); if (pm === 'one' && !isPayer()) return coveredCard();
+  // one payer or a company: the headline is the total for everyone, and nobody's personal budget is checked
+  const whole = pm !== 'split', heads = planHeads(), all = v => Math.round(v * heads);
+  const sum = costSummary(), me = whole ? sum : costSummary(S.trip, 'me'), fit = whole ? { n: 0 } : budgetFit(sum), ro = S.readOnly, mine = meDoc(), myB = whole ? 0 : +mine?.budget || 0;
   const differs = me.low !== sum.low || me.high !== sum.high;
   const empty = sum.rows.filter(r => !r.v || ['estimate', 'ai'].includes(r.v.src)).length;
   return `<section class="card stack cost">
-    <div class="stack" style="gap:2px"><h2>The cost of saying yes</h2><span class="small muted">Per person, all in. Built from what’s booked or paid first, then quotes, then estimates.</span></div>
-    <div class="cost-totals">
+    <div class="stack" style="gap:2px"><h2>${whole ? `What it’ll cost ${pm === 'one' ? 'you' : 'the company'}` : 'The cost of saying yes'}</h2><span class="small muted">${whole ? `For everyone (${heads} ${heads === 1 ? 'person' : 'people'}), all in. The lines below are per person.` : 'Per person, all in.'} Built from what’s booked or paid first, then quotes, then estimates.</span></div>
+    ${whole ? `<div class="cost-totals"><div class="cost-total"><span class="label">Everyone, all in</span><b>${sum.any ? rangeText(all(sum.low), all(sum.high)) : '—'}</b><span class="small muted">${sum.any ? `${heads} × ${rangeText(sum.low, sum.high)} each. ` : ''}Includes a ${sum.buffer}% buffer.</span></div></div>` : `<div class="cost-totals">
       <div class="cost-total"><span class="label">${differs ? 'You, all in' : 'Each person, all in'}</span><b>${me.any ? rangeText(me.low, me.high) : '—'}</b>${me.any ? alsoMine(me.low, me.high) : ''}
         <span class="small muted">${myB && me.any ? (me.high <= myB ? `Fits your ${money(myB)} budget.` : me.low <= myB ? `Could go over your ${money(myB)} budget.` : `Over your ${money(myB)} budget.`) + ' ' : ''}Includes a ${sum.buffer}% buffer.</span></div>
       ${differs && sum.any ? `<div class="cost-total soft"><span class="label">Typical for the crew</span><b>${rangeText(sum.low, sum.high)}</b>${alsoMine(sum.low, sum.high)}<span class="small muted">Everyone’s flights and shares differ a bit.</span></div>` : ''}
-    </div>
+    </div>`}
     ${S.sample !== null && !ro ? `<div class="row" style="gap:8px;align-items:center"><button class="btn ${sum.any ? '' : 'primary'}" data-act="costAI" ${S.busy.cost || !dest() ? 'disabled' : ''}>${S.busy.cost ? '<i class="spin"></i>Estimating…' : sum.any ? 'Estimate the rest with AI' : 'Estimate it with AI'}</button>
       <span class="small muted">${!dest() ? `Pick ${isSmall() ? 'the plan' : 'where you’re going'} first.` : empty ? 'Fills only lines without a real quote or booking.' : 'Every line has a real number. Nice.'}</span></div>`
       : S.sample === null ? `<span class="small muted">AI estimates are off ${IN_CLAUDE ? 'for you right now' : 'until you add your Anthropic API key'}. Type in numbers below.</span>` : ''}
@@ -3658,7 +3706,7 @@ function ovGlance() {
   return `<section class="glance-grid" aria-label="At a glance">
     ${tile('dates', 'When', d ? esc(planWhen(t)) : !shared ? 'Nobody’s shared free days yet' : shared === ms.length ? 'Everyone’s free days are in' : `${shared} of ${ms.length} shared free days`, !!d)}
     ${tile('match', small ? 'What' : 'Where', ds ? esc(ds.city) : pitches ? `${pitches} to swipe on` : ideas ? `${ideas} idea${ideas === 1 ? '' : 's'} to vote on` : 'No ideas yet', !!ds)}
-    ${tile('cost', 'Budget', b ? `${esc(b.label)} a person` : 'Nobody’s set one yet', !!b)}
+    ${paysMode() === 'one' ? tile('cost', 'Money', isPayer() ? 'You’re covering it' : `Covered by ${esc(nameOf(payerId()))}`, true) : paysMode() === 'company' ? tile('cost', 'Money', 'The company’s paying', true) : tile('cost', 'Budget', b ? `${esc(b.label)} a person` : 'Nobody’s set one yet', !!b)}
     ${tabOn('tasks') ? tile('tasks', 'To-dos', open ? `${open} open` : all.length ? 'All done' : 'Nothing yet', all.length > 0 && !open) : tile('hype', 'Chat', S.feed.length ? `${S.feed.length} message${S.feed.length === 1 ? '' : 's'}` : 'Say hi to the crew', false)}
   </section>`;
 }
@@ -4065,7 +4113,7 @@ Reply with only JSON: {"title":"a punchy 3-6 word headline","text":"the recap"}`
 /* ---------- money: spend-o-meter + group pot ---------- */
 function myShare() {
   let share = 0;
-  for (const e of S.expenses) { let sp = (e.split || []).filter(Boolean); if (honoreeFree() && sp.length > 1) sp = sp.filter(id => id !== S.trip.honoree); if (sp.includes(S.uid)) share += e.amount / sp.length; }
+  for (const e of S.expenses) { const sp = expenseShare(e); if (sp.includes(S.uid)) share += e.amount / sp.length; }
   return share;
 }
 function meterTab() {
@@ -4078,6 +4126,7 @@ function meterTab() {
   const R = 70, C = 2 * Math.PI * R, arc = Math.min(1, pct) * C;
   return `<section class="card stack meter-card">
     <div class="row" style="justify-content:space-between"><h2>My spend</h2><span class="small muted">Only you see this page</span></div>
+    ${paysMode() === 'one' && !isPayer() ? `<div class="banner"><span><b>Covered by ${esc(nameOf(payerId()))}.</b> Group costs aren’t on you. This page is for anything you spend on yourself.</span></div>` : paysMode() === 'company' ? `<div class="banner"><span><b>The company’s paying.</b> This page is for anything you spend on yourself.</span></div>` : ''}
     ${isHonoree() && honoreeFree() ? `<div class="banner"><span><b>You’re covered.</b> As the ${esc(mode().honoree)}, your share of group costs is split across the crew.</span></div>` : ''}
     <div class="meter-row">
       <svg viewBox="0 0 180 180" width="170" height="170" class="ring" role="img" aria-label="${budget ? Math.round(pct * 100) + '% of budget spent' : 'No budget set'}">
@@ -4456,7 +4505,8 @@ const GROUP_HIDE = {
   work: { small: ['map', 'bucket', 'awards', 'wrapped'], away: ['pot', 'bucket', 'awards', 'wrapped'] },
 };
 const IN_USE = { tasks: () => taskList().length > 0, bucket: () => S.bucket.length > 0, pot: () => S.pot.length > 0, awards: () => Object.keys(S.trip.superVotes || {}).length > 0 };
-const hiddenTabs = () => [...HIDE_TABS[size()], ...GROUP_HIDE[planGroup()][isSmall() ? 'small' : 'away'].filter(k => !IN_USE[k]?.())];
+// the group pot is for splitting; a plan where one person or a company pays doesn't show it (unless it's in use)
+const hiddenTabs = () => [...HIDE_TABS[size()], ...[...GROUP_HIDE[planGroup()][isSmall() ? 'small' : 'away'], ...(paysMode() === 'split' ? [] : ['pot'])].filter(k => !IN_USE[k]?.())];
 const tabOn = k => !hiddenTabs().includes(k);
 const STEP_KEYS = { hangout: ['crew', 'where', 'dates'], day: ['crew', 'where', 'dates', 'plan'], weekend: ['crew', 'where', 'dates', 'stay', 'plan'], trip: ['crew', 'where', 'dates', 'flights', 'stay', 'plan'] };
 const t12 = hm => { if (!hm) return ''; const [h, m] = hm.split(':').map(Number); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
@@ -4715,7 +4765,7 @@ function openCrew(cid) {
 
 /* new-plan flow: crew → size → (type) → basics */
 function startNewPlan(cid) {
-  S.newCrew = cid || null; S.newSize = null; S.newMode = null;
+  S.newCrew = cid || null; S.newSize = null; S.newMode = null; S.newPays = null;
   for (const k of ['nt-name', 'nt-start', 'nt-end']) delete DRAFT[k]; // a fresh plan starts with a blank form
   S.creating = cid || !myCrews().length ? 'size' : 'crew'; S.cameFromCrewStep = !cid && !!myCrews().length;
   if (cid) { S.crewView = null; setHash(''); }
@@ -4799,6 +4849,7 @@ function newTripForm() {
         </div>
         <span class="small muted">All of this can change later in Settings.</span>
       </details>
+      ${asksPays(S.newMode, szK) ? `<div class="nf-field" role="radiogroup" aria-label="Who’s paying?"><span>Who’s paying?</span><div class="nf-pays">${(PAYS_COPY[planGroup({ mode: S.newMode })] || PAYS_COPY.friends).order.slice(0, planGroup({ mode: S.newMode }) === 'work' ? 3 : 2).map(k => { const [l, d] = paysCopy(k, S.newMode), on = k === (S.newPays || paysDefault(S.newMode, szK)); return `<label class="nf-pay ${on ? 'on' : ''}"><input type="radio" name="nt-pays" value="${k}" ${on ? 'checked' : ''}><b>${esc(l)}</b><span>${esc(d)}</span></label>`; }).join('')}</div></div>` : ''}
       ${crew ? `<p class="nf-hint">Everyone in <b>${esc(crew.name)}</b> is added automatically.</p>` : ''}
       <div class="nf-cta"><button class="btn primary big" type="submit" ${S.busy.create ? 'disabled' : ''}>${S.busy.create ? '<i class="spin"></i>Creating…' : `Create the ${esc(sz.label.toLowerCase())}`}</button></div>
     </form>`);
@@ -4824,13 +4875,16 @@ async function createTrip() {
     mode: S.newMode || 'friends', honoreeName: ($('#nt-honoree')?.value || '').trim().slice(0, 40),
     // a small birthday plan (a dinner, a night out) doesn't cover the birthday star unless someone turns it on
     honoreeFree: !(small && S.newMode === 'birthday'), people: { [S.uid]: true }, createdBy: S.uid, createdAt: Date.now() };
+  // who pays: what was picked, or the kind of plan's default (small friends plans aren't asked and split)
+  const pays = asksPays(S.newMode, sz) && PAYS.includes(S.newPays) ? S.newPays : paysDefault(S.newMode, sz);
+  trip.pays = pays; if (pays === 'one') trip.payer = S.uid;
   try {
     await S.db.doc('trips/' + id).set(trip);
     const crew = S.crews.find(c => c.id === S.newCrew);
     await seedMembers(id, crew);
     celebrate(trip.name, planColor(trip));
     for (const k of ['nt-name', 'nt-city', 'nt-start', 'nt-end']) delete DRAFT[k];
-    S.newCrew = null; S.creating = null; S.newMode = null; S.newSize = null; S.fromCrewPage = false;
+    S.newCrew = null; S.creating = null; S.newMode = null; S.newSize = null; S.newPays = null; S.fromCrewPage = false;
     openTrip(id, 'overview'); S.setup = { step: 0 };
   } catch (e) { flash(writeErr(e)); }
 }
@@ -5034,7 +5088,7 @@ app.addEventListener('click', e => {
   if (ds.act === 'newCrew') { S.crewView = null; S.creating = 'newCrew'; render(); setTimeout(() => $('#nc-name')?.focus(), 50); return; }
   if (ds.crew) return openCrew(ds.crew);
   if (ds.act === 'copyCrewInvite') { const c = S.crews.find(x => x.id === ds.cid); return sendInvite(crewInviteText(c), crewLink(ds.cid), c?.name || 'Outta Here'); }
-  if (ds.mode) { S.newMode = ds.mode; S.creating = 'form'; render(); window.scrollTo({ top: 0 }); return; }
+  if (ds.mode) { S.newMode = ds.mode; S.newPays = null; S.creating = 'form'; render(); window.scrollTo({ top: 0 }); return; }
   if (ds.act === 'backModes') { S.creating = 'mode'; return render(); }
   if (ds.when) { const [x, y] = ds.when.split('|'); for (const [id, v] of [['nt-start', x], ['nt-end', y]]) { const el = $('#' + id); if (el) el.value = v; DRAFT[id] = v; } return render(); }
   if (ds.act === 'cancelNew') { S.creating = null; S.newCrew = null; S.newSize = null; return render(); }
@@ -5151,6 +5205,7 @@ app.addEventListener('click', e => {
   if (ds.act === 'wrapNext') { S.wrapI = (S.wrapI || 0) + 1; return render(); }
   if (ds.act === 'wrapPrev') { S.wrapI = Math.max(0, (S.wrapI || 0) - 1); return render(); }
   if (ds.act === 'wrappedCard') return makeWrappedCard();
+  if (ds.setpays) { const k = ds.setpays; return saveTrip({ pays: k, ...(k === 'one' && !S.trip.payer ? { payer: S.trip.createdBy || S.uid } : {}) }); }
   if (ds.setmode) { S.wrapI = 0; return saveTrip({ mode: ds.setmode }); }
   if (ds.reveal) { const it = (S.trip.itinerary || []).map(i => i.id === ds.reveal ? { ...i, revealed: true } : i); flash('Surprise revealed.'); return saveTrip({ itinerary: it }); }
   if (ds.swipe) { const [pid, v] = ds.swipe.split('|'); return swipe(pid, +v); }
@@ -5241,6 +5296,8 @@ app.addEventListener('change', e => {
   if (id === 'me-budget') saveMe({ budget: Math.max(0, Math.round(+e.target.value || 0)) }, true, true);
   if (id === 'ph-files') { const files = [...e.target.files]; e.target.value = ''; once('photos-up', () => uploadPhotos(files)); return; }
   if (id === 'set-honoree') { saveTrip({ honoree: e.target.value || null }); return; }
+  if (id === 'set-payer') { if (e.target.value) saveTrip({ payer: e.target.value }); return; }
+  if (e.target.name === 'nt-pays') { S.newPays = e.target.value; return render(); }
   if (id === 'set-free') { saveTrip({ honoreeFree: e.target.checked }); return; }
   if (id === 'pot-keeper') { saveTrip({ potKeeper: e.target.value }); return; }
   if (id === 'tk-file') { S.tkFile = e.target.files[0] || null; render(); }

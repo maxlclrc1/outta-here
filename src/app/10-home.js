@@ -184,7 +184,7 @@ function openCrew(cid) {
 
 /* new-plan flow: crew → size → (type) → basics */
 function startNewPlan(cid) {
-  S.newCrew = cid || null; S.newSize = null; S.newMode = null;
+  S.newCrew = cid || null; S.newSize = null; S.newMode = null; S.newPays = null;
   for (const k of ['nt-name', 'nt-start', 'nt-end']) delete DRAFT[k]; // a fresh plan starts with a blank form
   S.creating = cid || !myCrews().length ? 'size' : 'crew'; S.cameFromCrewStep = !cid && !!myCrews().length;
   if (cid) { S.crewView = null; setHash(''); }
@@ -268,6 +268,7 @@ function newTripForm() {
         </div>
         <span class="small muted">All of this can change later in Settings.</span>
       </details>
+      ${asksPays(S.newMode, szK) ? `<div class="nf-field" role="radiogroup" aria-label="Who’s paying?"><span>Who’s paying?</span><div class="nf-pays">${(PAYS_COPY[planGroup({ mode: S.newMode })] || PAYS_COPY.friends).order.slice(0, planGroup({ mode: S.newMode }) === 'work' ? 3 : 2).map(k => { const [l, d] = paysCopy(k, S.newMode), on = k === (S.newPays || paysDefault(S.newMode, szK)); return `<label class="nf-pay ${on ? 'on' : ''}"><input type="radio" name="nt-pays" value="${k}" ${on ? 'checked' : ''}><b>${esc(l)}</b><span>${esc(d)}</span></label>`; }).join('')}</div></div>` : ''}
       ${crew ? `<p class="nf-hint">Everyone in <b>${esc(crew.name)}</b> is added automatically.</p>` : ''}
       <div class="nf-cta"><button class="btn primary big" type="submit" ${S.busy.create ? 'disabled' : ''}>${S.busy.create ? '<i class="spin"></i>Creating…' : `Create the ${esc(sz.label.toLowerCase())}`}</button></div>
     </form>`);
@@ -293,13 +294,16 @@ async function createTrip() {
     mode: S.newMode || 'friends', honoreeName: ($('#nt-honoree')?.value || '').trim().slice(0, 40),
     // a small birthday plan (a dinner, a night out) doesn't cover the birthday star unless someone turns it on
     honoreeFree: !(small && S.newMode === 'birthday'), people: { [S.uid]: true }, createdBy: S.uid, createdAt: Date.now() };
+  // who pays: what was picked, or the kind of plan's default (small friends plans aren't asked and split)
+  const pays = asksPays(S.newMode, sz) && PAYS.includes(S.newPays) ? S.newPays : paysDefault(S.newMode, sz);
+  trip.pays = pays; if (pays === 'one') trip.payer = S.uid;
   try {
     await S.db.doc('trips/' + id).set(trip);
     const crew = S.crews.find(c => c.id === S.newCrew);
     await seedMembers(id, crew);
     celebrate(trip.name, planColor(trip));
     for (const k of ['nt-name', 'nt-city', 'nt-start', 'nt-end']) delete DRAFT[k];
-    S.newCrew = null; S.creating = null; S.newMode = null; S.newSize = null; S.fromCrewPage = false;
+    S.newCrew = null; S.creating = null; S.newMode = null; S.newSize = null; S.newPays = null; S.fromCrewPage = false;
     openTrip(id, 'overview'); S.setup = { step: 0 };
   } catch (e) { flash(writeErr(e)); }
 }

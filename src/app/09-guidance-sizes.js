@@ -85,7 +85,8 @@ const GROUP_HIDE = {
   work: { small: ['map', 'bucket', 'awards', 'wrapped'], away: ['pot', 'bucket', 'awards', 'wrapped'] },
 };
 const IN_USE = { tasks: () => taskList().length > 0, bucket: () => S.bucket.length > 0, pot: () => S.pot.length > 0, awards: () => Object.keys(S.trip.superVotes || {}).length > 0 };
-const hiddenTabs = () => [...HIDE_TABS[size()], ...GROUP_HIDE[planGroup()][isSmall() ? 'small' : 'away'].filter(k => !IN_USE[k]?.())];
+// the group pot is for splitting; a plan where one person or a company pays doesn't show it (unless it's in use)
+const hiddenTabs = () => [...HIDE_TABS[size()], ...[...GROUP_HIDE[planGroup()][isSmall() ? 'small' : 'away'], ...(paysMode() === 'split' ? [] : ['pot'])].filter(k => !IN_USE[k]?.())];
 const tabOn = k => !hiddenTabs().includes(k);
 const STEP_KEYS = { hangout: ['crew', 'where', 'dates'], day: ['crew', 'where', 'dates', 'plan'], weekend: ['crew', 'where', 'dates', 'stay', 'plan'], trip: ['crew', 'where', 'dates', 'flights', 'stay', 'plan'] };
 const t12 = hm => { if (!hm) return ''; const [h, m] = hm.split(':').map(Number); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };

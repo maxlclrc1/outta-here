@@ -182,7 +182,7 @@ function nudges() {
     const todo = [];
     if (m.status === 'maybe') todo.push('say if you’re in');
     if (!(m.days || []).length && !S.trip.lockedDates) todo.push(isSmall() ? 'say which days work' : 'pick your dates');
-    if (!m.budget && !m.budgetSet) todo.push('set your budget');
+    if (!m.budget && !m.budgetSet && hasBudget(m.id)) todo.push('set your budget');
     if (hasDest && !(m.votes || []).length && !S.trip.lockedDest) todo.push(isSmall() ? 'vote on the plan' : 'vote on where');
     if (size() === 'trip' && booking_time() && going(m) && !tk[m.id]) todo.push('book your flight and upload your boarding pass');
     if (!['family', 'work'].includes(planGroup()) && quiz().some(q => !q.o.includes((m.quiz || {})[q.k]))) todo.push('take the vibe quiz');
@@ -192,7 +192,7 @@ function nudges() {
 function settle() {
   const net = {};
   for (const e of S.expenses) {
-    let split = (e.split || []).filter(Boolean); if (honoreeFree() && split.length > 1) split = split.filter(id => id !== S.trip.honoree); if (!split.length || !(e.amount > 0)) continue;
+    const split = expenseShare(e); if (!split.length || !(e.amount > 0)) continue;
     net[e.paidBy] = (net[e.paidBy] || 0) + e.amount;
     for (const id of split) net[id] = (net[id] || 0) - e.amount / split.length;
   }

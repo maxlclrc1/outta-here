@@ -155,17 +155,27 @@ function budgetCapShared() {
   return b ? { cap: b.lo, lo: b.lo, hi: b.hi, n: b.n, label: `${money(b.lo)}–${money(b.hi)}` } : null;
 }
 const rangeText = (lo, hi) => `${money(lo)}${hi !== lo ? '–' + money(hi) : ''}`;
+// When one person covers everyone, the others just see that it's covered.
+function coveredCard() {
+  const who = esc(nameOf(payerId()));
+  return `<section class="card stack covered"><span class="g-k">The money</span><h2>Covered by ${who}</h2>
+    <p class="muted">${who} is paying for this ${planWord()}, so there’s no budget to set and nothing to split. If you pay for something for the group, log it in Expenses and ${who} pays you back.</p>
+    <div><button class="btn sm" data-tab="money">Expenses</button></div></section>`;
+}
 function costTab() {
-  const sum = costSummary(), me = costSummary(S.trip, 'me'), fit = budgetFit(sum), ro = S.readOnly, mine = meDoc(), myB = +mine?.budget || 0;
+  const pm = paysMode(); if (pm === 'one' && !isPayer()) return coveredCard();
+  // one payer or a company: the headline is the total for everyone, and nobody's personal budget is checked
+  const whole = pm !== 'split', heads = planHeads(), all = v => Math.round(v * heads);
+  const sum = costSummary(), me = whole ? sum : costSummary(S.trip, 'me'), fit = whole ? { n: 0 } : budgetFit(sum), ro = S.readOnly, mine = meDoc(), myB = whole ? 0 : +mine?.budget || 0;
   const differs = me.low !== sum.low || me.high !== sum.high;
   const empty = sum.rows.filter(r => !r.v || ['estimate', 'ai'].includes(r.v.src)).length;
   return `<section class="card stack cost">
-    <div class="stack" style="gap:2px"><h2>The cost of saying yes</h2><span class="small muted">Per person, all in. Built from what’s booked or paid first, then quotes, then estimates.</span></div>
-    <div class="cost-totals">
+    <div class="stack" style="gap:2px"><h2>${whole ? `What it’ll cost ${pm === 'one' ? 'you' : 'the company'}` : 'The cost of saying yes'}</h2><span class="small muted">${whole ? `For everyone (${heads} ${heads === 1 ? 'person' : 'people'}), all in. The lines below are per person.` : 'Per person, all in.'} Built from what’s booked or paid first, then quotes, then estimates.</span></div>
+    ${whole ? `<div class="cost-totals"><div class="cost-total"><span class="label">Everyone, all in</span><b>${sum.any ? rangeText(all(sum.low), all(sum.high)) : '—'}</b><span class="small muted">${sum.any ? `${heads} × ${rangeText(sum.low, sum.high)} each. ` : ''}Includes a ${sum.buffer}% buffer.</span></div></div>` : `<div class="cost-totals">
       <div class="cost-total"><span class="label">${differs ? 'You, all in' : 'Each person, all in'}</span><b>${me.any ? rangeText(me.low, me.high) : '—'}</b>${me.any ? alsoMine(me.low, me.high) : ''}
         <span class="small muted">${myB && me.any ? (me.high <= myB ? `Fits your ${money(myB)} budget.` : me.low <= myB ? `Could go over your ${money(myB)} budget.` : `Over your ${money(myB)} budget.`) + ' ' : ''}Includes a ${sum.buffer}% buffer.</span></div>
       ${differs && sum.any ? `<div class="cost-total soft"><span class="label">Typical for the crew</span><b>${rangeText(sum.low, sum.high)}</b>${alsoMine(sum.low, sum.high)}<span class="small muted">Everyone’s flights and shares differ a bit.</span></div>` : ''}
-    </div>
+    </div>`}
     ${S.sample !== null && !ro ? `<div class="row" style="gap:8px;align-items:center"><button class="btn ${sum.any ? '' : 'primary'}" data-act="costAI" ${S.busy.cost || !dest() ? 'disabled' : ''}>${S.busy.cost ? '<i class="spin"></i>Estimating…' : sum.any ? 'Estimate the rest with AI' : 'Estimate it with AI'}</button>
       <span class="small muted">${!dest() ? `Pick ${isSmall() ? 'the plan' : 'where you’re going'} first.` : empty ? 'Fills only lines without a real quote or booking.' : 'Every line has a real number. Nice.'}</span></div>`
       : S.sample === null ? `<span class="small muted">AI estimates are off ${IN_CLAUDE ? 'for you right now' : 'until you add your Anthropic API key'}. Type in numbers below.</span>` : ''}
