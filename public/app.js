@@ -1229,7 +1229,7 @@ function runoffCard() {
     <h2>${ro.winner ? `${esc(pName(ro.winner))} wins` : 'Pick one'}</h2>
     <p class="small muted">${ro.winner ? `${ro.count(ro.winner.id)} to ${ro.count(other.id)}.` : 'Nothing got a yes from everyone, so the top two go head to head. Most votes wins.'}</p>
     <div class="ro-opts">${ro.ps.map(p => `<button class="ro-opt ${ro.mine === p.id ? 'on' : ''} ${ro.winner === p ? 'win' : ''}" data-runoff="${esc(p.id)}" aria-pressed="${ro.mine === p.id}" ${ro.winner || S.readOnly ? 'disabled' : ''}>
-      <b>${esc(pName(p))}</b><span class="small">${p.start === p.end ? fmt(p.start) + (p.time ? ' · ' + t12(p.time) : '') : short(p.start) + ' – ' + short(p.end)} · ${esc(p.perPerson || '?')}</span>
+      <b>${esc(pName(p))}</b><span class="small">${p.start === p.end ? fmt(p.start) + (p.time ? ' · ' + t12(p.time) : '') : short(p.start) + ' – ' + short(p.end)} · ${esc(p.perPerson ? pitchShort(p, p.perPerson) : '?')}</span>
       <span class="ro-count">${ro.count(p.id)} vote${ro.count(p.id) === 1 ? '' : 's'}${ro.mine === p.id ? ' · yours' : ''}</span></button>`).join('')}</div>
     ${ro.winner ? (lockedOn(ro.winner) ? '<span class="pill in" style="align-self:flex-start">Locked in</span>' : `<div><button class="btn primary" data-lockpitch="${esc(ro.winner.id)}">Lock in ${esc(pName(ro.winner))}</button></div>`)
       : `<span class="small muted">${ro.mine ? 'Waiting on ' + ro.waiting.map(m => esc(m.nick || 'Someone')).join(', ') : 'Tap the one you’d rather do.'}</span>`}
@@ -1276,14 +1276,18 @@ const rated = p => active().filter(m => swipeOf(p.id, m.id));
 const okForAll = p => { const vs = active(); return vs.length >= 2 && vs.every(m => swipeOf(p.id, m.id) >= WORKABLE); };
 const fitScore = p => yesOf(p) * 2 + workableOf(p);
 function groupFit(p) {
-  const vs = active(), out = [], r = moneyRange(p.perPerson);
-  const nB = vs.filter(m => +m.budget > 0 || m.budgetSet).length, f = r && nB ? (p.id && (S.trip.pitches?.items || []).some(x => x.id === p.id) ? bq({ pitch: p.id }) || NO_FIT : budgetFit({ low: r[0], high: r[1] })) : null;
+  const vs = active(), out = [], r = moneyRange(p.perPerson), pm = paysMode();
+  const nB = pm === 'company' ? 0 : vs.filter(m => hasBudget(m.id) && (+m.budget > 0 || m.budgetSet)).length, f = r && nB ? (p.id && (S.trip.pitches?.items || []).some(x => x.id === p.id) ? bq({ pitch: p.id }) || NO_FIT : budgetFit({ low: r[0], high: r[1] })) : null;
   if (f && f.pending) out.push({ ok: 'meh', text: 'Checking budgets…' });
   else if (f && f.unavailable) out.push({ ok: 'meh', text: 'Budget check unavailable right now' });
-  else if (f && f.n) {
+  else if (f && f.n && pm === 'one') {
+    const whose = isPayer() ? 'your' : 'the', was = f.stale ? ' (earlier check)' : '';
+    out.push(f.over.length ? { ok: false, text: `Over ${whose} total budget${was}` } : f.stretch.length ? { ok: 'meh', text: `A stretch for ${whose} total budget${was}` } : { ok: f.stale ? 'meh' : true, text: `Fits ${whose} total budget${was}` });
+  } else if (f && f.n) {
     const { over, stretch } = f, was = f.stale ? ' (earlier check)' : '';
     out.push(over.length ? { ok: false, text: `Over budget for ${budgetWho(over)}${was}` } : stretch.length ? { ok: 'meh', text: `A stretch for ${budgetWho(stretch)}${was}` } : { ok: f.stale ? 'meh' : true, text: (f.n === vs.length ? `Fits ${vs.length}/${vs.length} budgets` : `Fits every budget set (${f.n} of ${vs.length})`) + was });
-  } else out.push({ ok: 'meh', text: nB ? 'No price to check yet' : 'Nobody set a budget yet' });
+  } else if (pm === 'company') out.push({ ok: 'meh', text: 'Company expense, no personal budgets' });
+  else out.push({ ok: 'meh', text: nB ? 'No price to check yet' : pm === 'one' ? 'No total budget set yet' : 'Nobody set a budget yet' });
   const days = span(p.start, p.end), can = vs.filter(m => fitOf(m, days)), cant = vs.filter(m => !fitOf(m, days)), picked = vs.filter(m => (m.days || []).length);
   if (picked.length) out.push(cant.filter(m => (m.days || []).length).length ? { ok: false, text: `${listNames(cant.filter(m => (m.days || []).length))} can’t make ${p.start === p.end ? 'that day' : 'those dates'}` } : { ok: true, text: `Free: ${can.length}/${vs.length}` });
   const rs = rated(p);
@@ -1293,6 +1297,8 @@ function groupFit(p) {
   }
   return out;
 }
+// a pitch's price in a list: unchanged when splitting, the group total when one person or the company pays
+const pitchShort = (p, split) => { const pp = pitchPay(p); return pp.split ? split : pp.short; };
 const fitChips = p => `<div class="fit">${groupFit(p).map(f => `<span class="fit-c ${f.ok === true ? 'y' : f.ok === false ? 'n' : 'm'}">${f.ok === true ? '✓' : f.ok === false ? '✕' : '~'} ${esc(f.text)}</span>`).join('')}</div>`;
 
 /* ---------- trip match (swipe) ---------- */
@@ -1364,7 +1370,7 @@ function matchTab() {
   if (!S.trip.lockedDest || S.demo) return matchBody();
   const ds = dest(), d = S.trip.lockedDates, p = (S.trip.pitches?.items || []).find(lockedOn);
   return `<section class="card stack decided-sum"><div class="row" style="justify-content:space-between"><span class="on-pill">Decided</span>${S.readOnly ? '' : '<button class="btn sm ghost" data-act="unlockDest">Change it</button>'}</div>
-    <h2>${esc(ds?.city || '')}</h2><span class="small muted">${[d && dayRange(d.start, d.end), p && p.perPerson && p.perPerson + ' each', p && p.tagline].filter(Boolean).map(esc).join(' · ')}</span></section>
+    <h2>${esc(ds?.city || '')}</h2><span class="small muted">${[d && dayRange(d.start, d.end), p && p.perPerson && pitchShort(p, p.perPerson + ' each'), p && p.tagline].filter(Boolean).map(esc).join(' · ')}</span></section>
   <details class="card more-opts"><summary>See the votes and other options</summary><div class="stack" style="margin-top:12px">${matchBody()}</div></details>`;
 }
 function matchBody() {
@@ -1380,7 +1386,7 @@ function matchBody() {
         <span style="color:#fff;font-weight:600">${esc(p.tagline)}</span>
       </div>
       <div class="pitch-body">
-        <div class="facts"><div><span class="label">${p.small ? 'When' : 'Dates'}</span><b>${p.small ? fmt(p.start) + (p.time ? ' · ' + t12(p.time) : '') : short(p.start) + ' → ' + short(p.end)}</b></div><div><span class="label">Per person</span><b>${esc(p.perPerson || '?')}</b></div></div>
+        <div class="facts"><div><span class="label">${p.small ? 'When' : 'Dates'}</span><b>${p.small ? fmt(p.start) + (p.time ? ' · ' + t12(p.time) : '') : short(p.start) + ' → ' + short(p.end)}</b></div>${(pp => `<div class="${pp.split ? '' : 'p-total'}"><span class="label">${pp.label}</span><b>${esc(pp.main)}</b>${pp.split ? '' : `<span class="small muted">${esc(pp.each)}</span>`}</div></div>${pp.split ? '' : `<span class="small pay-who">${esc(pp.who)}</span>`}`)(pitchPay(p))}
         ${fitChips(p)}
         <p>${esc(p.why)}</p>
         ${arr(p.highlights).length || p.weather ? `<details class="p-more"><summary class="small">See details</summary>${p.weather ? `<p class="small" style="margin:6px 0 0"><b>Weather:</b> ${esc(p.weather)}</p>` : ''}${arr(p.highlights).length ? `<ul style="margin:6px 0 0;padding-left:18px">${arr(p.highlights).map(h => `<li>${esc(h)}</li>`).join('')}</ul>` : ''}</details>` : ''}
@@ -1395,7 +1401,7 @@ function matchBody() {
   </section>
   ${runoffCard()}
   ${m ? `<section class="match"><span class="label" style="color:rgba(255,255,255,.85)">Everyone swiped yes</span><h1 style="color:#fff">It’s a match!</h1>
-      <p style="font-size:17px">${esc(m.city)} · ${dayRange(m.start, m.end)}${m.time ? ' · ' + t12(m.time) : ''} · ${esc(m.perPerson)}</p>
+      <p style="font-size:17px">${esc(m.city)} · ${dayRange(m.start, m.end)}${m.time ? ' · ' + t12(m.time) : ''} · ${esc(pitchShort(m, m.perPerson))}</p>
       <div>${S.trip.lockedDest && dest()?.city === m.city && S.trip.lockedDates?.start === m.start ? `<span class="on-pill" style="background:#fff;color:#151A33">Locked in</span>` : `<button class="btn" data-lockpitch="${esc(m.id)}">Lock it in</button>`}</div></section>` : ''}
   ${!items.length && S.sample === null ? ''
   : !items.length ? `<div class="empty"><b>No pitches yet.</b><span>The more the crew fills in (${size() === 'trip' ? 'home airports, ' : size() === 'weekend' ? 'where everyone’s coming from, ' : ''}budgets, free days, the vibe quiz), the better the pitches get.</span></div>`
@@ -1406,7 +1412,7 @@ function matchBody() {
   ${items.length ? `<section class="card"><h3 style="margin-bottom:6px">Scoreboard</h3>
     ${[...items].sort((a, b) => fitScore(b) - fitScore(a)).map(p => {
       const yes = vs.filter(x => swipeOf(p.id, x.id) === 1), waiting = vs.filter(x => !swipeOf(p.id, x.id)), mine = swipeOf(p.id, S.uid);
-      return `<div class="linkrow"><div style="min-width:0"><b>${esc(p.city)}</b> <span class="small muted">${p.start === p.end ? short(p.start) : short(p.start) + ' – ' + short(p.end)} · ${esc(p.perPerson)}</span>
+      return `<div class="linkrow"><div style="min-width:0"><b>${esc(p.city)}</b> <span class="small muted">${p.start === p.end ? short(p.start) : short(p.start) + ' – ' + short(p.end)} · ${esc(pitchShort(p, p.perPerson))}</span>
         <div class="small muted">${yes.length} yes · ${workableOf(p)} could work${waiting.length ? ` · waiting on ${waiting.map(x => esc(x.nick || 'Someone')).join(', ')}` : ''}</div>${fitChips(p)}${lockedOn(p) ? '' : ruleChip('pitch', p.id)}</div>
         <div class="row" style="gap:6px">${mine ? `<button class="chip ${mine === 1 ? 'on' : ''}" data-swipe="${esc(p.id)}|${mine === 1 ? -1 : 1}" title="Tap to change">${mine === 1 ? '♥ Yes' : mine === WORKABLE ? '≈ Could work' : '✕ Pass'}</button>` : ''}<div class="bar" style="width:80px"><i style="width:${yes.length / Math.max(1, vs.length) * 100}%"></i></div>${lockedOn(p) ? '<span class="pill lvl-confirmed">Locked</span>' : S.readOnly ? '' : `<button class="btn sm ${yes.length && !S.trip.lockedDest ? 'primary' : ''}" data-lockpitch="${esc(p.id)}">Lock it in</button>`}</div></div>`; }).join('')}
   </section>` : ''}
@@ -2257,6 +2263,18 @@ function budgetCapShared() {
   return b ? { cap: b.lo, lo: b.lo, hi: b.hi, n: b.n, label: `${money(b.lo)}–${money(b.hi)}` } : null;
 }
 const rangeText = (lo, hi) => `${money(lo)}${hi !== lo ? '–' + money(hi) : ''}`;
+// A per-person price as the plan's payment mode reads it. Splitting: per person, as before. One person
+// or the company paying: the total for everyone leads (per person × the headcount, as on the cost card),
+// with the per-person amount as context. `text` is a pitch's own price when it has no number in it.
+function priceFor(lo, hi, text) {
+  const pm = paysMode(), heads = planHeads();
+  if (pm === 'split' || !(lo || hi)) return { split: true, label: 'Per person', main: text || (lo || hi ? rangeText(lo, hi) : '?'), short: (text || rangeText(lo, hi)) + ' each' };
+  const main = rangeText(Math.round(lo * heads), Math.round(hi * heads)), each = `${heads} × ${rangeText(lo, hi)} each`;
+  return pm === 'one'
+    ? { label: 'For everyone', main, each, who: isPayer() ? 'You’re covering everyone' : `${nameOf(payerId())} covers everyone`, short: `${main} for everyone` }
+    : { label: 'Company total', main, each, who: 'A company expense, not anyone’s own budget', short: `${main} company total` };
+}
+const pitchPay = p => { const r = moneyRange(p.perPerson); return r ? priceFor(r[0], r[1], p.perPerson) : priceFor(0, 0, p.perPerson); };
 // When one person covers everyone, the others just see that it's covered.
 function coveredCard() {
   const who = esc(nameOf(payerId()));
@@ -2400,6 +2418,8 @@ function whatifTab() {
       ${dests.length > 1 ? `<label><span class="label">${small ? 'Plan' : 'Where'}</span><select id="wi-dest-${c.i}">${dests.map(d => `<option value="${esc(d.id)}" ${d.id === c.r.dest?.id ? 'selected' : ''}>${esc(d.city)}</option>`).join('')}</select></label>` : ''}
       ${kinds.length > 1 ? `<label><span class="label">Stay</span><select id="wi-stay-${c.i}"><option value="">Same as now</option>${kinds.map(k => `<option value="${k}" ${k === c.sc.stay ? 'selected' : ''}>${STAY_KINDS[k] || k}</option>`).join('')}</select></label>` : ''}
     </div>`;
+  // prices follow who pays: per person when splitting, the total for everyone when one person or the company pays
+  const pm = paysMode(), pr = r => priceFor(r.low, r.high), tot = r => pm === 'split' ? r.high : Math.round(r.high * planHeads());
   const row = (label, f) => `<div class="wi-row"><span class="wi-k">${label}</span>${cols.map(c => `<div class="wi-v">${f(c)}</div>`).join('')}</div>`;
   return `<section class="card stack whatif">
     <div class="stack" style="gap:2px"><h2>What if we changed this?</h2><span class="small muted">Try a different ${small ? 'day or plan' : 'start, length, place or stay'} and see what it does to who can come and what it costs. Nothing changes until you pick one.</span></div>
@@ -2410,10 +2430,11 @@ function whatifTab() {
       ${dests.length ? row(small ? 'Plan' : 'Where', c => esc(c.r.dest?.city || '—')) : ''}
       ${row('Can come', c => `<b>${c.r.can.length}/${vs.length}</b>${c.cur ? '' : diff(c.r.can.length, base.can.length, (a, b) => (a > b ? '+' : '') + (a - b), (a, b) => a > b)}${vs.filter(m => !c.r.can.includes(m)).length && c.r.start ? `<span class="small muted">Not ${esc(listNames(vs.filter(m => !c.r.can.includes(m))))}</span>` : ''}`)}
       ${row('Prefer it', c => `${c.r.prefer.length}/${vs.length}`)}
-      ${row('Each, all in', c => c.r.priced ? `<b>${money(c.r.low)}${c.r.high !== c.r.low ? '–' + money(c.r.high) : ''}</b>${c.cur || !base.priced ? '' : diff(c.r.high, base.high, (a, b) => (a > b ? '+' : '−') + money(Math.abs(a - b)), (a, b) => a < b)}${c.r.note ? `<span class="small muted">${esc(c.r.note)}</span>` : ''}` : `<span class="small muted">${esc(c.r.note || 'Unknown')}</span>`)}
-      ${row('Fits budgets', c => c.r.fit && c.r.fit.n ? `${c.r.fit.fits.length}/${vs.length}${c.r.fit.over.length ? `<span class="small" style="color:#C2383A">Over for ${esc(budgetWho(c.r.fit.over))}</span>` : ''}` : '<span class="small muted">—</span>')}
+      ${row(pm === 'one' ? 'Everyone, all in' : pm === 'company' ? 'Company total' : 'Each, all in', c => c.r.priced ? `<b>${pr(c.r).main}</b>${c.cur || !base.priced ? '' : diff(tot(c.r), tot(base), (a, b) => (a > b ? '+' : '−') + money(Math.abs(a - b)), (a, b) => a < b)}${pm === 'split' ? '' : `<span class="small muted">${esc(pr(c.r).each)}</span>`}${c.r.note ? `<span class="small muted">${esc(c.r.note)}</span>` : ''}` : `<span class="small muted">${esc(c.r.note || 'Unknown')}</span>`)}
+      ${pm === 'company' ? '' : pm === 'one' ? row(isPayer() ? 'Your total budget' : 'Total budget', c => c.r.fit && c.r.fit.n ? (c.r.fit.over.length ? '<span class="small" style="color:#C2383A">Over</span>' : c.r.fit.stretch.length ? 'A stretch' : 'Fits') : '<span class="small muted">—</span>') : row('Fits budgets', c => c.r.fit && c.r.fit.n ? `${c.r.fit.fits.length}/${vs.length}${c.r.fit.over.length ? `<span class="small" style="color:#C2383A">Over for ${esc(budgetWho(c.r.fit.over))}</span>` : ''}` : '<span class="small muted">—</span>')}
       ${S.readOnly ? '' : `<div class="wi-row"><span class="wi-k"></span>${cols.map(c => `<div class="wi-v">${c.cur ? '' : `<button class="btn sm primary" data-wiapply="${c.i}">Make this the plan</button>`}</div>`).join('')}</div>`}
     </div>
+    ${pm === 'split' ? '' : `<span class="small muted">${esc(priceFor(1, 1).who)}. Totals are the per-person estimate × ${planHeads()} ${planHeads() === 1 ? 'person' : 'people'}.</span>`}
     ${scs.length < 2 ? '<div><button class="btn sm" data-act="wiAdd">+ Compare another</button></div>' : ''}
   </section>`;
 }

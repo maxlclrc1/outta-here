@@ -156,6 +156,18 @@ function budgetCapShared() {
   return b ? { cap: b.lo, lo: b.lo, hi: b.hi, n: b.n, label: `${money(b.lo)}–${money(b.hi)}` } : null;
 }
 const rangeText = (lo, hi) => `${money(lo)}${hi !== lo ? '–' + money(hi) : ''}`;
+// A per-person price as the plan's payment mode reads it. Splitting: per person, as before. One person
+// or the company paying: the total for everyone leads (per person × the headcount, as on the cost card),
+// with the per-person amount as context. `text` is a pitch's own price when it has no number in it.
+function priceFor(lo, hi, text) {
+  const pm = paysMode(), heads = planHeads();
+  if (pm === 'split' || !(lo || hi)) return { split: true, label: 'Per person', main: text || (lo || hi ? rangeText(lo, hi) : '?'), short: (text || rangeText(lo, hi)) + ' each' };
+  const main = rangeText(Math.round(lo * heads), Math.round(hi * heads)), each = `${heads} × ${rangeText(lo, hi)} each`;
+  return pm === 'one'
+    ? { label: 'For everyone', main, each, who: isPayer() ? 'You’re covering everyone' : `${nameOf(payerId())} covers everyone`, short: `${main} for everyone` }
+    : { label: 'Company total', main, each, who: 'A company expense, not anyone’s own budget', short: `${main} company total` };
+}
+const pitchPay = p => { const r = moneyRange(p.perPerson); return r ? priceFor(r[0], r[1], p.perPerson) : priceFor(0, 0, p.perPerson); };
 // When one person covers everyone, the others just see that it's covered.
 function coveredCard() {
   const who = esc(nameOf(payerId()));
