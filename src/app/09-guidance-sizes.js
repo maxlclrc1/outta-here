@@ -2,6 +2,9 @@
 const SHARE_BASE = window.OUTTA_SHARE_BASE || (location.origin + '/');
 const IN_CLAUDE = !!window.OUTTA_SHARE_BASE;
 const inviteLink = () => linkFor({ id: S.tid, inviteKey: S.trip?.inviteKey });
+// WhatsApp opens with the invite written and the link in it, which it turns into the plan's card
+const waHref = () => 'https://wa.me/?text=' + encodeURIComponent(`${inviteText(S.trip)}\n${inviteLink()}`);
+const waBtn = (label = 'WhatsApp') => IN_CLAUDE || S.demo ? '' : `<a class="btn chunky wa" href="${esc(waHref())}" target="_blank" rel="noopener"><span class="wa-ic" aria-hidden="true">💬</span>${label}</a>`;
 function inviteCard() {
   if (S.demo) return `<section class="card stack"><h2>Invite the crew</h2><p class="small muted">Invites work on real trips. Start one from the home screen.</p></section>`;
   return `<section class="card stack">
@@ -9,7 +12,7 @@ function inviteCard() {
     ${IN_CLAUDE ? `<ol class="small steps-list"><li>Open this page’s <b>Share</b> menu and invite each friend by email as an <b>Editor</b>. Viewers can look but can’t vote or swipe.</li><li>Send them the invite below. It opens this trip directly.</li></ol>`
       : `<p class="small muted">Send this link. Friends type their name and land right in this ${planWord()}.</p>`}
     <span class="invite-link mono">${esc(inviteLink())}</span>
-    <div class="row" style="gap:6px"><button class="btn primary" data-act="copyInvite">Send invite</button></div>
+    <div class="row" style="gap:8px">${waBtn('Send on WhatsApp')}<button class="btn ${IN_CLAUDE ? 'primary' : ''}" data-act="copyInvite">${IN_CLAUDE ? 'Send invite' : 'Other apps'}</button></div>
   </section>`;
 }
 

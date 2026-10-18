@@ -68,7 +68,8 @@ function checkPlanValues(data: Json) {
 /** A member's own days (days they can make, and preferred ones) must be lists of real dates, and the
  * number of kids they're bringing (family plans; missing means 0) a whole number from 0 to 12. */
 export function checkMemberDays(data: Json) {
-  if ('kids' in data && data.kids !== null && !(Number.isInteger(data.kids) && data.kids >= 0 && data.kids <= 12)) throw fail('kids must be a whole number from 0 to 12.');
+  const kids = data.kids;
+  if ('kids' in data && kids !== null && !(typeof kids === 'number' && Number.isInteger(kids) && kids >= 0 && kids <= 12)) throw fail('kids must be a whole number from 0 to 12.');
   for (const k of ['days', 'pref']) {
     if (!(k in data) || data[k] === null) continue;
     const v = data[k];

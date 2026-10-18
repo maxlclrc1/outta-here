@@ -2797,7 +2797,9 @@ function swapItem(title) {
 const isOrgOf = t => !!t && (t.createdBy === S.uid || !!(t.orgs || {})[S.uid]);
 const canInvite = (t = S.trip) => S.demo || (!t.invitesOff && ((t.perm || {}).invite !== 'org' || isOrgOf(t)));
 const canLock = () => S.demo || (S.trip.perm || {}).lock !== 'org' || isOrganizer();
-const linkFor = t => SHARE_BASE + '#' + t.id + (t.inviteKey ? '.' + t.inviteKey : '');
+// Shared links are /p/<plan>?k=<key>, so chat apps can show the plan's preview card (app/p/[id]); that page
+// forwards to /#plan.key, which still works on its own. The Claude page keeps its own links.
+const linkFor = t => IN_CLAUDE || window.OUTTA_SHARE_BASE ? SHARE_BASE + '#' + t.id + (t.inviteKey ? '.' + t.inviteKey : '') : SHARE_BASE + 'p/' + t.id + (t.inviteKey ? '?k=' + t.inviteKey : '');
 // "#abc123" or "#abc123.k7x9" (a plan id plus the current invite key)
 const parseTripHash = h => { const m = String(h || '').match(/^([a-z0-9]{6,20})(?:\.([a-z0-9]{4,12}))?$/); return m ? { tid: m[1], key: m[2] || '' } : null; };
 function accessState() {
@@ -3505,7 +3507,7 @@ function jSteps() {
     why: inPlan.length < 2 ? `It’s just you so far. Votes, dates and costs only mean something once people are in.` : '',
     todo: 'Send the invite to your group chat. They tap it, type their name and they’re in.',
     after: 'As people join, they pick their free days and vote. You’ll see it here.',
-    act: () => btn('data-act="copyInvite"', 'Send the invite'), help: { tab: 'crew', sel: '[data-act="copyInvite"]' },
+    act: () => btn('data-act="copyInvite"', 'Send the invite') + waBtn(), help: { tab: 'crew', sel: '[data-act="copyInvite"]' },
   });
   if (honoreeMode() && !small) add('honoree', 'gather', {
     title: `Choose the ${mode().honoree}`, done: !!t.honoree, hideFrom: 'honoree', mine: true, mineText: `Choose the ${mode().honoree}`,
@@ -4584,6 +4586,9 @@ function nightVoteCard() {
 const SHARE_BASE = window.OUTTA_SHARE_BASE || (location.origin + '/');
 const IN_CLAUDE = !!window.OUTTA_SHARE_BASE;
 const inviteLink = () => linkFor({ id: S.tid, inviteKey: S.trip?.inviteKey });
+// WhatsApp opens with the invite written and the link in it, which it turns into the plan's card
+const waHref = () => 'https://wa.me/?text=' + encodeURIComponent(`${inviteText(S.trip)}\n${inviteLink()}`);
+const waBtn = (label = 'WhatsApp') => IN_CLAUDE || S.demo ? '' : `<a class="btn chunky wa" href="${esc(waHref())}" target="_blank" rel="noopener"><span class="wa-ic" aria-hidden="true">💬</span>${label}</a>`;
 function inviteCard() {
   if (S.demo) return `<section class="card stack"><h2>Invite the crew</h2><p class="small muted">Invites work on real trips. Start one from the home screen.</p></section>`;
   return `<section class="card stack">
@@ -4591,7 +4596,7 @@ function inviteCard() {
     ${IN_CLAUDE ? `<ol class="small steps-list"><li>Open this page’s <b>Share</b> menu and invite each friend by email as an <b>Editor</b>. Viewers can look but can’t vote or swipe.</li><li>Send them the invite below. It opens this trip directly.</li></ol>`
       : `<p class="small muted">Send this link. Friends type their name and land right in this ${planWord()}.</p>`}
     <span class="invite-link mono">${esc(inviteLink())}</span>
-    <div class="row" style="gap:6px"><button class="btn primary" data-act="copyInvite">Send invite</button></div>
+    <div class="row" style="gap:8px">${waBtn('Send on WhatsApp')}<button class="btn ${IN_CLAUDE ? 'primary' : ''}" data-act="copyInvite">${IN_CLAUDE ? 'Send invite' : 'Other apps'}</button></div>
   </section>`;
 }
 

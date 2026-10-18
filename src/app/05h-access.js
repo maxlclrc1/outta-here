@@ -6,7 +6,9 @@
 const isOrgOf = t => !!t && (t.createdBy === S.uid || !!(t.orgs || {})[S.uid]);
 const canInvite = (t = S.trip) => S.demo || (!t.invitesOff && ((t.perm || {}).invite !== 'org' || isOrgOf(t)));
 const canLock = () => S.demo || (S.trip.perm || {}).lock !== 'org' || isOrganizer();
-const linkFor = t => SHARE_BASE + '#' + t.id + (t.inviteKey ? '.' + t.inviteKey : '');
+// Shared links are /p/<plan>?k=<key>, so chat apps can show the plan's preview card (app/p/[id]); that page
+// forwards to /#plan.key, which still works on its own. The Claude page keeps its own links.
+const linkFor = t => IN_CLAUDE || window.OUTTA_SHARE_BASE ? SHARE_BASE + '#' + t.id + (t.inviteKey ? '.' + t.inviteKey : '') : SHARE_BASE + 'p/' + t.id + (t.inviteKey ? '?k=' + t.inviteKey : '');
 // "#abc123" or "#abc123.k7x9" (a plan id plus the current invite key)
 const parseTripHash = h => { const m = String(h || '').match(/^([a-z0-9]{6,20})(?:\.([a-z0-9]{4,12}))?$/); return m ? { tid: m[1], key: m[2] || '' } : null; };
 function accessState() {

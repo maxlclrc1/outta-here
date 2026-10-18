@@ -1375,3 +1375,9 @@ html .j-focus .j-acts .btn:not(.primary):active{transform:translateY(4px);box-sh
 .avail-n b{font:900 18px var(--f-display)}
 .dates-more summary{cursor:pointer;color:var(--muted);font-weight:600}
 @media (prefers-reduced-motion:reduce){.avail-ask,.avail-n{animation:none}}
+
+/* WhatsApp: the most common way a plan gets to the crew */
+html:root .btn.wa{background:#25D366;border-color:#25D366;color:#0B2E17;font-weight:800;box-shadow:0 4px 0 #128C4A}
+html:root .btn.wa:active{transform:translateY(4px);box-shadow:none}
+html .j-focus .j-acts .btn.wa{background:#25D366;border-color:#25D366;color:#0B2E17}
+.wa-ic{font-size:16px;line-height:1}
