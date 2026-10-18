@@ -184,6 +184,12 @@ const payerId = (t = S.trip) => paysMode(t) === 'one' ? t.payer || t.createdBy :
 const isPayer = (uid = S.uid) => paysMode() !== 'one' || payerId() === uid;
 // whether someone is asked for, and planned around, a personal budget
 const hasBudget = uid => paysMode() === 'split' || isPayer(uid) && paysMode() === 'one';
+// A member's budget as the per-person amount prices are compared with (mirrors lib/pays.ts budgetFor):
+// their own when splitting; only the payer's, a total shared over the headcount, when one person pays; none
+// when a company pays. Saved budgets are never changed.
+const budgetOf = m => { const b = Math.max(0, +m?.budget || 0), p = paysMode(); return p === 'company' ? 0 : p === 'one' ? (m.id === payerId() ? Math.round(b / planHeads()) : 0) : b; };
+// whether my budget is a total for everyone (I'm covering it) or my own share
+const budgetIsTotal = () => paysMode() === 'one' && isPayer();
 const paysDefault = (mode, sz) => { const g = planGroup({ mode }); return g === 'family' ? 'one' : g === 'work' ? 'company' : 'split'; };
 // the creation question is skipped for small friends plans (they split)
 const asksPays = (mode, sz) => !(isSmallSize(sz) && planGroup({ mode }) === 'friends');

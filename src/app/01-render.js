@@ -179,7 +179,7 @@ function crewTab() {
     <div class="row">
       <label class="field"><span class="label">Name</span><input id="me-nick" maxlength="30" value="${esc(m.nick)}" placeholder="What the crew calls you"></label>
       ${isSmall() ? '' : `<label class="field"><span class="label">${size() === 'trip' ? 'Flying from' : 'Coming from'}</span><input id="me-home" maxlength="40" value="${esc(m.home)}" placeholder="${size() === 'trip' ? 'JFK or New York' : 'Your city or neighborhood'}"></label>`}
-      <label class="field"><span class="label">${isSmall() ? `Max you’ll spend (${cur()})` : `Max you’ll spend (total, ${cur()})`}</span><input id="me-budget" type="number" min="0" step="${isSmall() ? 5 : 50}" inputmode="numeric" value="${m.budget ? esc(m.budget) : ''}" placeholder="${isSmall() ? '60' : size() === 'weekend' ? '400' : '800'}"></label>
+      ${!hasBudget(S.uid) ? '' : `<label class="field"><span class="label">${budgetIsTotal() ? `Budget for everyone (total, ${cur()})` : isSmall() ? `Your max, your share (${cur()})` : `Your max, your share (all in, ${cur()})`}</span><input id="me-budget" type="number" min="0" step="${isSmall() ? 5 : 50}" inputmode="numeric" value="${m.budget ? esc(m.budget) : ''}" placeholder="${isSmall() ? '60' : size() === 'weekend' ? '400' : '800'}"></label>`}
     </div>
     <div class="row">
       <label class="field"><span class="label">Venmo</span><input id="me-venmo" maxlength="40" value="${esc(m.venmo || '')}" placeholder="@your-handle"></label>

@@ -1,4 +1,5 @@
 import { listCollection, rawDoc, type Json } from '@/lib/store';
+import { budgetFor } from '@/lib/pays';
 
 // Budget fit, worked out on the server so nobody's budget is sent to anyone else.
 // The app asks "does a price of lo–hi fit the crew?" and gets back counts: how many it
@@ -69,11 +70,12 @@ export type Result = { n: number; total: number; fits: Group; stretch: Group; ov
 const num = (v: unknown) => (typeof v === 'number' && isFinite(v) ? v : +String(v ?? '') || 0);
 const isObj = (v: unknown): v is Json => !!v && typeof v === 'object' && !Array.isArray(v);
 
+// Budgets follow the plan's who-pays setting (lib/pays.ts): only the ones that count, as per-person amounts.
 function members(tid: string, user: string, c: Check) {
-  const skip = new Set(Array.isArray(c.exclude) ? c.exclude.slice(0, 50).map(String) : []);
-  return listCollection(`trips/${tid}/members`, user)
-    .filter(d => d.data.status !== 'out' && !d.data.removed && !skip.has(d.id))
-    .map(d => ({ id: d.id, budget: d.id === user && c.myBudget !== undefined ? Math.max(0, num(c.myBudget)) : Math.max(0, num(d.data.budget)), named: d.id === user || !!d.data.budgetPublic, hard: isObj(d.data.hard) && !!d.data.hard.budget }));
+  const skip = new Set(Array.isArray(c.exclude) ? c.exclude.slice(0, 50).map(String) : []), t = rawDoc('trips/' + tid);
+  const ms = listCollection(`trips/${tid}/members`, user).filter(d => d.data.status !== 'out' && !d.data.removed && !skip.has(d.id));
+  const all = ms.map(d => ({ id: d.id, ...d.data }) as Json);
+  return ms.map(d => ({ id: d.id, budget: budgetFor(t, d.id, d.id === user && c.myBudget !== undefined ? c.myBudget : d.data.budget, all), named: d.id === user || !!d.data.budgetPublic, hard: isObj(d.data.hard) && !!d.data.hard.budget }));
 }
 const group = (ms: { id: string; named: boolean }[]): Group => ({ count: ms.length, ids: ms.filter(m => m.named).map(m => m.id) });
 

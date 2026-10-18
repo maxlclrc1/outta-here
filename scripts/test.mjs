@@ -30,6 +30,7 @@ const SERVER = [
   ['plan-dates', 'tests/plan-dates.mjs'],
   ['plan-values', 'tests/plan-values.mjs'],
   ['undo', 'tests/undo.mjs'],
+  ['budget-pays', 'tests/budget-pays.mjs'],
   ['plan-delete', 'tests/plan-delete.mjs'],
   ['invite-key', 'tests/invite-key.mjs'],
   ['identity', 'tests/identity.mjs'],

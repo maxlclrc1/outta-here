@@ -394,7 +394,7 @@ City: ${S.trip.city || 'not set'}
 The plan: ${ds ? ds.city : 'not decided'}${S.trip.venue ? ' at ' + S.trip.venue : ''}
 Day: ${d ? `${d.start} (${dow(d.start)})` : 'not set'}${S.trip.time ? ', starting ' + S.trip.time : ''}
 Group size: ${active().length} ${pk.people}
-Max spend per person: ${b ? `${b.label} (the tightest budget in the group is in this range; stay at or under ${money(b.cap)})` : 'not given'}${blend() ? `
+Max spend per person: ${paysMode() === 'company' ? 'a company is paying; keep it sensible for a work outing' : b ? `${b.label} (${paysMode() === 'one' ? 'one person is paying for everyone; this is their budget split across the group' : 'the tightest budget in the group is in this range'}; stay at or under ${money(b.cap)})` : 'not given'}${blend() ? `
 Crew vibe quiz results (${blend().n} answered):
 ${blendText()}` : ''}`;
   return `Trip type: ${mode().label}. ${mode().ai}${size() === 'weekend' ? ' It is a weekend getaway (1–2 nights), likely by car.' : ''}
@@ -402,7 +402,7 @@ Destination: ${ds ? ds.city + (ds.code ? ' (' + ds.code + ')' : '') : 'not set'}
 Trip days: ${days} — ${nightsOf(d)} nights
 Group size: ${active().length} ${pk.people}
 ${size() === 'trip' ? 'Flying from' : 'Coming from'}: ${homes().join(', ') || 'unknown'}
-Per-person total budget (everything${size() === 'trip' ? ' incl. flights' : ''}): ${b ? `${b.label} (the tightest budget in the group is in this range; stay at or under ${money(b.cap)})` : 'not given'}
+Per-person total budget (everything${size() === 'trip' ? ' incl. flights' : ''}): ${paysMode() === 'company' ? 'a company is paying; keep it reasonable for a work trip' : b ? `${b.label} (${paysMode() === 'one' ? 'one person is paying for everyone; this is their budget split across the group' : 'the tightest budget in the group is in this range'}; stay at or under ${money(b.cap)})` : 'not given'}
 Group vibe: ${(S.trip.vibes || []).join(', ') || vibeDefault('ctx')}${blend() ? `
 Crew vibe quiz results (${blend().n} answered):
 ${blendText()}` : ''}`;

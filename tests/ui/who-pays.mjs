@@ -59,6 +59,13 @@ await go(A, 'money', 'cost'); await A.waitForTimeout(500);
 { const t = (await text(A)).replace(/\s+/g, ' '), m = t.match(/EVERYONE, ALL IN \$(\d+) 2 × \$(\d+) each/i); expect('Rae (paying) sees the total for everyone (2 people × the per-person amount), with no budget check', /What it’ll cost you/.test(t) && !!m && +m[1] === 2 * +m[2] && !/Fits \d/.test(t), t.match(/Everyone, all in.{0,60}/i)?.[0]); }
 await go(A, 'money', 'money'); { const t = (await text(A)).replace(/\s+/g, ' '); expect('Rae’s expenses: she pays Jo back', /You’re covering this/.test(t) && /Rae pays Jo \$60/.test(t)); }
 
+// budgets: Rae's is the total for everyone; Jo isn't asked for one
+await go(A, 'home', 'crew');
+expect('Rae’s budget field says it’s the total for everyone', /Budget for everyone/i.test(await A.locator('label:has(#me-budget)').innerText()));
+await A.fill('#me-budget', '150'); await A.locator('#me-budget').blur(); await A.waitForTimeout(900);
+await go(A, 'money', 'cost'); expect('…and the cost card compares the group total with it', /over your \$150 total budget/i.test(await text(A)));
+await go(J, 'home', 'crew'); expect('Jo has no budget field', !(await J.locator('#me-budget').count()));
+
 // —— Settings: switch to the company, then back to splitting ——
 await go(A, 'home', 'settings');
 expect('Settings shows who’s paying, with Rae covering it', (await A.locator('.pays-card .nf-pay.on b').innerText()) === 'I’m treating everyone' && (await A.locator('#set-payer').inputValue()) === uid);
@@ -70,6 +77,7 @@ await go(J, 'home', 'overview'); expect('company: Jo isn’t nudged to set a bud
 await go(A, 'home', 'settings'); await A.locator('.pays-card [data-setpays=split]').click(); await A.waitForTimeout(900);
 await go(A, 'money', 'money'); { const t = (await text(A)).replace(/\s+/g, ' '); expect('back to splitting: the original split and settle-up return', /Settle up/i.test(t) && /Rae pays Jo \$30/.test(t) && /Split between/i.test(t), t.match(/Rae pays[^S]{0,40}/)?.[0]); }
 expect('…and the group pot is back', (await A.locator('.subtab[data-tab=pot]').count()) === 1);
+await go(A, 'home', 'crew'); expect('splitting again: the budget field is your own share', /Your max, your share/i.test(await A.locator('label:has(#me-budget)').innerText()));
 
 // —— a plan saved before who-pays existed ——
 { const tid = 'wp' + Math.random().toString(36).slice(2, 8); tids.push(tid);

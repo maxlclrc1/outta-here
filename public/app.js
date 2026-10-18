@@ -394,7 +394,7 @@ City: ${S.trip.city || 'not set'}
 The plan: ${ds ? ds.city : 'not decided'}${S.trip.venue ? ' at ' + S.trip.venue : ''}
 Day: ${d ? `${d.start} (${dow(d.start)})` : 'not set'}${S.trip.time ? ', starting ' + S.trip.time : ''}
 Group size: ${active().length} ${pk.people}
-Max spend per person: ${b ? `${b.label} (the tightest budget in the group is in this range; stay at or under ${money(b.cap)})` : 'not given'}${blend() ? `
+Max spend per person: ${paysMode() === 'company' ? 'a company is paying; keep it sensible for a work outing' : b ? `${b.label} (${paysMode() === 'one' ? 'one person is paying for everyone; this is their budget split across the group' : 'the tightest budget in the group is in this range'}; stay at or under ${money(b.cap)})` : 'not given'}${blend() ? `
 Crew vibe quiz results (${blend().n} answered):
 ${blendText()}` : ''}`;
   return `Trip type: ${mode().label}. ${mode().ai}${size() === 'weekend' ? ' It is a weekend getaway (1–2 nights), likely by car.' : ''}
@@ -402,7 +402,7 @@ Destination: ${ds ? ds.city + (ds.code ? ' (' + ds.code + ')' : '') : 'not set'}
 Trip days: ${days} — ${nightsOf(d)} nights
 Group size: ${active().length} ${pk.people}
 ${size() === 'trip' ? 'Flying from' : 'Coming from'}: ${homes().join(', ') || 'unknown'}
-Per-person total budget (everything${size() === 'trip' ? ' incl. flights' : ''}): ${b ? `${b.label} (the tightest budget in the group is in this range; stay at or under ${money(b.cap)})` : 'not given'}
+Per-person total budget (everything${size() === 'trip' ? ' incl. flights' : ''}): ${paysMode() === 'company' ? 'a company is paying; keep it reasonable for a work trip' : b ? `${b.label} (${paysMode() === 'one' ? 'one person is paying for everyone; this is their budget split across the group' : 'the tightest budget in the group is in this range'}; stay at or under ${money(b.cap)})` : 'not given'}
 Group vibe: ${(S.trip.vibes || []).join(', ') || vibeDefault('ctx')}${blend() ? `
 Crew vibe quiz results (${blend().n} answered):
 ${blendText()}` : ''}`;
@@ -727,7 +727,7 @@ function crewTab() {
     <div class="row">
       <label class="field"><span class="label">Name</span><input id="me-nick" maxlength="30" value="${esc(m.nick)}" placeholder="What the crew calls you"></label>
       ${isSmall() ? '' : `<label class="field"><span class="label">${size() === 'trip' ? 'Flying from' : 'Coming from'}</span><input id="me-home" maxlength="40" value="${esc(m.home)}" placeholder="${size() === 'trip' ? 'JFK or New York' : 'Your city or neighborhood'}"></label>`}
-      <label class="field"><span class="label">${isSmall() ? `Max you’ll spend (${cur()})` : `Max you’ll spend (total, ${cur()})`}</span><input id="me-budget" type="number" min="0" step="${isSmall() ? 5 : 50}" inputmode="numeric" value="${m.budget ? esc(m.budget) : ''}" placeholder="${isSmall() ? '60' : size() === 'weekend' ? '400' : '800'}"></label>
+      ${!hasBudget(S.uid) ? '' : `<label class="field"><span class="label">${budgetIsTotal() ? `Budget for everyone (total, ${cur()})` : isSmall() ? `Your max, your share (${cur()})` : `Your max, your share (all in, ${cur()})`}</span><input id="me-budget" type="number" min="0" step="${isSmall() ? 5 : 50}" inputmode="numeric" value="${m.budget ? esc(m.budget) : ''}" placeholder="${isSmall() ? '60' : size() === 'weekend' ? '400' : '800'}"></label>`}
     </div>
     <div class="row">
       <label class="field"><span class="label">Venmo</span><input id="me-venmo" maxlength="40" value="${esc(m.venmo || '')}" placeholder="@your-handle"></label>
@@ -1095,8 +1095,10 @@ function setupView() {
     home: { h: size() === 'trip' ? 'Where are you flying from?' : 'Where are you coming from?',
       p: size() === 'trip' ? 'Your home airport or city. It’s used for flight prices and to pitch places that are easy for everyone to reach.' : 'Your city or neighborhood, so pitches stay within reach for everyone.',
       c: `<input id="me-home" aria-label="${size() === 'trip' ? 'Home airport or city' : 'Your city or neighborhood'}" class="big-input" maxlength="40" value="${esc(m.home || '')}" placeholder="${size() === 'trip' ? 'JFK or New York' : 'Brooklyn'}" autocomplete="address-level2" enterkeyhint="next">` },
-    budget: { h: 'What’s your max?',
-      p: isSmall() ? 'The most you’d spend on this, all in. Pitches stay under the lowest budget in the crew.' : 'The most you’d spend in total, travel included. Pitches stay under the lowest budget in the crew.',
+    budget: budgetIsTotal() ? { h: 'What’s the budget for everyone?',
+      p: `You’re covering it, so this is the total for the whole group${isSmall() ? '' : ', travel included'}. Pitches are planned around it, split across everyone coming.`,
+      c: `<label class="field"><span class="label">Total for everyone (${cur()})</span><input id="me-budget" class="big-input" type="number" min="0" step="${isSmall() ? 10 : 100}" inputmode="numeric" value="${m.budget ? esc(m.budget) : ''}" placeholder="${niceIn(BUDGETS[size()][1] * Math.max(2, planHeads()))}" enterkeyhint="next"></label>` } : { h: 'What’s your max?',
+      p: isSmall() ? 'Just your own share, all in. Pitches stay under the lowest budget in the crew.' : 'Just your own share, travel included. Pitches stay under the lowest budget in the crew.',
       c: `<div class="row" style="gap:6px">${BUDGETS[size()].map(u => niceIn(u)).map(v => `<button class="chip big-chip ${+m.budget === v ? 'on' : ''}" data-budget="${v}">${money(v)}</button>`).join('')}</div>
         <label class="field"><span class="label">Or type it (${cur()})</span><input id="me-budget" class="big-input" type="number" min="0" step="${isSmall() ? 5 : 50}" inputmode="numeric" value="${m.budget ? esc(m.budget) : ''}" placeholder="${niceIn(BUDGETS[size()][1])}" enterkeyhint="next"></label>` },
     vibe: { h: 'Quick vibe check',
@@ -1815,6 +1817,12 @@ const payerId = (t = S.trip) => paysMode(t) === 'one' ? t.payer || t.createdBy :
 const isPayer = (uid = S.uid) => paysMode() !== 'one' || payerId() === uid;
 // whether someone is asked for, and planned around, a personal budget
 const hasBudget = uid => paysMode() === 'split' || isPayer(uid) && paysMode() === 'one';
+// A member's budget as the per-person amount prices are compared with (mirrors lib/pays.ts budgetFor):
+// their own when splitting; only the payer's, a total shared over the headcount, when one person pays; none
+// when a company pays. Saved budgets are never changed.
+const budgetOf = m => { const b = Math.max(0, +m?.budget || 0), p = paysMode(); return p === 'company' ? 0 : p === 'one' ? (m.id === payerId() ? Math.round(b / planHeads()) : 0) : b; };
+// whether my budget is a total for everyone (I'm covering it) or my own share
+const budgetIsTotal = () => paysMode() === 'one' && isPayer();
 const paysDefault = (mode, sz) => { const g = planGroup({ mode }); return g === 'family' ? 'one' : g === 'work' ? 'company' : 'split'; };
 // the creation question is skipped for small friends plans (they split)
 const asksPays = (mode, sz) => !(isSmallSize(sz) && planGroup({ mode }) === 'friends');
@@ -2231,9 +2239,10 @@ function budgetShape(r) {
 }
 function budgetLocal({ lo = 0, hi = 0, key = '', pitch }) {
   if (pitch) { const r = moneyRange((S.trip.pitches?.items || []).find(x => x.id === pitch)?.perPerson); lo = r ? r[0] : 0; hi = r ? r[1] : 0; }
-  const ms = active().filter(m => +m.budget > 0), h = Math.max(lo, hi || lo), consent = ((S.trip.consent || {})[key]) || {};
-  const hard = lo ? ms.filter(m => m.hard?.budget && lo > +m.budget) : [];
-  return { n: ms.length, unknown: active().length - ms.length, fits: ms.filter(m => +m.budget >= h), stretch: ms.filter(m => +m.budget < h && +m.budget >= lo), over: ms.filter(m => +m.budget < lo), hard, hardOpen: hard.filter(m => !consent[m.id]) };
+  // only the budgets the who-pays setting counts, as per-person amounts (as the server does)
+  const ms = active().map(m => ({ ...m, budget: budgetOf(m) })).filter(m => m.budget > 0), h = Math.max(lo, hi || lo), consent = ((S.trip.consent || {})[key]) || {};
+  const hard = lo ? ms.filter(m => m.hard?.budget && lo > m.budget) : [];
+  return { n: ms.length, unknown: active().length - ms.length, fits: ms.filter(m => m.budget >= h), stretch: ms.filter(m => m.budget < h && m.budget >= lo), over: ms.filter(m => m.budget < lo), hard, hardOpen: hard.filter(m => !consent[m.id]) };
 }
 // extra: { exclude: [ids], myBudget } for "what if" questions (someone drops out, my budget changes)
 function budgetFit(sum, extra) { return bq({ lo: Math.round(sum.low || 0), hi: Math.round(sum.high || 0), ...(extra || {}) }) || NO_FIT; }
@@ -2243,7 +2252,7 @@ const BAND_STEPS = [1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 8];
 function bandOf(v) { const e = Math.pow(10, Math.floor(Math.log10(v))), g = [0.1, 1, 10].flatMap(m => BAND_STEPS.map(x => x * e * m)); return { lo: Math.round(Math.max(...g.filter(x => x <= v))), hi: Math.round(Math.min(...g.filter(x => x > v))) }; }
 function budgetCapShared() {
   let b;
-  if (budgetsHere()) { const v = active().map(m => +m.budget || 0).filter(x => x > 0); b = v.length ? { ...bandOf(Math.min(...v)), n: v.length } : null; }
+  if (budgetsHere()) { const v = active().map(budgetOf).filter(x => x > 0); b = v.length ? { ...bandOf(Math.min(...v)), n: v.length } : null; }
   else { bq({}); b = BQ.cap || null; }
   return b ? { cap: b.lo, lo: b.lo, hi: b.hi, n: b.n, label: `${money(b.lo)}–${money(b.hi)}` } : null;
 }
@@ -2259,12 +2268,12 @@ function costTab() {
   const pm = paysMode(); if (pm === 'one' && !isPayer()) return coveredCard();
   // one payer or a company: the headline is the total for everyone, and nobody's personal budget is checked
   const whole = pm !== 'split', heads = planHeads(), all = v => Math.round(v * heads);
-  const sum = costSummary(), me = whole ? sum : costSummary(S.trip, 'me'), fit = whole ? { n: 0 } : budgetFit(sum), ro = S.readOnly, mine = meDoc(), myB = whole ? 0 : +mine?.budget || 0;
+  const sum = costSummary(), me = whole ? sum : costSummary(S.trip, 'me'), fit = whole ? { n: 0 } : budgetFit(sum), ro = S.readOnly, mine = meDoc(), myB = whole ? 0 : +mine?.budget || 0, totalB = budgetIsTotal() ? +mine?.budget || 0 : 0;
   const differs = me.low !== sum.low || me.high !== sum.high;
   const empty = sum.rows.filter(r => !r.v || ['estimate', 'ai'].includes(r.v.src)).length;
   return `<section class="card stack cost">
     <div class="stack" style="gap:2px"><h2>${whole ? `What it’ll cost ${pm === 'one' ? 'you' : 'the company'}` : 'The cost of saying yes'}</h2><span class="small muted">${whole ? `For everyone (${heads} ${heads === 1 ? 'person' : 'people'}), all in. The lines below are per person.` : 'Per person, all in.'} Built from what’s booked or paid first, then quotes, then estimates.</span></div>
-    ${whole ? `<div class="cost-totals"><div class="cost-total"><span class="label">Everyone, all in</span><b>${sum.any ? rangeText(all(sum.low), all(sum.high)) : '—'}</b><span class="small muted">${sum.any ? `${heads} × ${rangeText(sum.low, sum.high)} each. ` : ''}Includes a ${sum.buffer}% buffer.</span></div></div>` : `<div class="cost-totals">
+    ${whole ? `<div class="cost-totals"><div class="cost-total"><span class="label">Everyone, all in</span><b>${sum.any ? rangeText(all(sum.low), all(sum.high)) : '—'}</b><span class="small muted">${sum.any ? `${heads} × ${rangeText(sum.low, sum.high)} each. ` : ''}${totalB && sum.any ? (all(sum.high) <= totalB ? `Fits your ${money(totalB)} total budget. ` : all(sum.low) <= totalB ? `Could go over your ${money(totalB)} total budget. ` : `Over your ${money(totalB)} total budget. `) : ''}Includes a ${sum.buffer}% buffer.</span></div></div>` : `<div class="cost-totals">
       <div class="cost-total"><span class="label">${differs ? 'You, all in' : 'Each person, all in'}</span><b>${me.any ? rangeText(me.low, me.high) : '—'}</b>${me.any ? alsoMine(me.low, me.high) : ''}
         <span class="small muted">${myB && me.any ? (me.high <= myB ? `Fits your ${money(myB)} budget.` : me.low <= myB ? `Could go over your ${money(myB)} budget.` : `Over your ${money(myB)} budget.`) + ' ' : ''}Includes a ${sum.buffer}% buffer.</span></div>
       ${differs && sum.any ? `<div class="cost-total soft"><span class="label">Typical for the crew</span><b>${rangeText(sum.low, sum.high)}</b>${alsoMine(sum.low, sum.high)}<span class="small muted">Everyone’s flights and shares differ a bit.</span></div>` : ''}
