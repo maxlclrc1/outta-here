@@ -11,7 +11,7 @@ await a.click('[data-act=newTrip]'); await a.click('[data-size=trip]'); await a.
 await a.fill('#nt-name', 'Dev turns 30'); await a.evaluate(() => { const d = document.querySelector('.more-opts-inline'); if (d) d.open = true; }); await a.fill('#nt-honoree','Dev'); await a.click('#newTrip [type=submit]'); await a.waitForSelector('.ov-hero, .pass, .passport, .setup').then(() => skipSetup(a));
 const hash = await a.evaluate(() => location.hash);
 const bp = await mk('B'); await bp.goto((process.env.BASE || 'http://localhost:3000') + '/' + hash); await bp.fill('#join-name', 'Dev'); await bp.click('.join-card [type=submit]'); await bp.waitForSelector('.ov-hero, .pass, .passport, .setup').then(() => skipSetup(bp));
-await bp.click('[data-status=in]'); await skipSetup(bp);
+await bp.click('[data-join=in]'); await skipSetup(bp); // the invitation's answer (the RSVP ladder shows once they're in)
 // budgets + homes
 await go(a,'home','crew'); await a.fill('#me-home','JFK'); await a.fill('#me-budget','900'); await a.locator('#me-budget').blur(); await a.fill('#me-venmo','ali-v'); await a.locator('#me-venmo').blur();
 await go(bp,'home','crew'); await bp.fill('#me-home','LAX'); await bp.fill('#me-budget','700'); await bp.locator('#me-budget').blur();

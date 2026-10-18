@@ -17,13 +17,13 @@ const j = await mk('Jay'); await j.goto((process.env.BASE || 'http://localhost:3
 await j.click('[data-act=home] >> nth=0'); await settle(j);
 console.log('Jay sees delete on Ali plan:', await j.locator('[data-homedel]').count(), '| Ali:', await (async () => { await a.click('[data-act=home] >> nth=0'); await settle(a); return a.locator('[data-homedel]').count(); })());
 await a.screenshot({ path: S + 'home-phone.png', fullPage: true });
-await j.click('[data-open]'); await j.waitForSelector('.ov-hero, .pass, .passport, .setup').then(() => skipSetup(j)); await j.click('[data-status=in]'); await skipSetup(j); await settle(j);
+await j.click('[data-open]'); await j.waitForSelector('.ov-hero, .pass, .passport, .setup').then(() => skipSetup(j)); await j.click('.welcome [data-join=in]'); await skipSetup(j); await settle(j); // the invitation's answer
 await go(j, 'home', 'settings'); console.log('Jay settings delete btn:', await j.locator('[data-act=askDelete]').count(), '| type section (hangout):', await j.locator('text=Type').count());
 await j.click('[data-act=askLeave]'); await settle(j); console.log('leave banner:', await j.locator('.banner').first().innerText());
 await j.click('[data-act=doLeave]'); await j.waitForTimeout(1200); await settle(j);
 console.log('Jay plans after leaving:', await j.locator('.plan-row h3').allInnerTexts(), '| toast:', await j.locator('#toast').innerText());
 // rejoin via link
-await j.goto((process.env.BASE || 'http://localhost:3000') + '/' + tid); await j.waitForTimeout(2500); await j.screenshot({ path: S + 'rejoin.png', fullPage: true }); await j.waitForSelector('[data-status=in]'); await j.click('[data-status=in]'); await skipSetup(j); await j.waitForTimeout(800); await j.click('[data-act=home] >> nth=0'); await settle(j);
+await j.goto((process.env.BASE || 'http://localhost:3000') + '/' + tid); await j.waitForTimeout(2500); await j.screenshot({ path: S + 'rejoin.png', fullPage: true }); await j.waitForSelector('.welcome [data-join=in], .ladder [data-status=in]'); await j.click('.welcome [data-join=in], .ladder [data-status=in]'); await skipSetup(j); await j.waitForTimeout(800); await j.click('[data-act=home] >> nth=0'); await settle(j);
 console.log('Jay plans after rejoin:', await j.locator('.plan-row h3').allInnerTexts());
 // 2. hangout empty states + month labels
 await a.click('[data-open]'); await a.waitForSelector('.ov-hero, .pass, .passport, .setup').then(() => skipSetup(a)); await settle(a);

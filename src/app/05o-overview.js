@@ -51,13 +51,12 @@ function overviewTab() {
   const t = S.trip, welcome = showWelcome();
   // someone who hasn't answered yet sees the invitation first, not the whole planning screen
   if (welcome && !S.peek) return welcomeCard();
-  const f = journey().focus, me = meDoc(), stage = STAGES.findIndex(([k]) => k === stageOf(t, S.members));
-  const rsvpShown = f && ['rsvp', 'confirm'].includes(f.k) && f.mine;
+  const me = meDoc(), stage = STAGES.findIndex(([k]) => k === stageOf(t, S.members));
   return `${welcome ? welcomeCard() : planHero()}
   ${isLive() ? '<div class="row" style="gap:8px"><button class="btn lost-btn" data-act="lostOpen">I’m lost</button><span class="small muted">Sends the crew your spot.</span></div>' : ''}
   ${welcome ? '' : journeyCard()}
   ${welcome ? '' : changesCard()}
-  ${me && !welcome && !rsvpShown && !S.readOnly ? `<section class="card ov-me"><span class="g-k">Are you in?</span>${commitLadder()}</section>` : ''}
+  ${me && !welcome && !S.readOnly ? `<section class="card ov-me"><span class="g-k">Are you in?</span>${commitLadder()}</section>` : ''}
   ${ovGlance()}
   ${S.recover ? recoveryCard() : welcome ? '' : `<details class="ov-fold" data-key="fold-recover"><summary><b>Something changed?</b><span class="small muted">See what it affects before anything moves</span></summary>${recoveryCard()}</details>`}
   <details class="ov-fold" data-key="fold-pass" ${S.cardUrl ? 'open' : ''}><summary><b>${stage >= 2 ? 'Plan passport' : 'Plan pass'}</b><span class="small muted">Share it, or make a story card</span></summary>${stage >= 2 ? passport() : pass()}</details>`;

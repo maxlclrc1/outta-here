@@ -157,7 +157,6 @@ function pass() {
     </div>
     <div class="pass-stub">
       <div><span class="label">Crew</span><div class="code" style="font-size:40px">${inN}<span class="muted" style="font-size:22px">/${S.members.length}</span></div><span class="small muted">going</span></div>
-      ${commitLadder()}
     </div>
   </section>`;
 }
