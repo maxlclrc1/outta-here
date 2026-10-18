@@ -33,6 +33,13 @@ app.addEventListener('click', e => {
   if (ds.pickcrew !== undefined) { S.newCrew = ds.pickcrew || null; S.creating = 'size'; render(); window.scrollTo({ top: 0 }); return; }
   if (ds.size) { S.newSize = ds.size; S.creating = 'mode'; render(); window.scrollTo({ top: 0 }); return; }
   if (ds.act === 'backSize') { S.creating = 'size'; return render(); }
+  // "describe your plan" (10b-describe.js)
+  if (ds.ndeg) { const ta = $('#nd-text'); if (ta) { ta.value = ds.ndeg; DRAFT['nd-text'] = ds.ndeg; ta.focus(); } return; }
+  if (ds.shedit) { S.shapeEdit = S.shapeEdit === ds.shedit ? null : ds.shedit; render(); setTimeout(() => $('.sh-edit input, .sh-edit select')?.focus(), 30); return; }
+  if (ds.act === 'shapeSave') return shapeSave();
+  if (ds.act === 'shapeCancel') { S.shapeEdit = null; return render(); }
+  if (ds.act === 'shapeCreate') return shapeCreate();
+  if (ds.act === 'shapeBack') { S.shapeEdit = null; S.creating = 'size'; render(); window.scrollTo({ top: 0 }); return; }
   if (ds.act === 'backCrew') { S.creating = 'crew'; return render(); }
   if (ds.act === 'newCrew') { S.crewView = null; S.creating = 'newCrew'; render(); setTimeout(() => $('#nc-name')?.focus(), 50); return; }
   if (ds.crew) return openCrew(ds.crew);
@@ -40,7 +47,7 @@ app.addEventListener('click', e => {
   if (ds.mode) { S.newMode = ds.mode; S.newPays = null; S.creating = 'form'; render(); window.scrollTo({ top: 0 }); return; }
   if (ds.act === 'backModes') { S.creating = 'mode'; return render(); }
   if (ds.when) { const [x, y] = ds.when.split('|'); for (const [id, v] of [['nt-start', x], ['nt-end', y]]) { const el = $('#' + id); if (el) el.value = v; DRAFT[id] = v; } return render(); }
-  if (ds.act === 'cancelNew') { S.creating = null; S.newCrew = null; S.newSize = null; return render(); }
+  if (ds.act === 'cancelNew') { S.creating = null; S.newCrew = null; S.newSize = null; S.shape = null; S.shapeText = ''; S.shapeEdit = null; delete DRAFT['nd-text']; return render(); }
   if (ds.sec) { const sec = sections().find(x => x.k === ds.sec); S.tab = S.secTab[ds.sec] || (ds.sec === 'live' && !isLive() && !S.secTab.live ? 'live' : sec.tabs[0][0]); S.tabPicked = true; S.show = null; clearInterval(showTimer); render(); window.scrollTo({ top: 0 }); return; }
   if (ds.tab) { if (ds.tab === 'wrapped' && S.tid) lsSet('outta_wrapped_' + S.tid, true); S.guideJump = !!ds.guide; S.tab = TAB_ALIAS[ds.tab] || ds.tab; S.secTab[secOf(S.tab).k] = S.tab; S.tabPicked = true; if (ds.tab !== 'recap') { S.show = null; clearInterval(showTimer); } render(); window.scrollTo({ top: 0 }); return; }
   if (ds.tpluse) { S.repeat = { tpl: ds.tpluse, cid: S.crewView || S.trip?.crewId }; render(); setTimeout(() => $('#repeat-box')?.scrollIntoView({ block: 'nearest', behavior: calm() ? 'auto' : 'smooth' }), 60); return; }
@@ -78,10 +85,18 @@ app.addEventListener('click', e => {
   if (ds.act === 'startRunoff') return startRunoff();
   if (ds.act === 'endRunoff') return saveTrip({ runoff: null });
   if (ds.act === 'nudgeSwipe') return sendInvite(`Swipe on our ${planWord()} options for ${S.trip.name}. We’re waiting on you!`, inviteLink(), S.trip.name);
+  // a tap is free / not free; in ★ Favorites mode it stars a day instead (and counts you free on it)
   if (ds.day) {
     const days = new Set(meDoc()?.days || []), pref = new Set(meDoc()?.pref || []), d = ds.day;
-    if (!days.has(d)) days.add(d); else if (!pref.has(d)) pref.add(d); else { days.delete(d); pref.delete(d); }
+    if (S.starMode) { if (pref.has(d)) pref.delete(d); else { pref.add(d); days.add(d); } }
+    else if (days.has(d)) { days.delete(d); pref.delete(d); } else days.add(d);
     return saveMe({ days: [...days].sort(), pref: [...pref].filter(x => days.has(x)).sort() });
+  }
+  if (ds.act === 'starMode') { S.starMode = !S.starMode; return render(); }
+  if (ds.addwin) {
+    const [a, z] = ds.addwin.split('|'), days = new Set([...(meDoc()?.days || []), ...span(a, z)]);
+    saveMe({ days: [...days].sort() }, true); votePop('Works for me ✓', 'y');
+    return flash(`You’re in for ${a === z ? fmt(a) : dayRange(a, z)}. The crew can see it.`);
   }
   if (ds.taskdone) { const x = (S.trip.tasks || {})[ds.taskdone]; if (x) { patchTask(ds.taskdone, { done: !x.done, doneBy: x.done ? '' : S.uid }); if (!x.done) flash(`Done: ${x.title}`); } return; }
   if (ds.taketask) return patchTask(ds.taketask, { owner: S.uid });
@@ -283,6 +298,8 @@ document.addEventListener('keydown', e => {
   e.preventDefault(); top[1](); render();
   if (opener && opener.isConnected) opener.focus({ preventScroll: true });
 });
+// Enter in the describe box plans it (Shift+Enter for a new line); Enter in a chip's editor saves it
+app.addEventListener('keydown', e => { if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return; if (e.target.id === 'nd-text') { e.preventDefault(); shapeRead(e.target.value); } else if (e.target.closest?.('.sh-edit')) { e.preventDefault(); shapeSave(); } });
 app.addEventListener('keydown', e => { const p = e.target.closest && e.target.closest('[data-pin]'); if (p && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); p.dispatchEvent(new MouseEvent('click', { bubbles: true })); } });
 // swipe left/right on a phone to move between the tabs of a menu
 let swipe0 = null;
@@ -319,6 +336,7 @@ app.addEventListener('submit', async e => {
   const f = e.target;
   clearDrafts(f);
   if (f.id === 'newTrip') return once('create', createTrip);
+  if (f.id === 'describeForm') return shapeRead($('#nd-text')?.value);
   if (f.id === 'newCrewForm') { const n = $('#nc-name').value.trim(); if (n) return once('crew', () => createCrew(n)); return; }
   if (f.id === 'dnaNote') { const text = $('#dna-note').value.trim().slice(0, 80); if (!text) return; $('#dna-note').value = ''; return dnaSave(S.crewView || S.trip?.crewId, { notes: { [rid(6)]: { text, by: S.uid, at: Date.now() } } }); }
   if (f.classList.contains('dna-fix')) { const k = f.dataset.k, v = ($('#dna-fix-' + k)?.value || '').trim().slice(0, 50); S.dnaEdit = null; render(); return dnaSave(S.crewView || S.trip?.crewId, { fix: { [k]: v || null } }); }

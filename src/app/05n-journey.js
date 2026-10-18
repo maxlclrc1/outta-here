@@ -36,7 +36,7 @@ function jSteps() {
     why: inPlan.length < 2 ? `It’s just you so far. Votes, dates and costs only mean something once people are in.` : '',
     todo: 'Send the invite to your group chat. They tap it, type their name and they’re in.',
     after: 'As people join, they pick their free days and vote. You’ll see it here.',
-    act: () => btn('data-act="copyInvite"', 'Send the invite'), help: { tab: 'crew', sel: '[data-act="copyInvite"]' },
+    act: () => btn('data-act="copyInvite"', 'Send the invite') + waBtn(), help: { tab: 'crew', sel: '[data-act="copyInvite"]' },
   });
   if (honoreeMode() && !small) add('honoree', 'gather', {
     title: `Choose the ${mode().honoree}`, done: !!t.honoree, hideFrom: 'honoree', mine: true, mineText: `Choose the ${mode().honoree}`,

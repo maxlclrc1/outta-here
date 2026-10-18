@@ -26,7 +26,7 @@ await step('P2 commitment', async () => {
 await step('P3 flexible dates', async () => {
   const win = await a.evaluate(() => 0); await go(a, 'plan', 'dates');
   await a.click('[data-act=allDays]'); await a.waitForTimeout(300);
-  const d1 = await a.locator('.cal .day').nth(1).getAttribute('data-day'); await a.locator(`.cal .day[data-day="${d1}"]`).click(); await a.waitForTimeout(300);
+  const d1 = await a.locator('.cal .day').nth(1).getAttribute('data-day'); await a.click('[data-act=starMode]'); await a.locator(`.cal .day[data-day="${d1}"]`).click(); await a.waitForTimeout(300); await a.click('[data-act=starMode]');
   console.log('P3 Ali star on', d1, ':', await a.locator('.cal .day.pref').count());
   await go(k, 'plan', 'dates'); await k.click('[data-act=allDays]'); await k.waitForTimeout(300);
   await go(j, 'plan', 'dates'); const days = await j.locator('.cal .day').evaluateAll(els => els.map(e => e.dataset.day));
