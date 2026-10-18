@@ -389,7 +389,7 @@ function context() {
   const d = dates(), ds = dest(), b = budgetCap();
   const days = d ? span(d.start, d.end).map(x => `${x} (${dow(x)})`).join(', ') : 'not set';
   const pk = planKind();
-  if (isSmall()) return `Plan type: ${size() === 'hangout' ? 'one evening out' : 'a day out'} with ${pk.with}. ${mode().label !== 'Friends trip' ? mode().ai : ''}
+  if (isSmall()) return `Plan type: ${size() === 'hangout' ? 'one evening out' : 'a day out'} with ${pk.with}. ${mode() !== MODES.friends ? `${modeLabel(mode(), size())}. ${modeAi()}` : ''}
 City: ${S.trip.city || 'not set'}
 The plan: ${ds ? ds.city : 'not decided'}${S.trip.venue ? ' at ' + S.trip.venue : ''}
 Day: ${d ? `${d.start} (${dow(d.start)})` : 'not set'}${S.trip.time ? ', starting ' + S.trip.time : ''}

@@ -10,7 +10,7 @@ const go = async (p, sec, tab) => { await p.click('.bottomnav [data-sec=' + sec 
 const a = await mk('Ali');
 await a.click('[data-act=newCrew] >> nth=0'); await a.fill('#nc-name', 'Taco Crew'); await a.click('#newCrewForm [type=submit]'); await a.waitForSelector('text=Invite to the crew'); await settle(a);
 const crewHash = await a.evaluate(() => location.hash);
-await a.click('[data-startcrew] >> nth=0'); await settle(a); await a.click('[data-size=hangout]'); await settle(a);
+await a.click('[data-startcrew] >> nth=0'); await settle(a); await a.click('[data-size=hangout]'); await settle(a); await a.click('[data-mode=friends]'); await settle(a);
 await a.fill('#nt-name', 'Friday tacos at a really long named place downtown'); await a.fill('#nt-city', 'Brooklyn'); await a.click('#newTrip [type=submit]'); await a.waitForSelector('.pass, .passport, .setup').then(() => skipSetup(a)); await settle(a);
 const tid = await a.evaluate(() => location.hash);
 const j = await mk('Jay'); await j.goto((process.env.BASE || 'http://localhost:3000') + '/' + crewHash); await j.waitForSelector('text=Invite to the crew'); await settle(j);

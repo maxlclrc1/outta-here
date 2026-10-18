@@ -105,7 +105,7 @@ const liveText = async () => { await p.click('.bottomnav [data-sec=live]'); awai
 
 // —— small hangout: unchanged ——
 {
-  const tid = await create('hangout');
+  const tid = await create('hangout', 'friends');
   await open(tid, 'plan', 'match');
   const pitch = await ask('genPitches');
   expect('hangout: still a friend group, “fun, social”, the original quiz', /pitching plans to a friend group/.test(pitch) && /Vibe: fun, social\n/.test(pitch));

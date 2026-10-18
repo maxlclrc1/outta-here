@@ -30,7 +30,7 @@ app.addEventListener('click', e => {
   if (ds.homedo) return once('delete', () => deleteTrip(ds.homedo));
   if (ds.act === 'newTrip') return startNewPlan();
   if (ds.pickcrew !== undefined) { S.newCrew = ds.pickcrew || null; S.creating = 'size'; render(); window.scrollTo({ top: 0 }); return; }
-  if (ds.size) { S.newSize = ds.size; S.creating = ['hangout', 'day'].includes(ds.size) ? 'form' : 'mode'; render(); window.scrollTo({ top: 0 }); return; }
+  if (ds.size) { S.newSize = ds.size; S.creating = 'mode'; render(); window.scrollTo({ top: 0 }); return; }
   if (ds.act === 'backSize') { S.creating = 'size'; return render(); }
   if (ds.act === 'backCrew') { S.creating = 'crew'; return render(); }
   if (ds.act === 'newCrew') { S.crewView = null; S.creating = 'newCrew'; render(); setTimeout(() => $('#nc-name')?.focus(), 50); return; }
