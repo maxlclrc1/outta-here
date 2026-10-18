@@ -1396,13 +1396,20 @@ async function swipe(pid, v) {
   const m = matchedPitch();
   if (m && v === 1 && m.id === pid) { celebrate(m.city, GRADS[hashStr(m.city) % GRADS.length][0], 'It’s a match!'); flash(`It’s a match! Everyone’s down for ${m.city}.`); }
 }
-// A vote from the buttons under the card throws the card the same way a swipe does, then saves.
+// A vote from the buttons under the card throws the card the same way a swipe does. The vote is applied
+// at once, so the next card is already there; a copy of the old one flies off on top of it.
 function castVote(pid, v, btn) {
   const card = document.getElementById('pitch');
-  if (card && card.dataset.pid === pid && btn?.classList.contains('swipe-btn') && !calm()) {
-    card.classList.add(v === 1 ? 'fly-yes' : v === -1 ? 'fly-no' : 'fly-meh'); setTimeout(() => swipe(pid, v), 230); return;
-  }
+  if (card && card.dataset.pid === pid && btn?.classList.contains('swipe-btn')) flyOff(card, v === 1 ? 'yes' : v === -1 ? 'no' : 'meh');
   return swipe(pid, v);
+}
+function flyOff(card, dir) {
+  if (calm()) return;
+  const r = card.getBoundingClientRect(), ghost = card.cloneNode(true);
+  ghost.removeAttribute('id'); ghost.querySelectorAll('[id]').forEach(e => e.removeAttribute('id'));
+  ghost.classList.remove('dragging'); ghost.classList.add('pitch-ghost', 'fly-' + dir); ghost.setAttribute('aria-hidden', 'true');
+  Object.assign(ghost.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+  document.body.appendChild(ghost); setTimeout(() => ghost.remove(), 400);
 }
 // a quick cheer for a vote, over the bottom of the screen, and a tap on phones
 function votePop(text, kind) {
@@ -1432,7 +1439,7 @@ function matchBody() {
   const items = S.trip.pitches?.items || [], vs = active(), m = matchedPitch();
   const next = items.find(x => !swipeOf(x.id, S.uid));
   const pitchCard = p => { const [c1, c2] = GRADS[hashStr(p.city) % GRADS.length], mark = p.small ? '' : p.code || p.city.slice(0, 3).toUpperCase();
-    return `<article class="pitch" id="pitch" data-key="pitch-${esc(p.id)}" data-pid="${esc(p.id)}">
+    return `<article class="pitch" id="pitch" data-noanim data-key="pitch-${esc(p.id)}" data-pid="${esc(p.id)}">
       <span class="stamp yes" id="stamp-yes">I'D GO</span><span class="stamp no" id="stamp-no">PASS</span><span class="stamp meh">COULD WORK</span>
       <div class="pitch-top" style="background:linear-gradient(135deg,${c1},${c2})">
         ${mark ? `<span class="p-mark" aria-hidden="true">${esc(mark)}</span>` : ''}
@@ -1493,7 +1500,7 @@ function bindSwipe() {
   el.addEventListener('pointermove', e => { if (x0 === null) return; dx = e.clientX - x0; el.style.transform = `translateX(${dx}px) rotate(${dx / 18}deg)`; yes.style.opacity = Math.max(0, Math.min(1, dx / 100)); no.style.opacity = Math.max(0, Math.min(1, -dx / 100)); });
   const end = () => {
     if (x0 === null) return; x0 = null; el.classList.remove('dragging');
-    if (Math.abs(dx) > 100) { el.style.transform = `translateX(${dx > 0 ? 600 : -600}px) rotate(${dx > 0 ? 30 : -30}deg)`; const pid = el.dataset.pid; setTimeout(() => swipe(pid, dx > 0 ? 1 : -1), 180); }
+    if (Math.abs(dx) > 100) { flyOff(el, dx > 0 ? 'yes' : 'no'); swipe(el.dataset.pid, dx > 0 ? 1 : -1); }
     else { el.style.transform = ''; yes.style.opacity = 0; no.style.opacity = 0; }
   };
   el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);

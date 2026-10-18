@@ -36,7 +36,8 @@ async function setup(motion) {
   expect('the crew’s progress counts saved votes: 2 of 4 swipes in, 2 left for Maya', /2\/4 swipes in/.test(await p.locator('.vprog-top').innerText()) && /2 left for you/.test(await p.locator('.vprog-top').innerText()) && (await p.locator('.vp-av.fin').count()) === 1);
   expect('the three votes are labeled buttons', (await p.locator('.vote-row .swipe-btn').allInnerTexts()).map(s => s.replace(/\s+/g, ' ').trim()).join(' | ') === '✕ PASS | ≈ COULD WORK | ♥ I’D GO' && (await p.locator('.vote-row [aria-label="I\'d go"]').count()) === 1);
   await p.click('.vote-row .swipe-btn.yes'); await p.waitForTimeout(60);
-  expect('“I’d go” throws the card right and cheers', (await p.locator('#pitch.fly-yes').count()) === 1 && /I’d go/.test(await p.locator('.vote-pop').innerText().catch(() => '')));
+  expect('“I’d go” throws the card right and cheers', (await p.locator('.pitch-ghost.fly-yes').count()) === 1 && /I’d go/.test(await p.locator('.vote-pop').innerText().catch(() => '')));
+  expect('…while the next card is already there (no wait for the throw)', (await p.locator('#pitch').getAttribute('data-pid')) === 'p2');
   await p.waitForTimeout(500);
   expect('a match on Lisbon gets the celebration', /It’s a match!/i.test(await p.locator('.launch').innerText().catch(() => '')) && (await mine('p1')) === 1);
   await settle(p); await p.waitForTimeout(1500);
@@ -60,7 +61,7 @@ async function setup(motion) {
 // —— reduced motion: no flying card or overlays, votes still save right away ——
 { const { p, mine } = await setup('reduce');
   await p.click('.vote-row .swipe-btn.yes'); await p.waitForTimeout(80);
-  expect('reduced motion: the card isn’t thrown', !(await p.locator('#pitch.fly-yes').count()));
+  expect('reduced motion: the card isn’t thrown', !(await p.locator('.pitch-ghost').count()));
   await p.waitForTimeout(500);
   expect('…no celebration overlay, and the vote is saved', !(await p.locator('.launch').count()) && (await mine('p1')) === 1); }
 
