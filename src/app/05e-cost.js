@@ -17,6 +17,13 @@ function moneyRange(s) {
   return [Math.min(...v), Math.max(...v)];
 }
 const planHeads = () => { const h = headcount(); return Math.max(1, h.firm || h.max || active().length); };
+// Who splits a shared cost: those heads, minus a guest of honor whose share the group covers
+// (as expense splits and settle-up do). Never below 1, so a lone covered honoree sees the full price.
+const payHeads = () => {
+  const h = headcount(), n = planHeads(), hon = honoreeFree() && S.members.find(m => m.id === S.trip.honoree);
+  const st = hon ? hon.status || 'maybe' : '', counted = hon && (h.firm ? ['booked', 'confirmed'] : h.max ? ['booked', 'confirmed', 'in'] : ['booked', 'confirmed', 'in', 'maybe']).includes(st);
+  return Math.max(1, n - (counted ? 1 : 0));
+};
 // Sort a logged expense into a cost line by what it was for.
 const CAT_RX = [['travel', /flight|airline|plane|train|bus|amtrak|gas|toll|rental car|car rental/i], ['stay', /airbnb|hotel|hostel|motel|stay|cabin|lodg|vrbo|rent\b/i], ['local', /uber|lyft|taxi|cab\b|transfer|parking|metro|subway/i],
   ['fun', /ticket|tour|cover|club|show|museum|boat|bowling|karaoke|class|entry/i], ['fees', /fee|deposit|cleaning/i], ['food', /dinner|lunch|breakfast|brunch|food|drink|bar|groceries|restaurant|coffee|tab|round|pizza|taco|snack/i]];
@@ -29,7 +36,7 @@ function lineFor(title) {
 // What each line has actually cost so far: shared expenses (your share, or the
 // average share) plus, for flights, the price on your boarding pass or in My spend.
 function paidSoFar(who) {
-  const out = {}, other = { n: 0 }, heads = planHeads();
+  const out = {}, other = { n: 0 }, heads = payHeads();
   for (const e of S.expenses) {
     const split = e.split || active().map(m => m.id);
     const share = who === 'me' ? (split.includes(S.uid) ? e.amount / split.length : 0) : e.amount / heads;
@@ -53,10 +60,10 @@ function costHints() {
   const t = S.trip, d = dates(), nights = Math.max(1, nightsOf(d)), out = {};
   const fl = (t.deals?.data?.flights || []).map(f => moneyRange(f.roundTrip)).filter(Boolean);
   if (fl.length && size() === 'trip') out.travel = { low: Math.min(...fl.map(r => r[0])), high: Math.max(...fl.map(r => r[1])), src: 'ai', note: 'From the flight search estimates' };
-  if (t.stay && +t.stay.total && !isSmall()) { const n = planHeads(); out.stay = { low: Math.round(t.stay.total / n), high: Math.round(t.stay.total / n), src: t.stay.booked ? 'booked' : 'quote', note: `${t.stay.name}, ${money(t.stay.total)} total ${n === 1 ? "for 1 person" : `split ${n} ways`}` }; return out; }
+  if (t.stay && +t.stay.total && !isSmall()) { const n = payHeads(); out.stay = { low: Math.round(t.stay.total / n), high: Math.round(t.stay.total / n), src: t.stay.booked ? 'booked' : 'quote', note: `${t.stay.name}, ${money(t.stay.total)} total ${n === 1 ? "for 1 person" : `split ${n} ways`}` }; return out; }
   const stays = t.stay ? [t.stay] : (t.stays?.items || []);
   const pn = stays.map(s => moneyRange(s.perNight)).filter(Boolean);
-  if (pn.length && !isSmall()) { const n = planHeads(); out.stay = { low: Math.round(Math.min(...pn.map(r => r[0])) * nights / n), high: Math.round(Math.max(...pn.map(r => r[1])) * nights / n), src: t.stay ? 'quote' : 'ai', note: `${t.stay ? t.stay.name : 'Stay ideas'}, ${nights} night${nights === 1 ? '' : 's'} ${n === 1 ? "for 1 person" : `split ${n} ways`}` }; }
+  if (pn.length && !isSmall()) { const n = payHeads(); out.stay = { low: Math.round(Math.min(...pn.map(r => r[0])) * nights / n), high: Math.round(Math.max(...pn.map(r => r[1])) * nights / n), src: t.stay ? 'quote' : 'ai', note: `${t.stay ? t.stay.name : 'Stay ideas'}, ${nights} night${nights === 1 ? '' : 's'} ${n === 1 ? "for 1 person" : `split ${n} ways`}` }; }
   return out;
 }
 // who: 'crew' (a typical person's range) or 'me' (your own, using your real numbers)

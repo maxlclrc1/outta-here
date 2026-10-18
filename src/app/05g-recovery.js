@@ -14,7 +14,7 @@ function planState(extra) {
   const L = S.trip.lockedDates, ldays = L ? span(L.start, L.end) : null;
   return {
     heads, low: sum.low, high: sum.high, any: sum.any,
-    stayEach: st && +st.total ? Math.round(st.total / heads) : stayRow?.v ? Math.round(stayRow.v.high) : 0,
+    stayEach: st && +st.total ? Math.round(st.total / payHeads()) : stayRow?.v ? Math.round(stayRow.v.high) : 0,
     over: fit.over.map(m => m.id), stretch: fit.stretch.map(m => m.id),
     condOff: active().filter(m => +m.cond?.under > 0 && sum.any && sum.low > +m.cond.under).map(m => m.id),
     hardBudget: sum.any ? budgetFit(sum, extra).hard.map(m => m.id) : [],
