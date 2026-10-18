@@ -116,7 +116,7 @@ app.addEventListener('click', e => {
   if (ds.consent) return toggleConsent(ds.consent);
   if (ds.need) { const [sec, k] = ds.need.split('|'); return toggleNeed(sec, k); }
   if (ds.decide) { if (!isOrganizer() || ds.decide === decideOf().style) return; return saveTrip(withLog({ decide: { style: ds.decide, ...(ds.decide === 'pick' && !decideOf().by ? { by: add(TODAY, 3) } : {}) } }, { area: 'rules', text: `How we decide: ${STYLES[ds.decide][0]}`, act: 'all', undo: { k: 'set', patch: { decide: { style: decideOf().style } } } })); }
-  if (ds.lockdates) { const [start, end] = ds.lockdates.split('|'); return saveTrip(withLog({ lockedDates: { start, end } }, { area: 'dates', text: `${start === end ? 'Day' : 'Dates'} locked: ${dayRange(start, end)}`, act: 'all', undo: { k: 'set', patch: { lockedDates: S.trip.lockedDates || null } } })); }
+  if (ds.lockdates) { const [start, end] = ds.lockdates.split('|'); return saveTrip(withLog({ lockedDates: { start, end } }, { area: 'dates', text: `${start === end ? 'Day' : 'Dates'} locked: ${dayRange(start, end)}`, act: 'all', undo: { k: 'set', patch: { lockedDates: S.trip.lockedDates || null } } })).then(ok => ok && celebrate(dayRange(start, end), planColor(S.trip), start === end ? 'Day locked!' : 'Dates locked!')); }
   if (ds.act === 'unlockDates') return saveTrip(withLog({ lockedDates: null }, { area: 'dates', text: 'Dates unlocked', act: 'all', undo: { k: 'set', patch: { lockedDates: S.trip.lockedDates || null } } }));
   if (ds.vote) { const set = new Set(meDoc()?.votes || []); set.has(ds.vote) ? set.delete(ds.vote) : set.add(ds.vote); return saveMe({ votes: [...set] }, true); }
   if (ds.lockdest) return saveTrip(withLog({ lockedDest: ds.lockdest }, { area: 'dest', text: `${isSmall() ? 'Plan' : 'Destination'} locked: ${(S.trip.destinations || []).find(x => x.id === ds.lockdest)?.city || ''}`, act: 'all', undo: { k: 'set', patch: { lockedDest: S.trip.lockedDest || null } } }));
@@ -158,7 +158,7 @@ app.addEventListener('click', e => {
   if (ds.setpays) { const k = ds.setpays; return saveTrip({ pays: k, ...(k === 'one' && !S.trip.payer ? { payer: S.trip.createdBy || S.uid } : {}) }); }
   if (ds.setmode) { S.wrapI = 0; return saveTrip({ mode: ds.setmode }); }
   if (ds.reveal) { const it = (S.trip.itinerary || []).map(i => i.id === ds.reveal ? { ...i, revealed: true } : i); flash('Surprise revealed.'); return saveTrip({ itinerary: it }); }
-  if (ds.swipe) { const [pid, v] = ds.swipe.split('|'); return swipe(pid, +v); }
+  if (ds.swipe) { const [pid, v] = ds.swipe.split('|'); return castVote(pid, +v, t); }
   if (ds.lockpitch) return lockPitch(ds.lockpitch);
   if (ds.checkin) { const c = { text: ds.checkin, at: Date.now() }; return saveMe({ checkin: c, checkins: [...(meDoc()?.checkins || []), c].slice(-40) }, true); }
   if (ds.act === 'clearMeet') return saveTrip(withLog({ meet: null }, { area: 'meet', text: 'Meeting point cleared', act: 'all', undo: { k: 'set', patch: { meet: S.trip.meet } } }));
