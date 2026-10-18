@@ -43,8 +43,8 @@ function ovGlance() {
   return `<section class="glance-grid" aria-label="At a glance">
     ${tile('dates', 'When', d ? esc(planWhen(t)) : !shared ? 'Nobody’s shared free days yet' : shared === ms.length ? 'Everyone’s free days are in' : `${shared} of ${ms.length} shared free days`, !!d)}
     ${tile('match', small ? 'What' : 'Where', ds ? esc(ds.city) : pitches ? `${pitches} to swipe on` : ideas ? `${ideas} idea${ideas === 1 ? '' : 's'} to vote on` : 'No ideas yet', !!ds)}
-    ${tile('cost', 'Budget', b ? `${esc(b.label)} a person` : 'Nobody’s set one yet', !!b)}
-    ${tile('tasks', 'To-dos', open ? `${open} open` : all.length ? 'All done' : 'Nothing yet', all.length > 0 && !open)}
+    ${paysMode() === 'one' ? tile('cost', 'Money', isPayer() ? 'You’re covering it' : `Covered by ${esc(nameOf(payerId()))}`, true) : paysMode() === 'company' ? tile('cost', 'Money', 'The company’s paying', true) : tile('cost', 'Budget', b ? `${esc(b.label)} a person` : 'Nobody’s set one yet', !!b)}
+    ${tabOn('tasks') ? tile('tasks', 'To-dos', open ? `${open} open` : all.length ? 'All done' : 'Nothing yet', all.length > 0 && !open) : tile('hype', 'Chat', S.feed.length ? `${S.feed.length} message${S.feed.length === 1 ? '' : 's'}` : 'Say hi to the crew', false)}
   </section>`;
 }
 function overviewTab() {

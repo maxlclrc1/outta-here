@@ -184,58 +184,101 @@ function openCrew(cid) {
 
 /* new-plan flow: crew → size → (type) → basics */
 function startNewPlan(cid) {
-  S.newCrew = cid || null; S.newSize = null; S.newMode = null;
+  S.newCrew = cid || null; S.newSize = null; S.newMode = null; S.newPays = null;
+  for (const k of ['nt-name', 'nt-start', 'nt-end']) delete DRAFT[k]; // a fresh plan starts with a blank form
   S.creating = cid || !myCrews().length ? 'size' : 'crew'; S.cameFromCrewStep = !cid && !!myCrews().length;
   if (cid) { S.crewView = null; setHash(''); }
   render(); window.scrollTo({ top: 0 });
 }
-function stepHead(title, back) {
-  const crew = S.crews.find(c => c.id === S.newCrew), sz = SIZES[S.newSize];
-  const trail = ['New plan', crew?.name, sz?.label].filter(Boolean).join(' · ');
-  return `<section class="stack"><button class="linkbtn small" data-act="${back}" style="align-self:flex-start">‹ Back</button>
-    <span class="label">${esc(trail)}</span><h1 style="font-size:clamp(30px,6vw,44px)">${title}</h1></section>`;
+/* ---------- new plan: who, how big, what kind, the basics ----------
+   One frame for every step: back, a progress bar, close, a big question and a friendly line. Each
+   step has one obvious thing to do: tap a card, or (last) create it. */
+const svgI = (d, s = 24) => `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const SIZE_ICON = {
+  hangout: '<path d="M5 4h14l-7 8z"/><path d="M12 12v7M8 20h8"/>',
+  day: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  weekend: '<path d="M3 20h18M5 20V10l7-6 7 6v10"/><path d="M10 20v-5h4v5"/>',
+  trip: '<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/>',
+};
+const SIZE_EG = { hangout: 'A few hours', day: 'One day', weekend: '1–2 nights', trip: '3+ nights, flights' };
+const TYPE_ICON = {
+  friends: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/>',
+  bachelorette: '<path d="M6 3h12l3 5-9 13L3 8z"/><path d="M3 8h18M9 3l3 5 3-5"/>',
+  bachelor: '<path d="M3 18h18M4 18 3 7l5 4 4-7 4 7 5-4-1 11"/>',
+  birthday: '<path d="M4 21h16v-8H4z"/><path d="M4 15.5c2 1.5 4 1.5 5.3 0s4 1.5 5.4 0 4-1.5 5.3 0"/><path d="M12 13V9.5M12 7c1-1 .5-2.5 0-3.5-.5 1-1 2.5 0 3.5"/>',
+  couples: '<path d="M12 20s-8-5-8-10.5A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 8 2.5C20 15 12 20 12 20z"/>',
+  family: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-5h4v5"/>',
+  college: '<path d="M12 3a9 9 0 0 1 9 9H3a9 9 0 0 1 9-9z"/><path d="M12 12v7a2 2 0 0 0 4 0"/>',
+  festival: '<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>',
+  sports: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/>',
+  work: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 13h18"/>',
+};
+// n: 0 who, 1 size, 2 type, 3 basics. The "who" step only counts when there was one.
+function flowStep(n, { eyebrow, title, sub, back, color }, body) {
+  const total = S.cameFromCrewStep ? 4 : 3, at = S.cameFromCrewStep ? n : n - 1;
+  return `<div class="nf" style="--pc:${color || 'var(--accent)'}" data-key="nf-${n}">
+    <div class="nf-top"><button class="nf-nav" data-act="${back}" aria-label="Back">${svgI('<path d="M15 5l-7 7 7 7"/>', 20)}</button>
+      <div class="nf-prog" role="progressbar" aria-label="New plan" aria-valuemin="1" aria-valuemax="${total}" aria-valuenow="${at + 1}">${Array.from({ length: total }, (_, i) => `<i class="${i < at ? 'done' : i === at ? 'cur' : ''}"></i>`).join('')}</div>
+      <button class="nf-nav" data-act="cancelNew" aria-label="Cancel the new plan">${svgI('<path d="M6 6l12 12M18 6 6 18"/>', 20)}</button></div>
+    <header class="nf-head">${eyebrow ? `<span class="nf-k">${eyebrow}</span>` : ''}<h1>${title}</h1>${sub ? `<p>${sub}</p>` : ''}</header>
+    ${body}
+  </div>`;
 }
 function pickCrewStep() {
-  return `${topBar()}${stepHead('Who’s this with?', 'cancelNew')}
-  <div class="modes">${myCrews().map(c => `<button class="mode" data-pickcrew="${esc(c.id)}" style="--mc:${colorFor(c.id)}"><b>${esc(c.name)}</b><span class="small muted">${crewMembers(c).map(id => esc(crewNick(c, id))).join(', ')}</span></button>`).join('')}
-    <button class="mode" data-pickcrew="" style="--mc:var(--muted)"><b>Someone else</b><span class="small muted">Start it and invite people after</span></button></div>`;
+  return flowStep(0, { eyebrow: 'New plan', title: 'Who’s coming?', sub: 'Pick a crew and everyone’s in from the start. Or start it and invite people after.', back: 'cancelNew' },
+    `<div class="nf-list">${myCrews().map(c => { const ids = crewMembers(c); return `<button class="nf-row" data-pickcrew="${esc(c.id)}" style="--pc:${colorFor(c.id)}">${avStack(ids.map(id => ({ id, nick: crewNick(c, id) })), 4)}<span class="nf-row-t"><b>${esc(c.name)}</b><span>${ids.length} ${ids.length === 1 ? 'person' : 'people'}</span></span>${svgI('<path d="M9 5l7 7-7 7"/>', 18)}</button>`; }).join('')}
+      <button class="nf-row nf-row-plain" data-pickcrew=""><span class="nf-ic">${svgI('<path d="M12 5v14M5 12h14"/>', 20)}</span><span class="nf-row-t"><b>Someone else</b><span>Start it, invite people after</span></span>${svgI('<path d="M9 5l7 7-7 7"/>', 18)}</button></div>`);
 }
 function pickSizeStep() {
-  return `${topBar()}${stepHead('How big is this plan?', S.cameFromCrewStep ? 'backCrew' : 'cancelNew')}
-  <div class="modes sizes">${Object.entries(SIZES).map(([k, v]) => `<button class="mode" data-size="${k}" style="--mc:${v.color}"><b>${esc(v.label)}</b><span class="small muted">${esc(v.desc)}</span></button>`).join('')}</div>`;
+  const crew = S.crews.find(c => c.id === S.newCrew);
+  return flowStep(1, { eyebrow: crew ? `New plan with ${esc(crew.name)}` : 'New plan', title: 'What are we planning?', sub: 'Pick a size. You can change it later.', back: S.cameFromCrewStep ? 'backCrew' : 'cancelNew' },
+    `<div class="nf-sizes">${Object.entries(SIZES).map(([k, v]) => `<button class="nf-size" data-size="${k}" style="--pc:${v.color}"><span class="nf-ic">${svgI(SIZE_ICON[k])}</span><b>${esc(v.label)}</b><span class="nf-d">${esc(v.desc)}</span><span class="nf-eg">${esc(SIZE_EG[k])}</span></button>`).join('')}</div>`);
 }
 function modePicker() {
-  return `${topBar()}${stepHead(`What kind of ${SIZES[S.newSize || 'trip'].label.toLowerCase()} is this?`, 'backSize')}
-  <p class="muted">We’ll tune the AI picks, the awards and the features to your group.</p>
-  <div class="modes">${Object.entries(MODES).map(([k, v]) => `<button class="mode" data-mode="${k}" style="--mc:${v.color}"><b>${esc(modeLabel(v, S.newSize))}</b><span class="small muted">${esc(modeDesc(v, S.newSize))}</span>${v.honoree ? `<span class="label" style="color:color-mix(in oklab,var(--mc) 70%,var(--ink))">Guest of honor mode</span>` : ''}</button>`).join('')}</div>`;
+  const sz = S.newSize || 'trip', small = isSmallSize(sz);
+  return flowStep(2, { eyebrow: esc(SIZES[sz].label), title: small ? 'What’s the occasion?' : `What kind of ${SIZES[sz].label.toLowerCase()}?`, sub: 'It shapes the ideas, the questions and the fun stuff.', back: 'backSize', color: SIZES[sz].color },
+    `<div class="nf-types">${Object.entries(MODES).map(([k, v]) => `<button class="nf-type" data-mode="${k}" style="--pc:${v.color}"><span class="nf-ic">${svgI(TYPE_ICON[k] || TYPE_ICON.friends, 20)}</span><b>${esc(modeLabel(v, sz))}</b><span class="nf-d">${esc(modeDesc(v, sz))}</span>${v.honoree ? `<span class="nf-tag">Guest of honor</span>` : ''}</button>`).join('')}</div>`);
+}
+// quick windows for "when", as [label, start, end]
+function whenChips(sz) {
+  const small = isSmallSize(sz);
+  return small ? [['Today', TODAY, TODAY], ['This week', TODAY, add(TODAY, 6)], ['Next 2 weeks', TODAY, add(TODAY, 13)]]
+    : [['Next few weeks', add(TODAY, 7), add(TODAY, 45)], ['In 1–3 months', add(TODAY, 30), add(TODAY, 100)], ['Later on', add(TODAY, 90), add(TODAY, 175)]];
 }
 function newTripForm() {
-  const sz = SIZES[S.newSize || 'trip'], small = ['hangout', 'day'].includes(S.newSize), m = MODES[S.newMode] || MODES.friends, crew = S.crews.find(c => c.id === S.newCrew);
+  const szK = S.newSize || 'trip', sz = SIZES[szK], small = isSmallSize(szK), m = MODES[S.newMode] || MODES.friends, crew = S.crews.find(c => c.id === S.newCrew);
   const start = small ? TODAY : add(TODAY, 30), end = add(start, sz.win + (small ? 0 : 15));
   let city = ''; try { city = localStorage.getItem('outta_city') || ''; } catch {}
-  const ph = small ? ({ birthday: 'Dev’s birthday dinner', family: 'Sunday family dinner', work: 'Team lunch' }[S.newMode] || sz.ph) : { bachelorette: 'Sarah’s Last Fling', bachelor: 'Mike’s Last Ride', birthday: 'Dev turns 30', family: 'Family beach week', work: 'Q3 team offsite', festival: 'Coachella weekend', sports: 'Super Bowl trip', couples: 'Couples in Tulum', college: 'Spring break ’27' }[S.newMode] || sz.ph;
-  return `${topBar()}${stepHead('The basics', 'backModes')}
-  <div class="row" style="gap:8px"><span class="mode-chip" style="--mc:${m.color}">${esc(modeLabel(m, S.newSize))}</span>${crew ? `<span class="small muted">Everyone in <b>${esc(crew.name)}</b> is added automatically.</span>` : ''}</div>
-  <section class="card stack">
-    <form id="newTrip" class="stack">
-      <label class="field"><span class="label">Name it</span><input id="nt-name" required maxlength="60" placeholder="${esc(ph)}"></label>
-      ${small ? `<label class="field"><span class="label">Which city?</span><input id="nt-city" maxlength="50" value="${esc(city)}" placeholder="Brooklyn" required></label>` : ''}
-      <div class="row">
-        <label class="field"><span class="label">${small ? 'Could happen from' : 'Earliest date'}</span><input id="nt-start" type="date" value="${start}" min="${TODAY}" required></label>
-        <label class="field"><span class="label">${small ? 'Until' : 'Latest date'}</span><input id="nt-end" type="date" value="${end}" min="${TODAY}" required></label>
-      </div>
-      <details class="more-opts-inline"><summary class="small">More options${small ? '' : ': nights, currency' + (m.honoree ? ', ' + esc(m.honoree) : '')}</summary>
-        <div class="row" style="margin-top:10px">
-          <label class="field" style="flex:0 1 190px"><span class="label">Currency</span><select id="nt-cur">${curOptions(lsGetC('outta_lastcur', '') || myCur())}</select></label>
+  const ph = small ? ((szK === 'day' ? { birthday: 'Dev’s birthday day out', family: 'Zoo day', work: 'Team day out' } : { birthday: 'Dev’s birthday dinner', family: 'Sunday family dinner', work: 'Team lunch' })[S.newMode] || sz.ph) : { bachelorette: 'Sarah’s Last Fling', bachelor: 'Mike’s Last Ride', birthday: 'Dev turns 30', family: 'Family beach week', work: 'Q3 team offsite', festival: 'Coachella weekend', sports: 'Super Bowl trip', couples: 'Couples in Tulum', college: 'Spring break ’27' }[S.newMode] || sz.ph;
+  const a = DRAFT['nt-start'] || start, b = DRAFT['nt-end'] || end, name = DRAFT['nt-name'] || '', cv = coverOf({ mode: S.newMode, size: szK, name: 'new' }, 'new-' + szK + S.newMode);
+  return flowStep(3, { eyebrow: `${esc(modeLabel(m, szK))}${modeLabel(m, szK).toLowerCase().includes(sz.label.toLowerCase()) ? '' : ' · ' + esc(sz.label)}`, title: 'Give it a name', sub: small ? 'Then roughly when and where. The crew picks the details together.' : 'Then roughly when. The crew picks the place and the exact nights together.', back: 'backModes', color: planColor({ mode: S.newMode, size: szK }) },
+    `<form id="newTrip" class="nf-form">
+      <div class="nf-preview ${cv.cls}" style="${cv.style}" aria-hidden="true"><div class="ovh-top"><span class="ovh-chip">${esc(modeLabel(m, szK))}</span>${crew ? `<span class="ovh-chip soft">with ${esc(crew.name)}</span>` : ''}</div><b class="nf-pv-title ${name ? '' : 'is-ph'}">${esc(name || ph)}</b></div>
+      <label class="nf-field"><span>What should we call it?</span><input id="nt-name" class="nf-big" required maxlength="60" value="${esc(name)}" placeholder="${esc(ph)}" autocomplete="off" enterkeyhint="next"></label>
+      ${small ? `<label class="nf-field"><span>Which city?</span><input id="nt-city" maxlength="50" value="${esc(city)}" placeholder="Brooklyn" required autocomplete="address-level2"></label>` : ''}
+      <div class="nf-field"><span>${small ? 'When could it happen?' : 'Roughly when?'}</span>
+        <div class="nf-chips">${whenChips(szK).map(([l, x, y]) => `<button type="button" class="nf-chip ${a === x && b === y ? 'on' : ''}" data-when="${x}|${y}">${l}</button>`).join('')}</div>
+        <div class="nf-dates"><label><span>${small ? 'From' : 'Earliest'}</span><input id="nt-start" type="date" value="${a}" min="${TODAY}" required></label><span class="nf-arrow" aria-hidden="true">→</span><label><span>${small ? 'Until' : 'Latest'}</span><input id="nt-end" type="date" value="${b}" min="${TODAY}" required></label></div>
+        <p class="nf-hint">${small ? 'Everyone taps which of these days they’re free.' : 'A wide window is fine. Everyone shares their free days, then you lock the best ones.'}</p></div>
+      <details class="more-opts-inline nf-more"><summary><b>Fine-tune</b><span>${['Currency', !small && 'nights', !small && m.honoree && `the ${esc(m.honoree)}`].filter(Boolean).join(', ')}</span></summary>
+        <div class="row" style="margin-top:12px">
+          <label class="field" style="flex:1 1 190px"><span class="label">Currency</span><select id="nt-cur">${curOptions(lsGetC('outta_lastcur', '') || myCur())}</select></label>
           ${small ? '' : `<label class="field" style="flex:0 1 110px"><span class="label">Nights</span><select id="nt-nights">${[1, 2, 3, 4, 5, 6, 7, 10, 14].map(n => `<option ${n === sz.nights ? 'selected' : ''}>${n}</option>`).join('')}</select></label>`}
           ${!small && m.honoree ? `<label class="field"><span class="label">The ${esc(m.honoree)}’s name</span><input id="nt-honoree" maxlength="40" placeholder="Optional"></label>` : ''}
         </div>
         <span class="small muted">All of this can change later in Settings.</span>
       </details>
-      <p class="small muted">${small ? 'Everyone taps which of these days they’re free. The crew picks the exact plan and day together.' : 'Not sure on dates yet? Give a wide window. The crew picks the exact nights later.'}</p>
-      <div><button class="btn primary big" type="submit" ${S.busy.create ? 'disabled' : ''}>${S.busy.create ? '<i class="spin"></i>Creating…' : `Create ${esc(sz.label.toLowerCase())}`}</button></div>
-    </form>
-  </section>`;
+      ${asksPays(S.newMode, szK) ? `<div class="nf-field" role="radiogroup" aria-label="Who’s paying?"><span>Who’s paying?</span><div class="nf-pays">${(PAYS_COPY[planGroup({ mode: S.newMode })] || PAYS_COPY.friends).order.slice(0, planGroup({ mode: S.newMode }) === 'work' ? 3 : 2).map(k => { const [l, d] = paysCopy(k, S.newMode), on = k === (S.newPays || paysDefault(S.newMode, szK)); return `<label class="nf-pay ${on ? 'on' : ''}"><input type="radio" name="nt-pays" value="${k}" ${on ? 'checked' : ''}><b>${esc(l)}</b><span>${esc(d)}</span></label>`; }).join('')}</div></div>` : ''}
+      ${crew ? `<p class="nf-hint">Everyone in <b>${esc(crew.name)}</b> is added automatically.</p>` : ''}
+      <div class="nf-cta"><button class="btn primary big" type="submit" ${S.busy.create ? 'disabled' : ''}>${S.busy.create ? '<i class="spin"></i>Creating…' : `Create the ${esc(sz.label.toLowerCase())}`}</button></div>
+    </form>`);
+}
+// The moment a plan is made: its name lands on a burst of its color, then the plan opens underneath.
+function celebrate(title, color) {
+  if (calm()) return;
+  const el = document.createElement('div'); el.className = 'launch'; el.setAttribute('aria-hidden', 'true'); el.style.setProperty('--pc', color);
+  el.innerHTML = `<div class="launch-in"><span>It’s on</span><b>${esc(title)}</b></div>${'<i></i>'.repeat(12)}`;
+  document.body.appendChild(el); setTimeout(() => el.remove(), 1700);
 }
 async function createTrip() {
   const name = $('#nt-name').value.trim(); let a = $('#nt-start').value, b = $('#nt-end').value;
@@ -251,11 +294,16 @@ async function createTrip() {
     mode: S.newMode || 'friends', honoreeName: ($('#nt-honoree')?.value || '').trim().slice(0, 40),
     // a small birthday plan (a dinner, a night out) doesn't cover the birthday star unless someone turns it on
     honoreeFree: !(small && S.newMode === 'birthday'), people: { [S.uid]: true }, createdBy: S.uid, createdAt: Date.now() };
+  // who pays: what was picked, or the kind of plan's default (small friends plans aren't asked and split)
+  const pays = asksPays(S.newMode, sz) && PAYS.includes(S.newPays) ? S.newPays : paysDefault(S.newMode, sz);
+  trip.pays = pays; if (pays === 'one') trip.payer = S.uid;
   try {
     await S.db.doc('trips/' + id).set(trip);
     const crew = S.crews.find(c => c.id === S.newCrew);
     await seedMembers(id, crew);
-    S.newCrew = null; S.creating = null; S.newMode = null; S.newSize = null; S.fromCrewPage = false;
+    celebrate(trip.name, planColor(trip));
+    for (const k of ['nt-name', 'nt-city', 'nt-start', 'nt-end']) delete DRAFT[k];
+    S.newCrew = null; S.creating = null; S.newMode = null; S.newSize = null; S.newPays = null; S.fromCrewPage = false;
     openTrip(id, 'overview'); S.setup = { step: 0 };
   } catch (e) { flash(writeErr(e)); }
 }

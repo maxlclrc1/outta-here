@@ -138,9 +138,10 @@ function budgetShape(r) {
 }
 function budgetLocal({ lo = 0, hi = 0, key = '', pitch }) {
   if (pitch) { const r = moneyRange((S.trip.pitches?.items || []).find(x => x.id === pitch)?.perPerson); lo = r ? r[0] : 0; hi = r ? r[1] : 0; }
-  const ms = active().filter(m => +m.budget > 0), h = Math.max(lo, hi || lo), consent = ((S.trip.consent || {})[key]) || {};
-  const hard = lo ? ms.filter(m => m.hard?.budget && lo > +m.budget) : [];
-  return { n: ms.length, unknown: active().length - ms.length, fits: ms.filter(m => +m.budget >= h), stretch: ms.filter(m => +m.budget < h && +m.budget >= lo), over: ms.filter(m => +m.budget < lo), hard, hardOpen: hard.filter(m => !consent[m.id]) };
+  // only the budgets the who-pays setting counts, as per-person amounts (as the server does)
+  const ms = active().map(m => ({ ...m, budget: budgetOf(m) })).filter(m => m.budget > 0), h = Math.max(lo, hi || lo), consent = ((S.trip.consent || {})[key]) || {};
+  const hard = lo ? ms.filter(m => m.hard?.budget && lo > m.budget) : [];
+  return { n: ms.length, unknown: active().length - ms.length, fits: ms.filter(m => m.budget >= h), stretch: ms.filter(m => m.budget < h && m.budget >= lo), over: ms.filter(m => m.budget < lo), hard, hardOpen: hard.filter(m => !consent[m.id]) };
 }
 // extra: { exclude: [ids], myBudget } for "what if" questions (someone drops out, my budget changes)
 function budgetFit(sum, extra) { return bq({ lo: Math.round(sum.low || 0), hi: Math.round(sum.high || 0), ...(extra || {}) }) || NO_FIT; }
@@ -150,22 +151,44 @@ const BAND_STEPS = [1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 8];
 function bandOf(v) { const e = Math.pow(10, Math.floor(Math.log10(v))), g = [0.1, 1, 10].flatMap(m => BAND_STEPS.map(x => x * e * m)); return { lo: Math.round(Math.max(...g.filter(x => x <= v))), hi: Math.round(Math.min(...g.filter(x => x > v))) }; }
 function budgetCapShared() {
   let b;
-  if (budgetsHere()) { const v = active().map(m => +m.budget || 0).filter(x => x > 0); b = v.length ? { ...bandOf(Math.min(...v)), n: v.length } : null; }
+  if (budgetsHere()) { const v = active().map(budgetOf).filter(x => x > 0); b = v.length ? { ...bandOf(Math.min(...v)), n: v.length } : null; }
   else { bq({}); b = BQ.cap || null; }
   return b ? { cap: b.lo, lo: b.lo, hi: b.hi, n: b.n, label: `${money(b.lo)}–${money(b.hi)}` } : null;
 }
 const rangeText = (lo, hi) => `${money(lo)}${hi !== lo ? '–' + money(hi) : ''}`;
+// A per-person price as the plan's payment mode reads it. Splitting: per person, as before. One person
+// or the company paying: the total for everyone leads (per person × the headcount, as on the cost card),
+// with the per-person amount as context. `text` is a pitch's own price when it has no number in it.
+function priceFor(lo, hi, text) {
+  const pm = paysMode(), heads = planHeads();
+  if (pm === 'split' || !(lo || hi)) return { split: true, label: 'Per person', main: text || (lo || hi ? rangeText(lo, hi) : '?'), short: (text || rangeText(lo, hi)) + ' each' };
+  const main = rangeText(Math.round(lo * heads), Math.round(hi * heads)), each = `${heads} × ${rangeText(lo, hi)} each`;
+  return pm === 'one'
+    ? { label: 'For everyone', main, each, who: isPayer() ? 'You’re covering everyone' : `${nameOf(payerId())} covers everyone`, short: `${main} for everyone` }
+    : { label: 'Company total', main, each, who: 'A company expense, not anyone’s own budget', short: `${main} company total` };
+}
+const pitchPay = p => { const r = moneyRange(p.perPerson); return r ? priceFor(r[0], r[1], p.perPerson) : priceFor(0, 0, p.perPerson); };
+// When one person covers everyone, the others just see that it's covered.
+function coveredCard() {
+  const who = esc(nameOf(payerId()));
+  return `<section class="card stack covered"><span class="g-k">The money</span><h2>Covered by ${who}</h2>
+    <p class="muted">${who} is paying for this ${planWord()}, so there’s no budget to set and nothing to split. If you pay for something for the group, log it in Expenses and ${who} pays you back.</p>
+    <div><button class="btn sm" data-tab="money">Expenses</button></div></section>`;
+}
 function costTab() {
-  const sum = costSummary(), me = costSummary(S.trip, 'me'), fit = budgetFit(sum), ro = S.readOnly, mine = meDoc(), myB = +mine?.budget || 0;
+  const pm = paysMode(); if (pm === 'one' && !isPayer()) return coveredCard();
+  // one payer or a company: the headline is the total for everyone, and nobody's personal budget is checked
+  const whole = pm !== 'split', heads = planHeads(), all = v => Math.round(v * heads);
+  const sum = costSummary(), me = whole ? sum : costSummary(S.trip, 'me'), fit = whole ? { n: 0 } : budgetFit(sum), ro = S.readOnly, mine = meDoc(), myB = whole ? 0 : +mine?.budget || 0, totalB = budgetIsTotal() ? +mine?.budget || 0 : 0;
   const differs = me.low !== sum.low || me.high !== sum.high;
   const empty = sum.rows.filter(r => !r.v || ['estimate', 'ai'].includes(r.v.src)).length;
   return `<section class="card stack cost">
-    <div class="stack" style="gap:2px"><h2>The cost of saying yes</h2><span class="small muted">Per person, all in. Built from what’s booked or paid first, then quotes, then estimates.</span></div>
-    <div class="cost-totals">
+    <div class="stack" style="gap:2px"><h2>${whole ? `What it’ll cost ${pm === 'one' ? 'you' : 'the company'}` : 'The cost of saying yes'}</h2><span class="small muted">${whole ? `For everyone (${heads} ${heads === 1 ? 'person' : 'people'}), all in. The lines below are per person.` : 'Per person, all in.'} Built from what’s booked or paid first, then quotes, then estimates.</span></div>
+    ${whole ? `<div class="cost-totals"><div class="cost-total"><span class="label">Everyone, all in</span><b>${sum.any ? rangeText(all(sum.low), all(sum.high)) : '—'}</b><span class="small muted">${sum.any ? `${heads} × ${rangeText(sum.low, sum.high)} each. ` : ''}${totalB && sum.any ? (all(sum.high) <= totalB ? `Fits your ${money(totalB)} total budget. ` : all(sum.low) <= totalB ? `Could go over your ${money(totalB)} total budget. ` : `Over your ${money(totalB)} total budget. `) : ''}Includes a ${sum.buffer}% buffer.</span></div></div>` : `<div class="cost-totals">
       <div class="cost-total"><span class="label">${differs ? 'You, all in' : 'Each person, all in'}</span><b>${me.any ? rangeText(me.low, me.high) : '—'}</b>${me.any ? alsoMine(me.low, me.high) : ''}
         <span class="small muted">${myB && me.any ? (me.high <= myB ? `Fits your ${money(myB)} budget.` : me.low <= myB ? `Could go over your ${money(myB)} budget.` : `Over your ${money(myB)} budget.`) + ' ' : ''}Includes a ${sum.buffer}% buffer.</span></div>
       ${differs && sum.any ? `<div class="cost-total soft"><span class="label">Typical for the crew</span><b>${rangeText(sum.low, sum.high)}</b>${alsoMine(sum.low, sum.high)}<span class="small muted">Everyone’s flights and shares differ a bit.</span></div>` : ''}
-    </div>
+    </div>`}
     ${S.sample !== null && !ro ? `<div class="row" style="gap:8px;align-items:center"><button class="btn ${sum.any ? '' : 'primary'}" data-act="costAI" ${S.busy.cost || !dest() ? 'disabled' : ''}>${S.busy.cost ? '<i class="spin"></i>Estimating…' : sum.any ? 'Estimate the rest with AI' : 'Estimate it with AI'}</button>
       <span class="small muted">${!dest() ? `Pick ${isSmall() ? 'the plan' : 'where you’re going'} first.` : empty ? 'Fills only lines without a real quote or booking.' : 'Every line has a real number. Nice.'}</span></div>`
       : S.sample === null ? `<span class="small muted">AI estimates are off ${IN_CLAUDE ? 'for you right now' : 'until you add your Anthropic API key'}. Type in numbers below.</span>` : ''}

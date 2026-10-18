@@ -75,6 +75,19 @@ const isSmall = (t = S.trip) => ['hangout', 'day'].includes(t?.size);
 const nightsSet = t => t.nights ?? (SIZES[t.size] || SIZES.trip).nights;
 const sizeOf = t => SIZES[t.size] ? t.size : 'trip';
 const HIDE_TABS = { hangout: ['flights', 'stays', 'tickets', 'pack', 'bucket', 'pot'], day: ['flights', 'stays', 'tickets', 'pack', 'pot'], weekend: ['flights', 'tickets'], trip: [] };
+// What each kind of plan doesn't get, on top of what its size hides (Friends, Celebration, Family, Work ×
+// small or away). Hiding is display only: nothing is deleted, and a feature a plan already uses (it has
+// to-dos, bucket items, pot entries or award votes) stays visible, so older plans keep everything they had.
+const GROUP_HIDE = {
+  friends: { small: ['tasks', 'map', 'bucket'], away: [] },
+  celebration: { small: ['map', 'bucket'], away: [] },
+  family: { small: ['tasks', 'map', 'bucket', 'awards'], away: ['pot', 'bucket', 'awards'] },
+  work: { small: ['map', 'bucket', 'awards', 'wrapped'], away: ['pot', 'bucket', 'awards', 'wrapped'] },
+};
+const IN_USE = { tasks: () => taskList().length > 0, bucket: () => S.bucket.length > 0, pot: () => S.pot.length > 0, awards: () => Object.keys(S.trip.superVotes || {}).length > 0 };
+// the group pot is for splitting; a plan where one person or a company pays doesn't show it (unless it's in use)
+const hiddenTabs = () => [...HIDE_TABS[size()], ...[...GROUP_HIDE[planGroup()][isSmall() ? 'small' : 'away'], ...(paysMode() === 'split' ? [] : ['pot'])].filter(k => !IN_USE[k]?.())];
+const tabOn = k => !hiddenTabs().includes(k);
 const STEP_KEYS = { hangout: ['crew', 'where', 'dates'], day: ['crew', 'where', 'dates', 'plan'], weekend: ['crew', 'where', 'dates', 'stay', 'plan'], trip: ['crew', 'where', 'dates', 'flights', 'stay', 'plan'] };
 const t12 = hm => { if (!hm) return ''; const [h, m] = hm.split(':').map(Number); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
 const dayRange = (a, b) => a === b ? fmt(a) : `${fmt(a)} → ${fmt(b)}`;

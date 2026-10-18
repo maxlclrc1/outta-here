@@ -179,7 +179,7 @@ function crewTab() {
     <div class="row">
       <label class="field"><span class="label">Name</span><input id="me-nick" maxlength="30" value="${esc(m.nick)}" placeholder="What the crew calls you"></label>
       ${isSmall() ? '' : `<label class="field"><span class="label">${size() === 'trip' ? 'Flying from' : 'Coming from'}</span><input id="me-home" maxlength="40" value="${esc(m.home)}" placeholder="${size() === 'trip' ? 'JFK or New York' : 'Your city or neighborhood'}"></label>`}
-      <label class="field"><span class="label">${isSmall() ? `Max you’ll spend (${cur()})` : `Max you’ll spend (total, ${cur()})`}</span><input id="me-budget" type="number" min="0" step="${isSmall() ? 5 : 50}" inputmode="numeric" value="${m.budget ? esc(m.budget) : ''}" placeholder="${isSmall() ? '60' : size() === 'weekend' ? '400' : '800'}"></label>
+      ${!hasBudget(S.uid) ? '' : `<label class="field"><span class="label">${budgetIsTotal() ? `Budget for everyone (total, ${cur()})` : isSmall() ? `Your max, your share (${cur()})` : `Your max, your share (all in, ${cur()})`}</span><input id="me-budget" type="number" min="0" step="${isSmall() ? 5 : 50}" inputmode="numeric" value="${m.budget ? esc(m.budget) : ''}" placeholder="${isSmall() ? '60' : size() === 'weekend' ? '400' : '800'}"></label>`}
     </div>
     <div class="row">
       <label class="field"><span class="label">Venmo</span><input id="me-venmo" maxlength="40" value="${esc(m.venmo || '')}" placeholder="@your-handle"></label>
@@ -397,12 +397,15 @@ function payLinks(toId, amt, note) {
 }
 
 function moneyTab() {
-  const ms = active();
+  const ms = active(), pm = paysMode(), payer = esc(nameOf(payerId()));
   const split = S.split || new Set(ms.map(m => m.id).filter(id => !(honoreeFree() && id === S.trip.honoree)));
-  const { out } = settle();
+  const { out: all } = settle(), out = pm === 'one' && !isPayer() ? all.filter(t => t.from === S.uid || t.to === S.uid) : all;
+  // under a company, each person's total is what they claim back
+  const claims = pm === 'company' ? Object.entries(S.expenses.reduce((a, e) => (e.paidBy && (a[e.paidBy] = (a[e.paidBy] || 0) + (+e.amount || 0)), a), {})).sort((a, b) => b[1] - a[1]) : [];
   const total = S.expenses.reduce((a, e) => a + (+e.amount || 0), 0);
   const exps = [...S.expenses].sort((a, b) => (b.at || 0) - (a.at || 0));
-  return `<section class="card stack">
+  return `${pm === 'one' ? `<div class="banner"><span>${isPayer() ? `<b>You’re covering this ${planWord()}.</b> When someone pays for something, you pay them back.` : `<b>Covered by ${payer}.</b> If you pay for something for the group, log it and ${payer} pays you back.`}</span></div>` : pm === 'company' ? `<div class="banner"><span><b>The company’s paying.</b> Log what you pay for the group, then claim it back.</span></div>` : ''}
+  <section class="card stack">
     <div class="row" style="justify-content:space-between"><h2>${isSmall() ? 'Expenses' : 'Trip expenses'}</h2><span class="mono">${money2(total)} total ${alsoMine(total)}</span></div>
     <form id="expForm" class="stack">
       <div class="row" style="align-items:flex-end">
@@ -410,14 +413,14 @@ function moneyTab() {
         <label class="field"><span class="label">Amount</span><input id="ex-amt" type="number" min="0.01" step="0.01" inputmode="decimal" required placeholder="340"></label>
         <label class="field"><span class="label">Paid by</span><select id="ex-by">${ms.map(m => `<option value="${esc(m.id)}" ${m.id === S.uid ? 'selected' : ''}>${esc(m.nick || 'Someone')}</option>`).join('')}</select></label>
       </div>
-      <div><span class="label">Split between</span><div class="row" style="gap:6px;margin-top:6px">${ms.map(m => `<button type="button" class="chip ${split.has(m.id) ? 'on' : ''}" data-split="${esc(m.id)}">${esc(m.nick || 'Someone')}</button>`).join('')}</div></div>
+      ${pm !== 'split' ? '' : `<div><span class="label">Split between</span><div class="row" style="gap:6px;margin-top:6px">${ms.map(m => `<button type="button" class="chip ${split.has(m.id) ? 'on' : ''}" data-split="${esc(m.id)}">${esc(m.nick || 'Someone')}</button>`).join('')}</div></div>`}
       <div><button class="btn primary" type="submit">Add expense</button></div>
     </form>
-    ${exps.length ? `<div>${exps.map(e => `<div class="linkrow"><div style="min-width:0"><b>${esc(e.title)}</b><div class="small muted">${esc(nameOf(e.paidBy))} paid · split ${(e.split || []).length} ways · ${money2(e.amount / Math.max(1, (e.split || []).length))} each</div></div>
+    ${exps.length ? `<div>${exps.map(e => `<div class="linkrow"><div style="min-width:0"><b>${esc(e.title)}</b><div class="small muted">${esc(nameOf(e.paidBy))} paid · ${pm === 'one' ? `covered by ${payer}` : pm === 'company' ? 'to claim back' : `split ${(e.split || []).length} ways · ${money2(e.amount / Math.max(1, (e.split || []).length))} each`}</div></div>
       <div class="row" style="gap:6px"><span class="mono">${money2(e.amount)}</span><button class="x" data-delexp="${esc(e.id)}" aria-label="Remove ${esc(e.title)}">×</button></div></div>`).join('')}</div>`
       : `<p class="small muted">No expenses yet. Log anything someone pays for the group.</p>`}
   </section>
-  ${exps.length ? `<section class="card stack"><h2>Settle up</h2>
+  ${pm === 'company' ? (claims.length ? `<section class="card stack"><h2>To claim back</h2><div>${claims.map(([id, a]) => `<div class="linkrow"><b>${esc(nameOf(id))}${id === S.uid ? ' (you)' : ''}</b><span class="mono">${money2(a)}</span></div>`).join('')}</div><p class="small muted">What each person paid for the group. Claim it through your company’s expenses.</p></section>` : '') : exps.length && (pm === 'split' || out.length || isPayer()) ? `<section class="card stack"><h2>${pm === 'one' ? 'Paying people back' : 'Settle up'}</h2>
     ${out.length ? `<div>${out.map(t => `<div class="linkrow"><div><b>${esc(nameOf(t.from))}</b> pays <b>${esc(nameOf(t.to))}</b> <span class="mono">${money2(t.amt)}</span></div>${t.from === S.uid ? `<div class="row" style="gap:6px">${payLinks(t.to, t.amt, S.trip.name)}</div>` : ''}</div>`).join('')}</div>` : '<p class="small" style="color:var(--good)">Everyone’s even.</p>'}
     <p class="small muted">The fewest payments that square everyone up.</p></section>` : ''}`;
 }

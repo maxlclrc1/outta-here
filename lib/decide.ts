@@ -1,4 +1,5 @@
 import { StoreError, listCollection, type Json } from '@/lib/store';
+import { budgetFor } from '@/lib/pays';
 
 // The plan's decision rules, checked on the server for every write that locks or unlocks
 // something. They mirror what the app shows next to the votes (src/app/05j-decide.js):
@@ -103,7 +104,9 @@ export function checkDecision(tid: string, t: Json, patch: Json, next: Json, use
       if (agreed(m.id as string)) return false;
       const h = isObj(m.hard) ? m.hard : {};
       if (h.days && o.days && Array.isArray(m.days) && m.days.length && !fits(m, o.days)) return true;
-      return !!(h.budget && o.lo && num(m.budget) > 0 && o.lo > num(m.budget));
+      // a budget limit counts only where that budget does (see lib/pays.ts): one payer's total per person, no company limits
+      const b = budgetFor(next, String(m.id), m.budget, active);
+      return !!(h.budget && o.lo && b > 0 && o.lo > b);
     });
     if (hit) throw deny('This is over someone’s hard limit. They have to agree to it first.');
   }

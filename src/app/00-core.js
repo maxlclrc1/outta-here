@@ -182,17 +182,17 @@ function nudges() {
     const todo = [];
     if (m.status === 'maybe') todo.push('say if you’re in');
     if (!(m.days || []).length && !S.trip.lockedDates) todo.push(isSmall() ? 'say which days work' : 'pick your dates');
-    if (!m.budget && !m.budgetSet) todo.push('set your budget');
+    if (!m.budget && !m.budgetSet && hasBudget(m.id)) todo.push('set your budget');
     if (hasDest && !(m.votes || []).length && !S.trip.lockedDest) todo.push(isSmall() ? 'vote on the plan' : 'vote on where');
     if (size() === 'trip' && booking_time() && going(m) && !tk[m.id]) todo.push('book your flight and upload your boarding pass');
-    if (quiz().some(q => !q.o.includes((m.quiz || {})[q.k]))) todo.push('take the vibe quiz');
+    if (!['family', 'work'].includes(planGroup()) && quiz().some(q => !q.o.includes((m.quiz || {})[q.k]))) todo.push('take the vibe quiz');
     return { m, todo };
   }).filter(x => x.todo.length);
 }
 function settle() {
   const net = {};
   for (const e of S.expenses) {
-    let split = (e.split || []).filter(Boolean); if (honoreeFree() && split.length > 1) split = split.filter(id => id !== S.trip.honoree); if (!split.length || !(e.amount > 0)) continue;
+    const split = expenseShare(e); if (!split.length || !(e.amount > 0)) continue;
     net[e.paidBy] = (net[e.paidBy] || 0) + e.amount;
     for (const id of split) net[id] = (net[id] || 0) - e.amount / split.length;
   }
@@ -394,7 +394,7 @@ City: ${S.trip.city || 'not set'}
 The plan: ${ds ? ds.city : 'not decided'}${S.trip.venue ? ' at ' + S.trip.venue : ''}
 Day: ${d ? `${d.start} (${dow(d.start)})` : 'not set'}${S.trip.time ? ', starting ' + S.trip.time : ''}
 Group size: ${active().length} ${pk.people}
-Max spend per person: ${b ? `${b.label} (the tightest budget in the group is in this range; stay at or under ${money(b.cap)})` : 'not given'}${blend() ? `
+Max spend per person: ${paysMode() === 'company' ? 'a company is paying; keep it sensible for a work outing' : b ? `${b.label} (${paysMode() === 'one' ? 'one person is paying for everyone; this is their budget split across the group' : 'the tightest budget in the group is in this range'}; stay at or under ${money(b.cap)})` : 'not given'}${blend() ? `
 Crew vibe quiz results (${blend().n} answered):
 ${blendText()}` : ''}`;
   return `Trip type: ${mode().label}. ${mode().ai}${size() === 'weekend' ? ' It is a weekend getaway (1–2 nights), likely by car.' : ''}
@@ -402,7 +402,7 @@ Destination: ${ds ? ds.city + (ds.code ? ' (' + ds.code + ')' : '') : 'not set'}
 Trip days: ${days} — ${nightsOf(d)} nights
 Group size: ${active().length} ${pk.people}
 ${size() === 'trip' ? 'Flying from' : 'Coming from'}: ${homes().join(', ') || 'unknown'}
-Per-person total budget (everything${size() === 'trip' ? ' incl. flights' : ''}): ${b ? `${b.label} (the tightest budget in the group is in this range; stay at or under ${money(b.cap)})` : 'not given'}
+Per-person total budget (everything${size() === 'trip' ? ' incl. flights' : ''}): ${paysMode() === 'company' ? 'a company is paying; keep it reasonable for a work trip' : b ? `${b.label} (${paysMode() === 'one' ? 'one person is paying for everyone; this is their budget split across the group' : 'the tightest budget in the group is in this range'}; stay at or under ${money(b.cap)})` : 'not given'}
 Group vibe: ${(S.trip.vibes || []).join(', ') || vibeDefault('ctx')}${blend() ? `
 Crew vibe quiz results (${blend().n} answered):
 ${blendText()}` : ''}`;

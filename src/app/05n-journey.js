@@ -227,12 +227,12 @@ function jSteps() {
     title: small ? 'Enjoy it' : 'Follow today’s plan', done: false, live: true,
     goal: 'It’s happening', why: (() => { const nowT = new Date().toTimeString().slice(0, 5), up = visItems().filter(i => i.date === TODAY).sort(byTime).find(i => timeKey(i.time) >= timeKey(nowT)); return up ? `Up next: ${up.title}${up.time ? ' at ' + t12(up.time) : ''}.` : 'Nothing else planned today.'; })(),
     todo: 'Open today’s plan. Check in when you get somewhere, and use SOS if you get separated.', after: 'Check-ins and photos feed the recap.',
-    act: () => `${btn('data-tab="live"', 'Open today')}${btn('data-tab="map"', 'Map', 'ghost')}`, help: { tab: 'live', sel: '.live' },
+    act: () => `${btn('data-tab="live"', 'Open today')}${tabOn('map') ? btn('data-tab="map"', 'Map', 'ghost') : ''}`, help: { tab: 'live', sel: '.live' },
   });
 
   /* ----- afterward ----- */
   if (over) {
-    const owe = settle(), mineO = owe.filter(x => x.from === S.uid);
+    const owe = settle().out, mineO = owe.filter(x => x.from === S.uid);
     add('settle', 'after', {
       title: mineO.length ? 'Pay back what you owe' : 'Settle up', done: !owe.length, applies: S.expenses.length > 0, mine: !!mineO.length,
       group: owe.length ? `${word(owe.length, 'payment', 'payments')} left to settle` : '', mineText: 'Pay back what you owe',
@@ -245,7 +245,7 @@ function jSteps() {
       goal: 'Put the photos in one place', why: `${word(S.photos.length, 'photo', 'photos')} so far.`, todo: 'Add your best ones. They go into the recap.',
       after: 'The recap and awards pick them up.', act: () => goBtn('photos', 'Add photos'), help: { tab: 'recap', sel: '#ph-files' }, parallel: true,
     });
-    add('wrapped', 'after', {
+    if (tabOn('wrapped')) add('wrapped', 'after', {
       title: small ? 'Watch the recap' : 'Watch your Wrapped', done: !!lsGet('outta_wrapped_' + S.tid, false), mine: true, mineText: small ? 'Watch the recap' : 'Watch your Wrapped', group: '',
       goal: 'Relive it', why: 'Your recap is ready.', todo: 'Watch it, then share it with the crew.', after: 'You can start the next one from this plan in Settings.',
       act: () => btn('data-tab="wrapped"', 'Watch it'), help: { tab: 'wrapped', sel: '.wslide' },

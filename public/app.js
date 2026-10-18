@@ -182,17 +182,17 @@ function nudges() {
     const todo = [];
     if (m.status === 'maybe') todo.push('say if you’re in');
     if (!(m.days || []).length && !S.trip.lockedDates) todo.push(isSmall() ? 'say which days work' : 'pick your dates');
-    if (!m.budget && !m.budgetSet) todo.push('set your budget');
+    if (!m.budget && !m.budgetSet && hasBudget(m.id)) todo.push('set your budget');
     if (hasDest && !(m.votes || []).length && !S.trip.lockedDest) todo.push(isSmall() ? 'vote on the plan' : 'vote on where');
     if (size() === 'trip' && booking_time() && going(m) && !tk[m.id]) todo.push('book your flight and upload your boarding pass');
-    if (quiz().some(q => !q.o.includes((m.quiz || {})[q.k]))) todo.push('take the vibe quiz');
+    if (!['family', 'work'].includes(planGroup()) && quiz().some(q => !q.o.includes((m.quiz || {})[q.k]))) todo.push('take the vibe quiz');
     return { m, todo };
   }).filter(x => x.todo.length);
 }
 function settle() {
   const net = {};
   for (const e of S.expenses) {
-    let split = (e.split || []).filter(Boolean); if (honoreeFree() && split.length > 1) split = split.filter(id => id !== S.trip.honoree); if (!split.length || !(e.amount > 0)) continue;
+    const split = expenseShare(e); if (!split.length || !(e.amount > 0)) continue;
     net[e.paidBy] = (net[e.paidBy] || 0) + e.amount;
     for (const id of split) net[id] = (net[id] || 0) - e.amount / split.length;
   }
@@ -394,7 +394,7 @@ City: ${S.trip.city || 'not set'}
 The plan: ${ds ? ds.city : 'not decided'}${S.trip.venue ? ' at ' + S.trip.venue : ''}
 Day: ${d ? `${d.start} (${dow(d.start)})` : 'not set'}${S.trip.time ? ', starting ' + S.trip.time : ''}
 Group size: ${active().length} ${pk.people}
-Max spend per person: ${b ? `${b.label} (the tightest budget in the group is in this range; stay at or under ${money(b.cap)})` : 'not given'}${blend() ? `
+Max spend per person: ${paysMode() === 'company' ? 'a company is paying; keep it sensible for a work outing' : b ? `${b.label} (${paysMode() === 'one' ? 'one person is paying for everyone; this is their budget split across the group' : 'the tightest budget in the group is in this range'}; stay at or under ${money(b.cap)})` : 'not given'}${blend() ? `
 Crew vibe quiz results (${blend().n} answered):
 ${blendText()}` : ''}`;
   return `Trip type: ${mode().label}. ${mode().ai}${size() === 'weekend' ? ' It is a weekend getaway (1–2 nights), likely by car.' : ''}
@@ -402,7 +402,7 @@ Destination: ${ds ? ds.city + (ds.code ? ' (' + ds.code + ')' : '') : 'not set'}
 Trip days: ${days} — ${nightsOf(d)} nights
 Group size: ${active().length} ${pk.people}
 ${size() === 'trip' ? 'Flying from' : 'Coming from'}: ${homes().join(', ') || 'unknown'}
-Per-person total budget (everything${size() === 'trip' ? ' incl. flights' : ''}): ${b ? `${b.label} (the tightest budget in the group is in this range; stay at or under ${money(b.cap)})` : 'not given'}
+Per-person total budget (everything${size() === 'trip' ? ' incl. flights' : ''}): ${paysMode() === 'company' ? 'a company is paying; keep it reasonable for a work trip' : b ? `${b.label} (${paysMode() === 'one' ? 'one person is paying for everyone; this is their budget split across the group' : 'the tightest budget in the group is in this range'}; stay at or under ${money(b.cap)})` : 'not given'}
 Group vibe: ${(S.trip.vibes || []).join(', ') || vibeDefault('ctx')}${blend() ? `
 Crew vibe quiz results (${blend().n} answered):
 ${blendText()}` : ''}`;
@@ -727,7 +727,7 @@ function crewTab() {
     <div class="row">
       <label class="field"><span class="label">Name</span><input id="me-nick" maxlength="30" value="${esc(m.nick)}" placeholder="What the crew calls you"></label>
       ${isSmall() ? '' : `<label class="field"><span class="label">${size() === 'trip' ? 'Flying from' : 'Coming from'}</span><input id="me-home" maxlength="40" value="${esc(m.home)}" placeholder="${size() === 'trip' ? 'JFK or New York' : 'Your city or neighborhood'}"></label>`}
-      <label class="field"><span class="label">${isSmall() ? `Max you’ll spend (${cur()})` : `Max you’ll spend (total, ${cur()})`}</span><input id="me-budget" type="number" min="0" step="${isSmall() ? 5 : 50}" inputmode="numeric" value="${m.budget ? esc(m.budget) : ''}" placeholder="${isSmall() ? '60' : size() === 'weekend' ? '400' : '800'}"></label>
+      ${!hasBudget(S.uid) ? '' : `<label class="field"><span class="label">${budgetIsTotal() ? `Budget for everyone (total, ${cur()})` : isSmall() ? `Your max, your share (${cur()})` : `Your max, your share (all in, ${cur()})`}</span><input id="me-budget" type="number" min="0" step="${isSmall() ? 5 : 50}" inputmode="numeric" value="${m.budget ? esc(m.budget) : ''}" placeholder="${isSmall() ? '60' : size() === 'weekend' ? '400' : '800'}"></label>`}
     </div>
     <div class="row">
       <label class="field"><span class="label">Venmo</span><input id="me-venmo" maxlength="40" value="${esc(m.venmo || '')}" placeholder="@your-handle"></label>
@@ -945,12 +945,15 @@ function payLinks(toId, amt, note) {
 }
 
 function moneyTab() {
-  const ms = active();
+  const ms = active(), pm = paysMode(), payer = esc(nameOf(payerId()));
   const split = S.split || new Set(ms.map(m => m.id).filter(id => !(honoreeFree() && id === S.trip.honoree)));
-  const { out } = settle();
+  const { out: all } = settle(), out = pm === 'one' && !isPayer() ? all.filter(t => t.from === S.uid || t.to === S.uid) : all;
+  // under a company, each person's total is what they claim back
+  const claims = pm === 'company' ? Object.entries(S.expenses.reduce((a, e) => (e.paidBy && (a[e.paidBy] = (a[e.paidBy] || 0) + (+e.amount || 0)), a), {})).sort((a, b) => b[1] - a[1]) : [];
   const total = S.expenses.reduce((a, e) => a + (+e.amount || 0), 0);
   const exps = [...S.expenses].sort((a, b) => (b.at || 0) - (a.at || 0));
-  return `<section class="card stack">
+  return `${pm === 'one' ? `<div class="banner"><span>${isPayer() ? `<b>You’re covering this ${planWord()}.</b> When someone pays for something, you pay them back.` : `<b>Covered by ${payer}.</b> If you pay for something for the group, log it and ${payer} pays you back.`}</span></div>` : pm === 'company' ? `<div class="banner"><span><b>The company’s paying.</b> Log what you pay for the group, then claim it back.</span></div>` : ''}
+  <section class="card stack">
     <div class="row" style="justify-content:space-between"><h2>${isSmall() ? 'Expenses' : 'Trip expenses'}</h2><span class="mono">${money2(total)} total ${alsoMine(total)}</span></div>
     <form id="expForm" class="stack">
       <div class="row" style="align-items:flex-end">
@@ -958,14 +961,14 @@ function moneyTab() {
         <label class="field"><span class="label">Amount</span><input id="ex-amt" type="number" min="0.01" step="0.01" inputmode="decimal" required placeholder="340"></label>
         <label class="field"><span class="label">Paid by</span><select id="ex-by">${ms.map(m => `<option value="${esc(m.id)}" ${m.id === S.uid ? 'selected' : ''}>${esc(m.nick || 'Someone')}</option>`).join('')}</select></label>
       </div>
-      <div><span class="label">Split between</span><div class="row" style="gap:6px;margin-top:6px">${ms.map(m => `<button type="button" class="chip ${split.has(m.id) ? 'on' : ''}" data-split="${esc(m.id)}">${esc(m.nick || 'Someone')}</button>`).join('')}</div></div>
+      ${pm !== 'split' ? '' : `<div><span class="label">Split between</span><div class="row" style="gap:6px;margin-top:6px">${ms.map(m => `<button type="button" class="chip ${split.has(m.id) ? 'on' : ''}" data-split="${esc(m.id)}">${esc(m.nick || 'Someone')}</button>`).join('')}</div></div>`}
       <div><button class="btn primary" type="submit">Add expense</button></div>
     </form>
-    ${exps.length ? `<div>${exps.map(e => `<div class="linkrow"><div style="min-width:0"><b>${esc(e.title)}</b><div class="small muted">${esc(nameOf(e.paidBy))} paid · split ${(e.split || []).length} ways · ${money2(e.amount / Math.max(1, (e.split || []).length))} each</div></div>
+    ${exps.length ? `<div>${exps.map(e => `<div class="linkrow"><div style="min-width:0"><b>${esc(e.title)}</b><div class="small muted">${esc(nameOf(e.paidBy))} paid · ${pm === 'one' ? `covered by ${payer}` : pm === 'company' ? 'to claim back' : `split ${(e.split || []).length} ways · ${money2(e.amount / Math.max(1, (e.split || []).length))} each`}</div></div>
       <div class="row" style="gap:6px"><span class="mono">${money2(e.amount)}</span><button class="x" data-delexp="${esc(e.id)}" aria-label="Remove ${esc(e.title)}">×</button></div></div>`).join('')}</div>`
       : `<p class="small muted">No expenses yet. Log anything someone pays for the group.</p>`}
   </section>
-  ${exps.length ? `<section class="card stack"><h2>Settle up</h2>
+  ${pm === 'company' ? (claims.length ? `<section class="card stack"><h2>To claim back</h2><div>${claims.map(([id, a]) => `<div class="linkrow"><b>${esc(nameOf(id))}${id === S.uid ? ' (you)' : ''}</b><span class="mono">${money2(a)}</span></div>`).join('')}</div><p class="small muted">What each person paid for the group. Claim it through your company’s expenses.</p></section>` : '') : exps.length && (pm === 'split' || out.length || isPayer()) ? `<section class="card stack"><h2>${pm === 'one' ? 'Paying people back' : 'Settle up'}</h2>
     ${out.length ? `<div>${out.map(t => `<div class="linkrow"><div><b>${esc(nameOf(t.from))}</b> pays <b>${esc(nameOf(t.to))}</b> <span class="mono">${money2(t.amt)}</span></div>${t.from === S.uid ? `<div class="row" style="gap:6px">${payLinks(t.to, t.amt, S.trip.name)}</div>` : ''}</div>`).join('')}</div>` : '<p class="small" style="color:var(--good)">Everyone’s even.</p>'}
     <p class="small muted">The fewest payments that square everyone up.</p></section>` : ''}`;
 }
@@ -1072,7 +1075,8 @@ async function delTicket() {
 // Creating or joining a plan starts with a short setup, one question per screen,
 // before the full plan with every tab opens up.
 const showWelcome = () => S.membersIn && !S.demo && !S.readOnly && (!meDoc() || (meDoc().status === 'maybe' && !meDoc().seen));
-const setupSteps = () => ['days', ...(isSmall() ? [] : ['home']), 'budget', 'vibe'];
+// family and team plans don't ask the vibe questions up front (they're still in Things to do)
+const setupSteps = () => ['days', ...(isSmall() ? [] : ['home']), ...(hasBudget(S.uid) ? ['budget'] : []), ...(['family', 'work'].includes(planGroup()) ? [] : ['vibe'])];
 const BUDGETS = { hangout: [30, 60, 100], day: [50, 100, 200], weekend: [250, 450, 700], trip: [600, 1000, 1600] };
 function dayPicker() {
   const t = S.trip, days = span(t.winStart, t.winEnd), mine = new Set(meDoc()?.days || []), pref = new Set(meDoc()?.pref || []);
@@ -1091,8 +1095,10 @@ function setupView() {
     home: { h: size() === 'trip' ? 'Where are you flying from?' : 'Where are you coming from?',
       p: size() === 'trip' ? 'Your home airport or city. It’s used for flight prices and to pitch places that are easy for everyone to reach.' : 'Your city or neighborhood, so pitches stay within reach for everyone.',
       c: `<input id="me-home" aria-label="${size() === 'trip' ? 'Home airport or city' : 'Your city or neighborhood'}" class="big-input" maxlength="40" value="${esc(m.home || '')}" placeholder="${size() === 'trip' ? 'JFK or New York' : 'Brooklyn'}" autocomplete="address-level2" enterkeyhint="next">` },
-    budget: { h: 'What’s your max?',
-      p: isSmall() ? 'The most you’d spend on this, all in. Pitches stay under the lowest budget in the crew.' : 'The most you’d spend in total, travel included. Pitches stay under the lowest budget in the crew.',
+    budget: budgetIsTotal() ? { h: 'What’s the budget for everyone?',
+      p: `You’re covering it, so this is the total for the whole group${isSmall() ? '' : ', travel included'}. Pitches are planned around it, split across everyone coming.`,
+      c: `<label class="field"><span class="label">Total for everyone (${cur()})</span><input id="me-budget" class="big-input" type="number" min="0" step="${isSmall() ? 10 : 100}" inputmode="numeric" value="${m.budget ? esc(m.budget) : ''}" placeholder="${niceIn(BUDGETS[size()][1] * Math.max(2, planHeads()))}" enterkeyhint="next"></label>` } : { h: 'What’s your max?',
+      p: isSmall() ? 'Just your own share, all in. Pitches stay under the lowest budget in the crew.' : 'Just your own share, travel included. Pitches stay under the lowest budget in the crew.',
       c: `<div class="row" style="gap:6px">${BUDGETS[size()].map(u => niceIn(u)).map(v => `<button class="chip big-chip ${+m.budget === v ? 'on' : ''}" data-budget="${v}">${money(v)}</button>`).join('')}</div>
         <label class="field"><span class="label">Or type it (${cur()})</span><input id="me-budget" class="big-input" type="number" min="0" step="${isSmall() ? 5 : 50}" inputmode="numeric" value="${m.budget ? esc(m.budget) : ''}" placeholder="${niceIn(BUDGETS[size()][1])}" enterkeyhint="next"></label>` },
     vibe: { h: 'Quick vibe check',
@@ -1223,7 +1229,7 @@ function runoffCard() {
     <h2>${ro.winner ? `${esc(pName(ro.winner))} wins` : 'Pick one'}</h2>
     <p class="small muted">${ro.winner ? `${ro.count(ro.winner.id)} to ${ro.count(other.id)}.` : 'Nothing got a yes from everyone, so the top two go head to head. Most votes wins.'}</p>
     <div class="ro-opts">${ro.ps.map(p => `<button class="ro-opt ${ro.mine === p.id ? 'on' : ''} ${ro.winner === p ? 'win' : ''}" data-runoff="${esc(p.id)}" aria-pressed="${ro.mine === p.id}" ${ro.winner || S.readOnly ? 'disabled' : ''}>
-      <b>${esc(pName(p))}</b><span class="small">${p.start === p.end ? fmt(p.start) + (p.time ? ' · ' + t12(p.time) : '') : short(p.start) + ' – ' + short(p.end)} · ${esc(p.perPerson || '?')}</span>
+      <b>${esc(pName(p))}</b><span class="small">${p.start === p.end ? fmt(p.start) + (p.time ? ' · ' + t12(p.time) : '') : short(p.start) + ' – ' + short(p.end)} · ${esc(p.perPerson ? pitchShort(p, p.perPerson) : '?')}</span>
       <span class="ro-count">${ro.count(p.id)} vote${ro.count(p.id) === 1 ? '' : 's'}${ro.mine === p.id ? ' · yours' : ''}</span></button>`).join('')}</div>
     ${ro.winner ? (lockedOn(ro.winner) ? '<span class="pill in" style="align-self:flex-start">Locked in</span>' : `<div><button class="btn primary" data-lockpitch="${esc(ro.winner.id)}">Lock in ${esc(pName(ro.winner))}</button></div>`)
       : `<span class="small muted">${ro.mine ? 'Waiting on ' + ro.waiting.map(m => esc(m.nick || 'Someone')).join(', ') : 'Tap the one you’d rather do.'}</span>`}
@@ -1270,14 +1276,18 @@ const rated = p => active().filter(m => swipeOf(p.id, m.id));
 const okForAll = p => { const vs = active(); return vs.length >= 2 && vs.every(m => swipeOf(p.id, m.id) >= WORKABLE); };
 const fitScore = p => yesOf(p) * 2 + workableOf(p);
 function groupFit(p) {
-  const vs = active(), out = [], r = moneyRange(p.perPerson);
-  const nB = vs.filter(m => +m.budget > 0 || m.budgetSet).length, f = r && nB ? (p.id && (S.trip.pitches?.items || []).some(x => x.id === p.id) ? bq({ pitch: p.id }) || NO_FIT : budgetFit({ low: r[0], high: r[1] })) : null;
+  const vs = active(), out = [], r = moneyRange(p.perPerson), pm = paysMode();
+  const nB = pm === 'company' ? 0 : vs.filter(m => hasBudget(m.id) && (+m.budget > 0 || m.budgetSet)).length, f = r && nB ? (p.id && (S.trip.pitches?.items || []).some(x => x.id === p.id) ? bq({ pitch: p.id }) || NO_FIT : budgetFit({ low: r[0], high: r[1] })) : null;
   if (f && f.pending) out.push({ ok: 'meh', text: 'Checking budgets…' });
   else if (f && f.unavailable) out.push({ ok: 'meh', text: 'Budget check unavailable right now' });
-  else if (f && f.n) {
+  else if (f && f.n && pm === 'one') {
+    const whose = isPayer() ? 'your' : 'the', was = f.stale ? ' (earlier check)' : '';
+    out.push(f.over.length ? { ok: false, text: `Over ${whose} total budget${was}` } : f.stretch.length ? { ok: 'meh', text: `A stretch for ${whose} total budget${was}` } : { ok: f.stale ? 'meh' : true, text: `Fits ${whose} total budget${was}` });
+  } else if (f && f.n) {
     const { over, stretch } = f, was = f.stale ? ' (earlier check)' : '';
     out.push(over.length ? { ok: false, text: `Over budget for ${budgetWho(over)}${was}` } : stretch.length ? { ok: 'meh', text: `A stretch for ${budgetWho(stretch)}${was}` } : { ok: f.stale ? 'meh' : true, text: (f.n === vs.length ? `Fits ${vs.length}/${vs.length} budgets` : `Fits every budget set (${f.n} of ${vs.length})`) + was });
-  } else out.push({ ok: 'meh', text: nB ? 'No price to check yet' : 'Nobody set a budget yet' });
+  } else if (pm === 'company') out.push({ ok: 'meh', text: 'Company expense, no personal budgets' });
+  else out.push({ ok: 'meh', text: nB ? 'No price to check yet' : pm === 'one' ? 'No total budget set yet' : 'Nobody set a budget yet' });
   const days = span(p.start, p.end), can = vs.filter(m => fitOf(m, days)), cant = vs.filter(m => !fitOf(m, days)), picked = vs.filter(m => (m.days || []).length);
   if (picked.length) out.push(cant.filter(m => (m.days || []).length).length ? { ok: false, text: `${listNames(cant.filter(m => (m.days || []).length))} can’t make ${p.start === p.end ? 'that day' : 'those dates'}` } : { ok: true, text: `Free: ${can.length}/${vs.length}` });
   const rs = rated(p);
@@ -1287,6 +1297,8 @@ function groupFit(p) {
   }
   return out;
 }
+// a pitch's price in a list: unchanged when splitting, the group total when one person or the company pays
+const pitchShort = (p, split) => { const pp = pitchPay(p); return pp.split ? split : pp.short; };
 const fitChips = p => `<div class="fit">${groupFit(p).map(f => `<span class="fit-c ${f.ok === true ? 'y' : f.ok === false ? 'n' : 'm'}">${f.ok === true ? '✓' : f.ok === false ? '✕' : '~'} ${esc(f.text)}</span>`).join('')}</div>`;
 
 /* ---------- trip match (swipe) ---------- */
@@ -1358,7 +1370,7 @@ function matchTab() {
   if (!S.trip.lockedDest || S.demo) return matchBody();
   const ds = dest(), d = S.trip.lockedDates, p = (S.trip.pitches?.items || []).find(lockedOn);
   return `<section class="card stack decided-sum"><div class="row" style="justify-content:space-between"><span class="on-pill">Decided</span>${S.readOnly ? '' : '<button class="btn sm ghost" data-act="unlockDest">Change it</button>'}</div>
-    <h2>${esc(ds?.city || '')}</h2><span class="small muted">${[d && dayRange(d.start, d.end), p && p.perPerson && p.perPerson + ' each', p && p.tagline].filter(Boolean).map(esc).join(' · ')}</span></section>
+    <h2>${esc(ds?.city || '')}</h2><span class="small muted">${[d && dayRange(d.start, d.end), p && p.perPerson && pitchShort(p, p.perPerson + ' each'), p && p.tagline].filter(Boolean).map(esc).join(' · ')}</span></section>
   <details class="card more-opts"><summary>See the votes and other options</summary><div class="stack" style="margin-top:12px">${matchBody()}</div></details>`;
 }
 function matchBody() {
@@ -1374,7 +1386,7 @@ function matchBody() {
         <span style="color:#fff;font-weight:600">${esc(p.tagline)}</span>
       </div>
       <div class="pitch-body">
-        <div class="facts"><div><span class="label">${p.small ? 'When' : 'Dates'}</span><b>${p.small ? fmt(p.start) + (p.time ? ' · ' + t12(p.time) : '') : short(p.start) + ' → ' + short(p.end)}</b></div><div><span class="label">Per person</span><b>${esc(p.perPerson || '?')}</b></div></div>
+        <div class="facts"><div><span class="label">${p.small ? 'When' : 'Dates'}</span><b>${p.small ? fmt(p.start) + (p.time ? ' · ' + t12(p.time) : '') : short(p.start) + ' → ' + short(p.end)}</b></div>${(pp => `<div class="${pp.split ? '' : 'p-total'}"><span class="label">${pp.label}</span><b>${esc(pp.main)}</b>${pp.split ? '' : `<span class="small muted">${esc(pp.each)}</span>`}</div></div>${pp.split ? '' : `<span class="small pay-who">${esc(pp.who)}</span>`}`)(pitchPay(p))}
         ${fitChips(p)}
         <p>${esc(p.why)}</p>
         ${arr(p.highlights).length || p.weather ? `<details class="p-more"><summary class="small">See details</summary>${p.weather ? `<p class="small" style="margin:6px 0 0"><b>Weather:</b> ${esc(p.weather)}</p>` : ''}${arr(p.highlights).length ? `<ul style="margin:6px 0 0;padding-left:18px">${arr(p.highlights).map(h => `<li>${esc(h)}</li>`).join('')}</ul>` : ''}</details>` : ''}
@@ -1389,7 +1401,7 @@ function matchBody() {
   </section>
   ${runoffCard()}
   ${m ? `<section class="match"><span class="label" style="color:rgba(255,255,255,.85)">Everyone swiped yes</span><h1 style="color:#fff">It’s a match!</h1>
-      <p style="font-size:17px">${esc(m.city)} · ${dayRange(m.start, m.end)}${m.time ? ' · ' + t12(m.time) : ''} · ${esc(m.perPerson)}</p>
+      <p style="font-size:17px">${esc(m.city)} · ${dayRange(m.start, m.end)}${m.time ? ' · ' + t12(m.time) : ''} · ${esc(pitchShort(m, m.perPerson))}</p>
       <div>${S.trip.lockedDest && dest()?.city === m.city && S.trip.lockedDates?.start === m.start ? `<span class="on-pill" style="background:#fff;color:#151A33">Locked in</span>` : `<button class="btn" data-lockpitch="${esc(m.id)}">Lock it in</button>`}</div></section>` : ''}
   ${!items.length && S.sample === null ? ''
   : !items.length ? `<div class="empty"><b>No pitches yet.</b><span>The more the crew fills in (${size() === 'trip' ? 'home airports, ' : size() === 'weekend' ? 'where everyone’s coming from, ' : ''}budgets, free days, the vibe quiz), the better the pitches get.</span></div>`
@@ -1400,7 +1412,7 @@ function matchBody() {
   ${items.length ? `<section class="card"><h3 style="margin-bottom:6px">Scoreboard</h3>
     ${[...items].sort((a, b) => fitScore(b) - fitScore(a)).map(p => {
       const yes = vs.filter(x => swipeOf(p.id, x.id) === 1), waiting = vs.filter(x => !swipeOf(p.id, x.id)), mine = swipeOf(p.id, S.uid);
-      return `<div class="linkrow"><div style="min-width:0"><b>${esc(p.city)}</b> <span class="small muted">${p.start === p.end ? short(p.start) : short(p.start) + ' – ' + short(p.end)} · ${esc(p.perPerson)}</span>
+      return `<div class="linkrow"><div style="min-width:0"><b>${esc(p.city)}</b> <span class="small muted">${p.start === p.end ? short(p.start) : short(p.start) + ' – ' + short(p.end)} · ${esc(pitchShort(p, p.perPerson))}</span>
         <div class="small muted">${yes.length} yes · ${workableOf(p)} could work${waiting.length ? ` · waiting on ${waiting.map(x => esc(x.nick || 'Someone')).join(', ')}` : ''}</div>${fitChips(p)}${lockedOn(p) ? '' : ruleChip('pitch', p.id)}</div>
         <div class="row" style="gap:6px">${mine ? `<button class="chip ${mine === 1 ? 'on' : ''}" data-swipe="${esc(p.id)}|${mine === 1 ? -1 : 1}" title="Tap to change">${mine === 1 ? '♥ Yes' : mine === WORKABLE ? '≈ Could work' : '✕ Pass'}</button>` : ''}<div class="bar" style="width:80px"><i style="width:${yes.length / Math.max(1, vs.length) * 100}%"></i></div>${lockedOn(p) ? '<span class="pill lvl-confirmed">Locked</span>' : S.readOnly ? '' : `<button class="btn sm ${yes.length && !S.trip.lockedDest ? 'primary' : ''}" data-lockpitch="${esc(p.id)}">Lock it in</button>`}</div></div>`; }).join('')}
   </section>` : ''}
@@ -1495,7 +1507,7 @@ function liveTab() {
     <form id="ciForm" class="row" style="gap:6px"><input aria-label="Where you are" id="ci-text" maxlength="60" placeholder="Or type it: “at the bar by the pool”" style="flex:1 1 200px"><button class="btn sm" type="submit">Check in</button></form>
     <div>${active().map(m => `<div class="nudge"><b>${esc(m.nick || 'Someone')}</b><span class="small ${m.checkin ? '' : 'muted'}">${m.checkin ? (m.hideLoc && m.id !== S.uid ? 'Checked in' : esc(m.checkin.text)) + ' · ' + ago(m.checkin.at) : 'No check-in yet'}</span></div>`).join('')}</div>
   </section>
-  ${mapPoints().length ? `<section class="card stack"><div class="row" style="justify-content:space-between"><h3>Map</h3><button class="btn sm ghost" data-tab="map">Full map</button></div>${mapView(300)}</section>` : ''}
+  ${tabOn('map') && mapPoints().length ? `<section class="card stack"><div class="row" style="justify-content:space-between"><h3>Map</h3><button class="btn sm ghost" data-tab="map">Full map</button></div>${mapView(300)}</section>` : ''}
   ${idx === 0 && size() === 'trip' ? arrivalsSection(true) : ''}`;
 }
 
@@ -1768,6 +1780,9 @@ const PLAN_KINDS = {
 };
 const KIND_OF = { family: 'family', work: 'work' };
 const planKind = (t = S.trip) => PLAN_KINDS[KIND_OF[t?.mode]] || PLAN_KINDS.social;
+// Friends, Celebration (a guest of honor), Family or Work: what decides which features a plan shows.
+// A missing or unknown type is a friends plan.
+const planGroup = (t = S.trip) => KIND_OF[t?.mode] || (MODES[t?.mode]?.honoree ? 'celebration' : 'friends');
 const quiz = () => planKind().quizBy?.[size()] || planKind().quiz;
 // Itinerary stop kinds the AI may use: social plans keep nightlife; family trips and offsites don't get it
 // (offsites get work sessions). Small plans have no travel or work stops.
@@ -1800,7 +1815,39 @@ const modeDesc = (v, sz) => isSmallSize(sz) && v.small?.desc || v.desc;
 const modeAi = () => isSmall() && mode().small?.ai || mode().ai;
 const honoreeMode = () => !!mode().honoree;
 const isHonoree = () => honoreeMode() && S.trip.honoree && S.trip.honoree === S.uid;
-const honoreeFree = () => honoreeMode() && S.trip.honoree && S.trip.honoreeFree !== false;
+// Who pays (trip.pays): 'split' (each person pays their share: the original behavior, and what a plan
+// without the setting does), 'one' (trip.payer covers everyone) or 'company' (people pay and claim it back).
+const PAYS = ['split', 'one', 'company'];
+const paysMode = (t = S.trip) => PAYS.includes(t?.pays) ? t.pays : 'split';
+const payerId = (t = S.trip) => paysMode(t) === 'one' ? t.payer || t.createdBy : null;
+const isPayer = (uid = S.uid) => paysMode() !== 'one' || payerId() === uid;
+// whether someone is asked for, and planned around, a personal budget
+const hasBudget = uid => paysMode() === 'split' || isPayer(uid) && paysMode() === 'one';
+// A member's budget as the per-person amount prices are compared with (mirrors lib/pays.ts budgetFor):
+// their own when splitting; only the payer's, a total shared over the headcount, when one person pays; none
+// when a company pays. Saved budgets are never changed.
+const budgetOf = m => { const b = Math.max(0, +m?.budget || 0), p = paysMode(); return p === 'company' ? 0 : p === 'one' ? (m.id === payerId() ? Math.round(b / planHeads()) : 0) : b; };
+// whether my budget is a total for everyone (I'm covering it) or my own share
+const budgetIsTotal = () => paysMode() === 'one' && isPayer();
+const paysDefault = (mode, sz) => { const g = planGroup({ mode }); return g === 'family' ? 'one' : g === 'work' ? 'company' : 'split'; };
+// the creation question is skipped for small friends plans (they split)
+const asksPays = (mode, sz) => !(isSmallSize(sz) && planGroup({ mode }) === 'friends');
+// The choices, in each kind of plan's order and words: [short label, what it means]
+const PAYS_COPY = {
+  friends: { order: ['split', 'one', 'company'], split: ['Everyone pays their own way', 'Costs are split, and each person sees their share'], one: ['I’m treating everyone', 'You see the total; everyone else sees it’s covered'] },
+  celebration: { order: ['split', 'one', 'company'], split: ['We’re splitting it', 'Everyone pays their share (the guest of honor can be covered)'], one: ['One person’s treating', 'They see the total; everyone else is covered'] },
+  family: { order: ['one', 'split', 'company'], one: ['I’m covering it', 'You see the total; everyone else is covered'], split: ['We’re splitting it', 'Each person pays their share'] },
+  work: { order: ['company', 'split', 'one'], company: ['The company’s paying', 'No personal budgets; log what you pay to claim it back'], split: ['We’re splitting it', 'Each person pays their share'], one: ['I’m covering it', 'You see the total; the team is covered'] },
+};
+const paysCopy = (k, mode) => (PAYS_COPY[planGroup({ mode })] || PAYS_COPY.friends)[k] || { split: ['We’re splitting it', 'Each person pays their share'], one: ['One person’s covering it', 'They see the total; everyone else is covered'], company: ['A company’s paying', 'No personal budgets; expenses are claimed back'] }[k];
+// the guest of honor's share is only covered by the group when the group is splitting
+const honoreeFree = () => honoreeMode() && S.trip.honoree && S.trip.honoreeFree !== false && paysMode() === 'split';
+// Who shares an expense: as logged when splitting; the payer when one person covers everything (so anyone
+// who paid gets paid back by them); and nobody else under 'company' (people claim it back instead).
+function expenseShare(e) {
+  const m = paysMode(); if (m === 'one') return [payerId()]; if (m === 'company') return [e.paidBy].filter(Boolean);
+  let sp = (e.split || []).filter(Boolean); if (honoreeFree() && sp.length > 1) sp = sp.filter(id => id !== S.trip.honoree); return sp;
+}
 const visItems = () => (S.trip.itinerary || []).map(i => i.secret && !i.revealed && isHonoree() ? { ...i, title: 'Surprise', note: 'Your crew planned something. No peeking.', kind: 'surprise', hidden: true } : i);
 
 /* ---------- layout: sections ---------- */
@@ -1821,7 +1868,7 @@ function sections() {
     { k: 'live', label: 'Live', tabs: [['live', 'Today'], ['map', 'Map'], ['bucket', 'Bucket list'], ['hype', 'Hype']] },
     { k: 'money', label: 'Money', tabs: [['cost', 'All-in cost'], ['meter', 'My spend'], ['pot', 'Group pot'], ['money', 'Expenses']] },
     { k: 'memories', label: 'Memories', tabs: [['wrapped', isSmall() ? 'Recap' : 'Wrapped'], ['recap', 'Photos'], ['awards', 'Awards']] },
-  ].map(s => ({ ...s, tabs: s.tabs.filter(([k]) => !HIDE_TABS[size()].includes(k)) })).filter(s => s.tabs.length);
+  ].map(s => ({ ...s, tabs: s.tabs.filter(([k]) => tabOn(k)) })).filter(s => s.tabs.length);
 }
 const TAB_ALIAS = { deals: 'flights', where: 'match' };
 const secOf = tab => sections().find(s => s.tabs.some(t => t[0] === tab)) || sections()[0];
@@ -1832,7 +1879,7 @@ function tripView() {
   if (S.membersIn && accessState() !== 'ok') return blockedView(accessState());
   if (S.setup && S.membersIn && meDoc()) return setupView();
   if (TAB_ALIAS[S.tab]) S.tab = TAB_ALIAS[S.tab];
-  const fns = TABFN(); if (!fns[S.tab]) S.tab = 'overview';
+  const fns = TABFN(); if (!fns[S.tab] || !tabOn(S.tab)) S.tab = 'overview'; // a link to a tab this plan doesn't show opens the plan home
   const sec = secOf(S.tab), cd = countdown(), m = mode(), gd = guide(), crumbTab = gd && !gd.wait && gd.tab !== S.tab ? gd.tab : null;
   // someone deciding whether to join sees just the invitation, until they answer or choose to look around
   const inviteOnly = S.tab === 'overview' && showWelcome() && !S.peek;
@@ -1853,6 +1900,14 @@ function tripView() {
 }
 
 /* the plan home (overviewTab) is in 05o-overview.js */
+// Settings: who's paying. Organizers change it; everyone sees what it is.
+function paysCard() {
+  const cur = paysMode(), g = PAYS_COPY[planGroup()] || PAYS_COPY.friends, org = isOrganizer() && !S.readOnly;
+  return `<section class="card stack pays-card"><h3>Who’s paying?</h3>
+    <div class="nf-pays">${g.order.map(k => { const [l, d] = paysCopy(k, S.trip.mode); return `<button class="nf-pay ${cur === k ? 'on' : ''}" data-setpays="${k}" ${org ? '' : 'disabled'} aria-pressed="${cur === k}"><b>${esc(l)}</b><span>${esc(d)}</span></button>`; }).join('')}</div>
+    ${cur === 'one' ? `<label class="field" style="flex:none;max-width:320px"><span class="label">Who’s covering it</span><select id="set-payer" ${org ? '' : 'disabled'}>${S.members.filter(m => !m.removed && m.status !== 'out').map(m => `<option value="${esc(m.id)}" ${payerId() === m.id ? 'selected' : ''}>${esc(m.nick || 'Someone')}${m.id === S.uid ? ' (you)' : ''}</option>`).join('')}</select></label>` : ''}
+    <p class="small muted">${org ? 'Changing it doesn’t change any amounts people logged; it changes who’s asked for a budget and how expenses are settled.' : 'Organizers can change this.'}</p></section>`;
+}
 function settingsTab() {
   const m = mode();
   return `<section class="card stack"><h3>Plan size</h3><div class="row" style="gap:6px">${Object.entries(SIZES).map(([k, v]) => `<button class="chip ${size() === k ? 'on' : ''}" data-setsize="${k}">${esc(v.label)}</button>`).join('')}</div><p class="small muted">Changing the size keeps everyone’s votes and free days.</p></section>
@@ -1861,9 +1916,10 @@ function settingsTab() {
     <div class="modes compact">${Object.entries(MODES).map(([k, v]) => `<button class="mode ${S.trip.mode === k || (!S.trip.mode && k === 'friends') ? 'on' : ''}" data-setmode="${k}" style="--mc:${v.color}"><b>${esc(modeLabel(v, size()))}</b></button>`).join('')}</div>
     ${m.honoree ? `<div class="row" style="gap:10px">
       <label class="field"><span class="label">The ${esc(m.honoree)}</span><select id="set-honoree"><option value="">Pick someone</option>${S.members.map(x => `<option value="${esc(x.id)}" ${S.trip.honoree === x.id ? 'selected' : ''}>${esc(x.nick || 'Someone')}</option>`).join('')}</select></label>
-      <label class="row small" style="gap:8px;flex:1 1 200px"><input type="checkbox" id="set-free" style="width:auto" ${S.trip.honoreeFree !== false ? 'checked' : ''}> The ${esc(m.honoree)} pays nothing (their share is split across everyone else)</label></div>
+      ${paysMode() !== 'split' ? '' : `<label class="row small" style="gap:8px;flex:1 1 200px"><input type="checkbox" id="set-free" style="width:auto" ${S.trip.honoreeFree !== false ? 'checked' : ''}> The ${esc(m.honoree)} pays nothing (their share is split across everyone else)</label>`}</div>
       <p class="small muted">Surprise plans and the planners-only chat are hidden from the ${esc(m.honoree)} in the app.</p>` : ''}
   </section>
+  ${paysCard()}
   ${decideCard()}
   ${S.demo ? '' : S.repeat ? repeatDialog() : `<section class="card row repeat-cta"><span><b>Do this again?</b> <span class="small muted">Start a new ${planWord()} with the same to-dos, outline and packing list. Dates, prices and who’s coming start fresh.</span></span><button class="btn" data-act="repeatOpen">Repeat this ${planWord()}</button></section>`}
   ${templateCard()}
@@ -2189,9 +2245,10 @@ function budgetShape(r) {
 }
 function budgetLocal({ lo = 0, hi = 0, key = '', pitch }) {
   if (pitch) { const r = moneyRange((S.trip.pitches?.items || []).find(x => x.id === pitch)?.perPerson); lo = r ? r[0] : 0; hi = r ? r[1] : 0; }
-  const ms = active().filter(m => +m.budget > 0), h = Math.max(lo, hi || lo), consent = ((S.trip.consent || {})[key]) || {};
-  const hard = lo ? ms.filter(m => m.hard?.budget && lo > +m.budget) : [];
-  return { n: ms.length, unknown: active().length - ms.length, fits: ms.filter(m => +m.budget >= h), stretch: ms.filter(m => +m.budget < h && +m.budget >= lo), over: ms.filter(m => +m.budget < lo), hard, hardOpen: hard.filter(m => !consent[m.id]) };
+  // only the budgets the who-pays setting counts, as per-person amounts (as the server does)
+  const ms = active().map(m => ({ ...m, budget: budgetOf(m) })).filter(m => m.budget > 0), h = Math.max(lo, hi || lo), consent = ((S.trip.consent || {})[key]) || {};
+  const hard = lo ? ms.filter(m => m.hard?.budget && lo > m.budget) : [];
+  return { n: ms.length, unknown: active().length - ms.length, fits: ms.filter(m => m.budget >= h), stretch: ms.filter(m => m.budget < h && m.budget >= lo), over: ms.filter(m => m.budget < lo), hard, hardOpen: hard.filter(m => !consent[m.id]) };
 }
 // extra: { exclude: [ids], myBudget } for "what if" questions (someone drops out, my budget changes)
 function budgetFit(sum, extra) { return bq({ lo: Math.round(sum.low || 0), hi: Math.round(sum.high || 0), ...(extra || {}) }) || NO_FIT; }
@@ -2201,22 +2258,44 @@ const BAND_STEPS = [1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 8];
 function bandOf(v) { const e = Math.pow(10, Math.floor(Math.log10(v))), g = [0.1, 1, 10].flatMap(m => BAND_STEPS.map(x => x * e * m)); return { lo: Math.round(Math.max(...g.filter(x => x <= v))), hi: Math.round(Math.min(...g.filter(x => x > v))) }; }
 function budgetCapShared() {
   let b;
-  if (budgetsHere()) { const v = active().map(m => +m.budget || 0).filter(x => x > 0); b = v.length ? { ...bandOf(Math.min(...v)), n: v.length } : null; }
+  if (budgetsHere()) { const v = active().map(budgetOf).filter(x => x > 0); b = v.length ? { ...bandOf(Math.min(...v)), n: v.length } : null; }
   else { bq({}); b = BQ.cap || null; }
   return b ? { cap: b.lo, lo: b.lo, hi: b.hi, n: b.n, label: `${money(b.lo)}–${money(b.hi)}` } : null;
 }
 const rangeText = (lo, hi) => `${money(lo)}${hi !== lo ? '–' + money(hi) : ''}`;
+// A per-person price as the plan's payment mode reads it. Splitting: per person, as before. One person
+// or the company paying: the total for everyone leads (per person × the headcount, as on the cost card),
+// with the per-person amount as context. `text` is a pitch's own price when it has no number in it.
+function priceFor(lo, hi, text) {
+  const pm = paysMode(), heads = planHeads();
+  if (pm === 'split' || !(lo || hi)) return { split: true, label: 'Per person', main: text || (lo || hi ? rangeText(lo, hi) : '?'), short: (text || rangeText(lo, hi)) + ' each' };
+  const main = rangeText(Math.round(lo * heads), Math.round(hi * heads)), each = `${heads} × ${rangeText(lo, hi)} each`;
+  return pm === 'one'
+    ? { label: 'For everyone', main, each, who: isPayer() ? 'You’re covering everyone' : `${nameOf(payerId())} covers everyone`, short: `${main} for everyone` }
+    : { label: 'Company total', main, each, who: 'A company expense, not anyone’s own budget', short: `${main} company total` };
+}
+const pitchPay = p => { const r = moneyRange(p.perPerson); return r ? priceFor(r[0], r[1], p.perPerson) : priceFor(0, 0, p.perPerson); };
+// When one person covers everyone, the others just see that it's covered.
+function coveredCard() {
+  const who = esc(nameOf(payerId()));
+  return `<section class="card stack covered"><span class="g-k">The money</span><h2>Covered by ${who}</h2>
+    <p class="muted">${who} is paying for this ${planWord()}, so there’s no budget to set and nothing to split. If you pay for something for the group, log it in Expenses and ${who} pays you back.</p>
+    <div><button class="btn sm" data-tab="money">Expenses</button></div></section>`;
+}
 function costTab() {
-  const sum = costSummary(), me = costSummary(S.trip, 'me'), fit = budgetFit(sum), ro = S.readOnly, mine = meDoc(), myB = +mine?.budget || 0;
+  const pm = paysMode(); if (pm === 'one' && !isPayer()) return coveredCard();
+  // one payer or a company: the headline is the total for everyone, and nobody's personal budget is checked
+  const whole = pm !== 'split', heads = planHeads(), all = v => Math.round(v * heads);
+  const sum = costSummary(), me = whole ? sum : costSummary(S.trip, 'me'), fit = whole ? { n: 0 } : budgetFit(sum), ro = S.readOnly, mine = meDoc(), myB = whole ? 0 : +mine?.budget || 0, totalB = budgetIsTotal() ? +mine?.budget || 0 : 0;
   const differs = me.low !== sum.low || me.high !== sum.high;
   const empty = sum.rows.filter(r => !r.v || ['estimate', 'ai'].includes(r.v.src)).length;
   return `<section class="card stack cost">
-    <div class="stack" style="gap:2px"><h2>The cost of saying yes</h2><span class="small muted">Per person, all in. Built from what’s booked or paid first, then quotes, then estimates.</span></div>
-    <div class="cost-totals">
+    <div class="stack" style="gap:2px"><h2>${whole ? `What it’ll cost ${pm === 'one' ? 'you' : 'the company'}` : 'The cost of saying yes'}</h2><span class="small muted">${whole ? `For everyone (${heads} ${heads === 1 ? 'person' : 'people'}), all in. The lines below are per person.` : 'Per person, all in.'} Built from what’s booked or paid first, then quotes, then estimates.</span></div>
+    ${whole ? `<div class="cost-totals"><div class="cost-total"><span class="label">Everyone, all in</span><b>${sum.any ? rangeText(all(sum.low), all(sum.high)) : '—'}</b><span class="small muted">${sum.any ? `${heads} × ${rangeText(sum.low, sum.high)} each. ` : ''}${totalB && sum.any ? (all(sum.high) <= totalB ? `Fits your ${money(totalB)} total budget. ` : all(sum.low) <= totalB ? `Could go over your ${money(totalB)} total budget. ` : `Over your ${money(totalB)} total budget. `) : ''}Includes a ${sum.buffer}% buffer.</span></div></div>` : `<div class="cost-totals">
       <div class="cost-total"><span class="label">${differs ? 'You, all in' : 'Each person, all in'}</span><b>${me.any ? rangeText(me.low, me.high) : '—'}</b>${me.any ? alsoMine(me.low, me.high) : ''}
         <span class="small muted">${myB && me.any ? (me.high <= myB ? `Fits your ${money(myB)} budget.` : me.low <= myB ? `Could go over your ${money(myB)} budget.` : `Over your ${money(myB)} budget.`) + ' ' : ''}Includes a ${sum.buffer}% buffer.</span></div>
       ${differs && sum.any ? `<div class="cost-total soft"><span class="label">Typical for the crew</span><b>${rangeText(sum.low, sum.high)}</b>${alsoMine(sum.low, sum.high)}<span class="small muted">Everyone’s flights and shares differ a bit.</span></div>` : ''}
-    </div>
+    </div>`}
     ${S.sample !== null && !ro ? `<div class="row" style="gap:8px;align-items:center"><button class="btn ${sum.any ? '' : 'primary'}" data-act="costAI" ${S.busy.cost || !dest() ? 'disabled' : ''}>${S.busy.cost ? '<i class="spin"></i>Estimating…' : sum.any ? 'Estimate the rest with AI' : 'Estimate it with AI'}</button>
       <span class="small muted">${!dest() ? `Pick ${isSmall() ? 'the plan' : 'where you’re going'} first.` : empty ? 'Fills only lines without a real quote or booking.' : 'Every line has a real number. Nice.'}</span></div>`
       : S.sample === null ? `<span class="small muted">AI estimates are off ${IN_CLAUDE ? 'for you right now' : 'until you add your Anthropic API key'}. Type in numbers below.</span>` : ''}
@@ -2339,6 +2418,8 @@ function whatifTab() {
       ${dests.length > 1 ? `<label><span class="label">${small ? 'Plan' : 'Where'}</span><select id="wi-dest-${c.i}">${dests.map(d => `<option value="${esc(d.id)}" ${d.id === c.r.dest?.id ? 'selected' : ''}>${esc(d.city)}</option>`).join('')}</select></label>` : ''}
       ${kinds.length > 1 ? `<label><span class="label">Stay</span><select id="wi-stay-${c.i}"><option value="">Same as now</option>${kinds.map(k => `<option value="${k}" ${k === c.sc.stay ? 'selected' : ''}>${STAY_KINDS[k] || k}</option>`).join('')}</select></label>` : ''}
     </div>`;
+  // prices follow who pays: per person when splitting, the total for everyone when one person or the company pays
+  const pm = paysMode(), pr = r => priceFor(r.low, r.high), tot = r => pm === 'split' ? r.high : Math.round(r.high * planHeads());
   const row = (label, f) => `<div class="wi-row"><span class="wi-k">${label}</span>${cols.map(c => `<div class="wi-v">${f(c)}</div>`).join('')}</div>`;
   return `<section class="card stack whatif">
     <div class="stack" style="gap:2px"><h2>What if we changed this?</h2><span class="small muted">Try a different ${small ? 'day or plan' : 'start, length, place or stay'} and see what it does to who can come and what it costs. Nothing changes until you pick one.</span></div>
@@ -2349,10 +2430,11 @@ function whatifTab() {
       ${dests.length ? row(small ? 'Plan' : 'Where', c => esc(c.r.dest?.city || '—')) : ''}
       ${row('Can come', c => `<b>${c.r.can.length}/${vs.length}</b>${c.cur ? '' : diff(c.r.can.length, base.can.length, (a, b) => (a > b ? '+' : '') + (a - b), (a, b) => a > b)}${vs.filter(m => !c.r.can.includes(m)).length && c.r.start ? `<span class="small muted">Not ${esc(listNames(vs.filter(m => !c.r.can.includes(m))))}</span>` : ''}`)}
       ${row('Prefer it', c => `${c.r.prefer.length}/${vs.length}`)}
-      ${row('Each, all in', c => c.r.priced ? `<b>${money(c.r.low)}${c.r.high !== c.r.low ? '–' + money(c.r.high) : ''}</b>${c.cur || !base.priced ? '' : diff(c.r.high, base.high, (a, b) => (a > b ? '+' : '−') + money(Math.abs(a - b)), (a, b) => a < b)}${c.r.note ? `<span class="small muted">${esc(c.r.note)}</span>` : ''}` : `<span class="small muted">${esc(c.r.note || 'Unknown')}</span>`)}
-      ${row('Fits budgets', c => c.r.fit && c.r.fit.n ? `${c.r.fit.fits.length}/${vs.length}${c.r.fit.over.length ? `<span class="small" style="color:#C2383A">Over for ${esc(budgetWho(c.r.fit.over))}</span>` : ''}` : '<span class="small muted">—</span>')}
+      ${row(pm === 'one' ? 'Everyone, all in' : pm === 'company' ? 'Company total' : 'Each, all in', c => c.r.priced ? `<b>${pr(c.r).main}</b>${c.cur || !base.priced ? '' : diff(tot(c.r), tot(base), (a, b) => (a > b ? '+' : '−') + money(Math.abs(a - b)), (a, b) => a < b)}${pm === 'split' ? '' : `<span class="small muted">${esc(pr(c.r).each)}</span>`}${c.r.note ? `<span class="small muted">${esc(c.r.note)}</span>` : ''}` : `<span class="small muted">${esc(c.r.note || 'Unknown')}</span>`)}
+      ${pm === 'company' ? '' : pm === 'one' ? row(isPayer() ? 'Your total budget' : 'Total budget', c => c.r.fit && c.r.fit.n ? (c.r.fit.over.length ? '<span class="small" style="color:#C2383A">Over</span>' : c.r.fit.stretch.length ? 'A stretch' : 'Fits') : '<span class="small muted">—</span>') : row('Fits budgets', c => c.r.fit && c.r.fit.n ? `${c.r.fit.fits.length}/${vs.length}${c.r.fit.over.length ? `<span class="small" style="color:#C2383A">Over for ${esc(budgetWho(c.r.fit.over))}</span>` : ''}` : '<span class="small muted">—</span>')}
       ${S.readOnly ? '' : `<div class="wi-row"><span class="wi-k"></span>${cols.map(c => `<div class="wi-v">${c.cur ? '' : `<button class="btn sm primary" data-wiapply="${c.i}">Make this the plan</button>`}</div>`).join('')}</div>`}
     </div>
+    ${pm === 'split' ? '' : `<span class="small muted">${esc(priceFor(1, 1).who)}. Totals are the per-person estimate × ${planHeads()} ${planHeads() === 1 ? 'person' : 'people'}.</span>`}
     ${scs.length < 2 ? '<div><button class="btn sm" data-act="wiAdd">+ Compare another</button></div>' : ''}
   </section>`;
 }
@@ -3497,12 +3579,12 @@ function jSteps() {
     title: small ? 'Enjoy it' : 'Follow today’s plan', done: false, live: true,
     goal: 'It’s happening', why: (() => { const nowT = new Date().toTimeString().slice(0, 5), up = visItems().filter(i => i.date === TODAY).sort(byTime).find(i => timeKey(i.time) >= timeKey(nowT)); return up ? `Up next: ${up.title}${up.time ? ' at ' + t12(up.time) : ''}.` : 'Nothing else planned today.'; })(),
     todo: 'Open today’s plan. Check in when you get somewhere, and use SOS if you get separated.', after: 'Check-ins and photos feed the recap.',
-    act: () => `${btn('data-tab="live"', 'Open today')}${btn('data-tab="map"', 'Map', 'ghost')}`, help: { tab: 'live', sel: '.live' },
+    act: () => `${btn('data-tab="live"', 'Open today')}${tabOn('map') ? btn('data-tab="map"', 'Map', 'ghost') : ''}`, help: { tab: 'live', sel: '.live' },
   });
 
   /* ----- afterward ----- */
   if (over) {
-    const owe = settle(), mineO = owe.filter(x => x.from === S.uid);
+    const owe = settle().out, mineO = owe.filter(x => x.from === S.uid);
     add('settle', 'after', {
       title: mineO.length ? 'Pay back what you owe' : 'Settle up', done: !owe.length, applies: S.expenses.length > 0, mine: !!mineO.length,
       group: owe.length ? `${word(owe.length, 'payment', 'payments')} left to settle` : '', mineText: 'Pay back what you owe',
@@ -3515,7 +3597,7 @@ function jSteps() {
       goal: 'Put the photos in one place', why: `${word(S.photos.length, 'photo', 'photos')} so far.`, todo: 'Add your best ones. They go into the recap.',
       after: 'The recap and awards pick them up.', act: () => goBtn('photos', 'Add photos'), help: { tab: 'recap', sel: '#ph-files' }, parallel: true,
     });
-    add('wrapped', 'after', {
+    if (tabOn('wrapped')) add('wrapped', 'after', {
       title: small ? 'Watch the recap' : 'Watch your Wrapped', done: !!lsGet('outta_wrapped_' + S.tid, false), mine: true, mineText: small ? 'Watch the recap' : 'Watch your Wrapped', group: '',
       goal: 'Relive it', why: 'Your recap is ready.', todo: 'Watch it, then share it with the crew.', after: 'You can start the next one from this plan in Settings.',
       act: () => btn('data-tab="wrapped"', 'Watch it'), help: { tab: 'wrapped', sel: '.wslide' },
@@ -3654,8 +3736,8 @@ function ovGlance() {
   return `<section class="glance-grid" aria-label="At a glance">
     ${tile('dates', 'When', d ? esc(planWhen(t)) : !shared ? 'Nobody’s shared free days yet' : shared === ms.length ? 'Everyone’s free days are in' : `${shared} of ${ms.length} shared free days`, !!d)}
     ${tile('match', small ? 'What' : 'Where', ds ? esc(ds.city) : pitches ? `${pitches} to swipe on` : ideas ? `${ideas} idea${ideas === 1 ? '' : 's'} to vote on` : 'No ideas yet', !!ds)}
-    ${tile('cost', 'Budget', b ? `${esc(b.label)} a person` : 'Nobody’s set one yet', !!b)}
-    ${tile('tasks', 'To-dos', open ? `${open} open` : all.length ? 'All done' : 'Nothing yet', all.length > 0 && !open)}
+    ${paysMode() === 'one' ? tile('cost', 'Money', isPayer() ? 'You’re covering it' : `Covered by ${esc(nameOf(payerId()))}`, true) : paysMode() === 'company' ? tile('cost', 'Money', 'The company’s paying', true) : tile('cost', 'Budget', b ? `${esc(b.label)} a person` : 'Nobody’s set one yet', !!b)}
+    ${tabOn('tasks') ? tile('tasks', 'To-dos', open ? `${open} open` : all.length ? 'All done' : 'Nothing yet', all.length > 0 && !open) : tile('hype', 'Chat', S.feed.length ? `${S.feed.length} message${S.feed.length === 1 ? '' : 's'}` : 'Say hi to the crew', false)}
   </section>`;
 }
 function overviewTab() {
@@ -4061,7 +4143,7 @@ Reply with only JSON: {"title":"a punchy 3-6 word headline","text":"the recap"}`
 /* ---------- money: spend-o-meter + group pot ---------- */
 function myShare() {
   let share = 0;
-  for (const e of S.expenses) { let sp = (e.split || []).filter(Boolean); if (honoreeFree() && sp.length > 1) sp = sp.filter(id => id !== S.trip.honoree); if (sp.includes(S.uid)) share += e.amount / sp.length; }
+  for (const e of S.expenses) { const sp = expenseShare(e); if (sp.includes(S.uid)) share += e.amount / sp.length; }
   return share;
 }
 function meterTab() {
@@ -4074,6 +4156,7 @@ function meterTab() {
   const R = 70, C = 2 * Math.PI * R, arc = Math.min(1, pct) * C;
   return `<section class="card stack meter-card">
     <div class="row" style="justify-content:space-between"><h2>My spend</h2><span class="small muted">Only you see this page</span></div>
+    ${paysMode() === 'one' && !isPayer() ? `<div class="banner"><span><b>Covered by ${esc(nameOf(payerId()))}.</b> Group costs aren’t on you. This page is for anything you spend on yourself.</span></div>` : paysMode() === 'company' ? `<div class="banner"><span><b>The company’s paying.</b> This page is for anything you spend on yourself.</span></div>` : ''}
     ${isHonoree() && honoreeFree() ? `<div class="banner"><span><b>You’re covered.</b> As the ${esc(mode().honoree)}, your share of group costs is split across the crew.</span></div>` : ''}
     <div class="meter-row">
       <svg viewBox="0 0 180 180" width="170" height="170" class="ring" role="img" aria-label="${budget ? Math.round(pct * 100) + '% of budget spent' : 'No budget set'}">
@@ -4087,7 +4170,7 @@ function meterTab() {
         ${state === 'warn' ? `<span class="pill maybe" style="align-self:flex-start">Heads up: ${Math.round(pct * 100)}% used</span>` : state === 'over' ? `<span class="pill out" style="align-self:flex-start;color:var(--meter-over)">Over budget</span>` : ''}
       </div></div>
     <div><div class="linkrow"><span>Your share of group expenses</span><span class="mono">${money2(exp)}</span></div>
-      ${HIDE_TABS[size()].includes('pot') ? '' : `<div class="linkrow"><span>Put in the group pot</span><span class="mono">${money2(pot)}</span></div>`}
+      ${!tabOn('pot') ? '' : `<div class="linkrow"><span>Put in the group pot</span><span class="mono">${money2(pot)}</span></div>`}
       ${(S.mySpend || []).map(x => `<div class="linkrow"><span>${esc(x.note)}</span><span class="row" style="gap:6px"><span class="mono">${money2(+x.amount)}</span><button class="x" data-delspend="${esc(x.id)}" aria-label="Remove ${esc(x.note)}">×</button></span></div>`).join('')}</div>
     <form id="spendForm" class="row" style="gap:6px;align-items:flex-end">
       <label class="field" style="flex:2 1 160px"><span class="label">Log something you paid yourself</span><input id="sp-note" maxlength="50" required placeholder="${({ hangout: 'Cab home', day: 'Train tickets', weekend: 'Gas', trip: 'My flight' })[size()]}"></label>
@@ -4249,7 +4332,7 @@ function liveQuick() {
     <button class="qa qa-lost" data-act="lostOpen"><b>I’m lost</b><span>Send the crew my spot</span></button>
     <button class="qa" data-act="ciJump"><b>Check in</b><span>${myCi ? 'You: ' + esc(myCi.text) : 'Where are you?'}</span></button>
     <button class="qa" data-act="meetJump"><b>Meet-up</b><span>${meet?.text ? esc(meet.text) + (meet.time ? ' · ' + esc(tShow(meet.time)) : '') : 'Not set yet'}</span></button>
-    <button class="qa" data-tab="map"><b>Map</b><span>${mapPoints().length} places pinned</span></button>
+    ${tabOn('map') ? `<button class="qa" data-tab="map"><b>Map</b><span>${mapPoints().length} places pinned</span></button>` : ''}
   </section>`;
 }
 function jumpTo(sel) { const el = $(sel); if (!el) return; el.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); setTimeout(() => el.focus({ preventScroll: true }), 300); }
@@ -4442,6 +4525,19 @@ const isSmall = (t = S.trip) => ['hangout', 'day'].includes(t?.size);
 const nightsSet = t => t.nights ?? (SIZES[t.size] || SIZES.trip).nights;
 const sizeOf = t => SIZES[t.size] ? t.size : 'trip';
 const HIDE_TABS = { hangout: ['flights', 'stays', 'tickets', 'pack', 'bucket', 'pot'], day: ['flights', 'stays', 'tickets', 'pack', 'pot'], weekend: ['flights', 'tickets'], trip: [] };
+// What each kind of plan doesn't get, on top of what its size hides (Friends, Celebration, Family, Work ×
+// small or away). Hiding is display only: nothing is deleted, and a feature a plan already uses (it has
+// to-dos, bucket items, pot entries or award votes) stays visible, so older plans keep everything they had.
+const GROUP_HIDE = {
+  friends: { small: ['tasks', 'map', 'bucket'], away: [] },
+  celebration: { small: ['map', 'bucket'], away: [] },
+  family: { small: ['tasks', 'map', 'bucket', 'awards'], away: ['pot', 'bucket', 'awards'] },
+  work: { small: ['map', 'bucket', 'awards', 'wrapped'], away: ['pot', 'bucket', 'awards', 'wrapped'] },
+};
+const IN_USE = { tasks: () => taskList().length > 0, bucket: () => S.bucket.length > 0, pot: () => S.pot.length > 0, awards: () => Object.keys(S.trip.superVotes || {}).length > 0 };
+// the group pot is for splitting; a plan where one person or a company pays doesn't show it (unless it's in use)
+const hiddenTabs = () => [...HIDE_TABS[size()], ...[...GROUP_HIDE[planGroup()][isSmall() ? 'small' : 'away'], ...(paysMode() === 'split' ? [] : ['pot'])].filter(k => !IN_USE[k]?.())];
+const tabOn = k => !hiddenTabs().includes(k);
 const STEP_KEYS = { hangout: ['crew', 'where', 'dates'], day: ['crew', 'where', 'dates', 'plan'], weekend: ['crew', 'where', 'dates', 'stay', 'plan'], trip: ['crew', 'where', 'dates', 'flights', 'stay', 'plan'] };
 const t12 = hm => { if (!hm) return ''; const [h, m] = hm.split(':').map(Number); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
 const dayRange = (a, b) => a === b ? fmt(a) : `${fmt(a)} → ${fmt(b)}`;
@@ -4699,58 +4795,101 @@ function openCrew(cid) {
 
 /* new-plan flow: crew → size → (type) → basics */
 function startNewPlan(cid) {
-  S.newCrew = cid || null; S.newSize = null; S.newMode = null;
+  S.newCrew = cid || null; S.newSize = null; S.newMode = null; S.newPays = null;
+  for (const k of ['nt-name', 'nt-start', 'nt-end']) delete DRAFT[k]; // a fresh plan starts with a blank form
   S.creating = cid || !myCrews().length ? 'size' : 'crew'; S.cameFromCrewStep = !cid && !!myCrews().length;
   if (cid) { S.crewView = null; setHash(''); }
   render(); window.scrollTo({ top: 0 });
 }
-function stepHead(title, back) {
-  const crew = S.crews.find(c => c.id === S.newCrew), sz = SIZES[S.newSize];
-  const trail = ['New plan', crew?.name, sz?.label].filter(Boolean).join(' · ');
-  return `<section class="stack"><button class="linkbtn small" data-act="${back}" style="align-self:flex-start">‹ Back</button>
-    <span class="label">${esc(trail)}</span><h1 style="font-size:clamp(30px,6vw,44px)">${title}</h1></section>`;
+/* ---------- new plan: who, how big, what kind, the basics ----------
+   One frame for every step: back, a progress bar, close, a big question and a friendly line. Each
+   step has one obvious thing to do: tap a card, or (last) create it. */
+const svgI = (d, s = 24) => `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const SIZE_ICON = {
+  hangout: '<path d="M5 4h14l-7 8z"/><path d="M12 12v7M8 20h8"/>',
+  day: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  weekend: '<path d="M3 20h18M5 20V10l7-6 7 6v10"/><path d="M10 20v-5h4v5"/>',
+  trip: '<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/>',
+};
+const SIZE_EG = { hangout: 'A few hours', day: 'One day', weekend: '1–2 nights', trip: '3+ nights, flights' };
+const TYPE_ICON = {
+  friends: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/>',
+  bachelorette: '<path d="M6 3h12l3 5-9 13L3 8z"/><path d="M3 8h18M9 3l3 5 3-5"/>',
+  bachelor: '<path d="M3 18h18M4 18 3 7l5 4 4-7 4 7 5-4-1 11"/>',
+  birthday: '<path d="M4 21h16v-8H4z"/><path d="M4 15.5c2 1.5 4 1.5 5.3 0s4 1.5 5.4 0 4-1.5 5.3 0"/><path d="M12 13V9.5M12 7c1-1 .5-2.5 0-3.5-.5 1-1 2.5 0 3.5"/>',
+  couples: '<path d="M12 20s-8-5-8-10.5A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 8 2.5C20 15 12 20 12 20z"/>',
+  family: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-5h4v5"/>',
+  college: '<path d="M12 3a9 9 0 0 1 9 9H3a9 9 0 0 1 9-9z"/><path d="M12 12v7a2 2 0 0 0 4 0"/>',
+  festival: '<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>',
+  sports: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/>',
+  work: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 13h18"/>',
+};
+// n: 0 who, 1 size, 2 type, 3 basics. The "who" step only counts when there was one.
+function flowStep(n, { eyebrow, title, sub, back, color }, body) {
+  const total = S.cameFromCrewStep ? 4 : 3, at = S.cameFromCrewStep ? n : n - 1;
+  return `<div class="nf" style="--pc:${color || 'var(--accent)'}" data-key="nf-${n}">
+    <div class="nf-top"><button class="nf-nav" data-act="${back}" aria-label="Back">${svgI('<path d="M15 5l-7 7 7 7"/>', 20)}</button>
+      <div class="nf-prog" role="progressbar" aria-label="New plan" aria-valuemin="1" aria-valuemax="${total}" aria-valuenow="${at + 1}">${Array.from({ length: total }, (_, i) => `<i class="${i < at ? 'done' : i === at ? 'cur' : ''}"></i>`).join('')}</div>
+      <button class="nf-nav" data-act="cancelNew" aria-label="Cancel the new plan">${svgI('<path d="M6 6l12 12M18 6 6 18"/>', 20)}</button></div>
+    <header class="nf-head">${eyebrow ? `<span class="nf-k">${eyebrow}</span>` : ''}<h1>${title}</h1>${sub ? `<p>${sub}</p>` : ''}</header>
+    ${body}
+  </div>`;
 }
 function pickCrewStep() {
-  return `${topBar()}${stepHead('Who’s this with?', 'cancelNew')}
-  <div class="modes">${myCrews().map(c => `<button class="mode" data-pickcrew="${esc(c.id)}" style="--mc:${colorFor(c.id)}"><b>${esc(c.name)}</b><span class="small muted">${crewMembers(c).map(id => esc(crewNick(c, id))).join(', ')}</span></button>`).join('')}
-    <button class="mode" data-pickcrew="" style="--mc:var(--muted)"><b>Someone else</b><span class="small muted">Start it and invite people after</span></button></div>`;
+  return flowStep(0, { eyebrow: 'New plan', title: 'Who’s coming?', sub: 'Pick a crew and everyone’s in from the start. Or start it and invite people after.', back: 'cancelNew' },
+    `<div class="nf-list">${myCrews().map(c => { const ids = crewMembers(c); return `<button class="nf-row" data-pickcrew="${esc(c.id)}" style="--pc:${colorFor(c.id)}">${avStack(ids.map(id => ({ id, nick: crewNick(c, id) })), 4)}<span class="nf-row-t"><b>${esc(c.name)}</b><span>${ids.length} ${ids.length === 1 ? 'person' : 'people'}</span></span>${svgI('<path d="M9 5l7 7-7 7"/>', 18)}</button>`; }).join('')}
+      <button class="nf-row nf-row-plain" data-pickcrew=""><span class="nf-ic">${svgI('<path d="M12 5v14M5 12h14"/>', 20)}</span><span class="nf-row-t"><b>Someone else</b><span>Start it, invite people after</span></span>${svgI('<path d="M9 5l7 7-7 7"/>', 18)}</button></div>`);
 }
 function pickSizeStep() {
-  return `${topBar()}${stepHead('How big is this plan?', S.cameFromCrewStep ? 'backCrew' : 'cancelNew')}
-  <div class="modes sizes">${Object.entries(SIZES).map(([k, v]) => `<button class="mode" data-size="${k}" style="--mc:${v.color}"><b>${esc(v.label)}</b><span class="small muted">${esc(v.desc)}</span></button>`).join('')}</div>`;
+  const crew = S.crews.find(c => c.id === S.newCrew);
+  return flowStep(1, { eyebrow: crew ? `New plan with ${esc(crew.name)}` : 'New plan', title: 'What are we planning?', sub: 'Pick a size. You can change it later.', back: S.cameFromCrewStep ? 'backCrew' : 'cancelNew' },
+    `<div class="nf-sizes">${Object.entries(SIZES).map(([k, v]) => `<button class="nf-size" data-size="${k}" style="--pc:${v.color}"><span class="nf-ic">${svgI(SIZE_ICON[k])}</span><b>${esc(v.label)}</b><span class="nf-d">${esc(v.desc)}</span><span class="nf-eg">${esc(SIZE_EG[k])}</span></button>`).join('')}</div>`);
 }
 function modePicker() {
-  return `${topBar()}${stepHead(`What kind of ${SIZES[S.newSize || 'trip'].label.toLowerCase()} is this?`, 'backSize')}
-  <p class="muted">We’ll tune the AI picks, the awards and the features to your group.</p>
-  <div class="modes">${Object.entries(MODES).map(([k, v]) => `<button class="mode" data-mode="${k}" style="--mc:${v.color}"><b>${esc(modeLabel(v, S.newSize))}</b><span class="small muted">${esc(modeDesc(v, S.newSize))}</span>${v.honoree ? `<span class="label" style="color:color-mix(in oklab,var(--mc) 70%,var(--ink))">Guest of honor mode</span>` : ''}</button>`).join('')}</div>`;
+  const sz = S.newSize || 'trip', small = isSmallSize(sz);
+  return flowStep(2, { eyebrow: esc(SIZES[sz].label), title: small ? 'What’s the occasion?' : `What kind of ${SIZES[sz].label.toLowerCase()}?`, sub: 'It shapes the ideas, the questions and the fun stuff.', back: 'backSize', color: SIZES[sz].color },
+    `<div class="nf-types">${Object.entries(MODES).map(([k, v]) => `<button class="nf-type" data-mode="${k}" style="--pc:${v.color}"><span class="nf-ic">${svgI(TYPE_ICON[k] || TYPE_ICON.friends, 20)}</span><b>${esc(modeLabel(v, sz))}</b><span class="nf-d">${esc(modeDesc(v, sz))}</span>${v.honoree ? `<span class="nf-tag">Guest of honor</span>` : ''}</button>`).join('')}</div>`);
+}
+// quick windows for "when", as [label, start, end]
+function whenChips(sz) {
+  const small = isSmallSize(sz);
+  return small ? [['Today', TODAY, TODAY], ['This week', TODAY, add(TODAY, 6)], ['Next 2 weeks', TODAY, add(TODAY, 13)]]
+    : [['Next few weeks', add(TODAY, 7), add(TODAY, 45)], ['In 1–3 months', add(TODAY, 30), add(TODAY, 100)], ['Later on', add(TODAY, 90), add(TODAY, 175)]];
 }
 function newTripForm() {
-  const sz = SIZES[S.newSize || 'trip'], small = ['hangout', 'day'].includes(S.newSize), m = MODES[S.newMode] || MODES.friends, crew = S.crews.find(c => c.id === S.newCrew);
+  const szK = S.newSize || 'trip', sz = SIZES[szK], small = isSmallSize(szK), m = MODES[S.newMode] || MODES.friends, crew = S.crews.find(c => c.id === S.newCrew);
   const start = small ? TODAY : add(TODAY, 30), end = add(start, sz.win + (small ? 0 : 15));
   let city = ''; try { city = localStorage.getItem('outta_city') || ''; } catch {}
-  const ph = small ? ({ birthday: 'Dev’s birthday dinner', family: 'Sunday family dinner', work: 'Team lunch' }[S.newMode] || sz.ph) : { bachelorette: 'Sarah’s Last Fling', bachelor: 'Mike’s Last Ride', birthday: 'Dev turns 30', family: 'Family beach week', work: 'Q3 team offsite', festival: 'Coachella weekend', sports: 'Super Bowl trip', couples: 'Couples in Tulum', college: 'Spring break ’27' }[S.newMode] || sz.ph;
-  return `${topBar()}${stepHead('The basics', 'backModes')}
-  <div class="row" style="gap:8px"><span class="mode-chip" style="--mc:${m.color}">${esc(modeLabel(m, S.newSize))}</span>${crew ? `<span class="small muted">Everyone in <b>${esc(crew.name)}</b> is added automatically.</span>` : ''}</div>
-  <section class="card stack">
-    <form id="newTrip" class="stack">
-      <label class="field"><span class="label">Name it</span><input id="nt-name" required maxlength="60" placeholder="${esc(ph)}"></label>
-      ${small ? `<label class="field"><span class="label">Which city?</span><input id="nt-city" maxlength="50" value="${esc(city)}" placeholder="Brooklyn" required></label>` : ''}
-      <div class="row">
-        <label class="field"><span class="label">${small ? 'Could happen from' : 'Earliest date'}</span><input id="nt-start" type="date" value="${start}" min="${TODAY}" required></label>
-        <label class="field"><span class="label">${small ? 'Until' : 'Latest date'}</span><input id="nt-end" type="date" value="${end}" min="${TODAY}" required></label>
-      </div>
-      <details class="more-opts-inline"><summary class="small">More options${small ? '' : ': nights, currency' + (m.honoree ? ', ' + esc(m.honoree) : '')}</summary>
-        <div class="row" style="margin-top:10px">
-          <label class="field" style="flex:0 1 190px"><span class="label">Currency</span><select id="nt-cur">${curOptions(lsGetC('outta_lastcur', '') || myCur())}</select></label>
+  const ph = small ? ((szK === 'day' ? { birthday: 'Dev’s birthday day out', family: 'Zoo day', work: 'Team day out' } : { birthday: 'Dev’s birthday dinner', family: 'Sunday family dinner', work: 'Team lunch' })[S.newMode] || sz.ph) : { bachelorette: 'Sarah’s Last Fling', bachelor: 'Mike’s Last Ride', birthday: 'Dev turns 30', family: 'Family beach week', work: 'Q3 team offsite', festival: 'Coachella weekend', sports: 'Super Bowl trip', couples: 'Couples in Tulum', college: 'Spring break ’27' }[S.newMode] || sz.ph;
+  const a = DRAFT['nt-start'] || start, b = DRAFT['nt-end'] || end, name = DRAFT['nt-name'] || '', cv = coverOf({ mode: S.newMode, size: szK, name: 'new' }, 'new-' + szK + S.newMode);
+  return flowStep(3, { eyebrow: `${esc(modeLabel(m, szK))}${modeLabel(m, szK).toLowerCase().includes(sz.label.toLowerCase()) ? '' : ' · ' + esc(sz.label)}`, title: 'Give it a name', sub: small ? 'Then roughly when and where. The crew picks the details together.' : 'Then roughly when. The crew picks the place and the exact nights together.', back: 'backModes', color: planColor({ mode: S.newMode, size: szK }) },
+    `<form id="newTrip" class="nf-form">
+      <div class="nf-preview ${cv.cls}" style="${cv.style}" aria-hidden="true"><div class="ovh-top"><span class="ovh-chip">${esc(modeLabel(m, szK))}</span>${crew ? `<span class="ovh-chip soft">with ${esc(crew.name)}</span>` : ''}</div><b class="nf-pv-title ${name ? '' : 'is-ph'}">${esc(name || ph)}</b></div>
+      <label class="nf-field"><span>What should we call it?</span><input id="nt-name" class="nf-big" required maxlength="60" value="${esc(name)}" placeholder="${esc(ph)}" autocomplete="off" enterkeyhint="next"></label>
+      ${small ? `<label class="nf-field"><span>Which city?</span><input id="nt-city" maxlength="50" value="${esc(city)}" placeholder="Brooklyn" required autocomplete="address-level2"></label>` : ''}
+      <div class="nf-field"><span>${small ? 'When could it happen?' : 'Roughly when?'}</span>
+        <div class="nf-chips">${whenChips(szK).map(([l, x, y]) => `<button type="button" class="nf-chip ${a === x && b === y ? 'on' : ''}" data-when="${x}|${y}">${l}</button>`).join('')}</div>
+        <div class="nf-dates"><label><span>${small ? 'From' : 'Earliest'}</span><input id="nt-start" type="date" value="${a}" min="${TODAY}" required></label><span class="nf-arrow" aria-hidden="true">→</span><label><span>${small ? 'Until' : 'Latest'}</span><input id="nt-end" type="date" value="${b}" min="${TODAY}" required></label></div>
+        <p class="nf-hint">${small ? 'Everyone taps which of these days they’re free.' : 'A wide window is fine. Everyone shares their free days, then you lock the best ones.'}</p></div>
+      <details class="more-opts-inline nf-more"><summary><b>Fine-tune</b><span>${['Currency', !small && 'nights', !small && m.honoree && `the ${esc(m.honoree)}`].filter(Boolean).join(', ')}</span></summary>
+        <div class="row" style="margin-top:12px">
+          <label class="field" style="flex:1 1 190px"><span class="label">Currency</span><select id="nt-cur">${curOptions(lsGetC('outta_lastcur', '') || myCur())}</select></label>
           ${small ? '' : `<label class="field" style="flex:0 1 110px"><span class="label">Nights</span><select id="nt-nights">${[1, 2, 3, 4, 5, 6, 7, 10, 14].map(n => `<option ${n === sz.nights ? 'selected' : ''}>${n}</option>`).join('')}</select></label>`}
           ${!small && m.honoree ? `<label class="field"><span class="label">The ${esc(m.honoree)}’s name</span><input id="nt-honoree" maxlength="40" placeholder="Optional"></label>` : ''}
         </div>
         <span class="small muted">All of this can change later in Settings.</span>
       </details>
-      <p class="small muted">${small ? 'Everyone taps which of these days they’re free. The crew picks the exact plan and day together.' : 'Not sure on dates yet? Give a wide window. The crew picks the exact nights later.'}</p>
-      <div><button class="btn primary big" type="submit" ${S.busy.create ? 'disabled' : ''}>${S.busy.create ? '<i class="spin"></i>Creating…' : `Create ${esc(sz.label.toLowerCase())}`}</button></div>
-    </form>
-  </section>`;
+      ${asksPays(S.newMode, szK) ? `<div class="nf-field" role="radiogroup" aria-label="Who’s paying?"><span>Who’s paying?</span><div class="nf-pays">${(PAYS_COPY[planGroup({ mode: S.newMode })] || PAYS_COPY.friends).order.slice(0, planGroup({ mode: S.newMode }) === 'work' ? 3 : 2).map(k => { const [l, d] = paysCopy(k, S.newMode), on = k === (S.newPays || paysDefault(S.newMode, szK)); return `<label class="nf-pay ${on ? 'on' : ''}"><input type="radio" name="nt-pays" value="${k}" ${on ? 'checked' : ''}><b>${esc(l)}</b><span>${esc(d)}</span></label>`; }).join('')}</div></div>` : ''}
+      ${crew ? `<p class="nf-hint">Everyone in <b>${esc(crew.name)}</b> is added automatically.</p>` : ''}
+      <div class="nf-cta"><button class="btn primary big" type="submit" ${S.busy.create ? 'disabled' : ''}>${S.busy.create ? '<i class="spin"></i>Creating…' : `Create the ${esc(sz.label.toLowerCase())}`}</button></div>
+    </form>`);
+}
+// The moment a plan is made: its name lands on a burst of its color, then the plan opens underneath.
+function celebrate(title, color) {
+  if (calm()) return;
+  const el = document.createElement('div'); el.className = 'launch'; el.setAttribute('aria-hidden', 'true'); el.style.setProperty('--pc', color);
+  el.innerHTML = `<div class="launch-in"><span>It’s on</span><b>${esc(title)}</b></div>${'<i></i>'.repeat(12)}`;
+  document.body.appendChild(el); setTimeout(() => el.remove(), 1700);
 }
 async function createTrip() {
   const name = $('#nt-name').value.trim(); let a = $('#nt-start').value, b = $('#nt-end').value;
@@ -4766,11 +4905,16 @@ async function createTrip() {
     mode: S.newMode || 'friends', honoreeName: ($('#nt-honoree')?.value || '').trim().slice(0, 40),
     // a small birthday plan (a dinner, a night out) doesn't cover the birthday star unless someone turns it on
     honoreeFree: !(small && S.newMode === 'birthday'), people: { [S.uid]: true }, createdBy: S.uid, createdAt: Date.now() };
+  // who pays: what was picked, or the kind of plan's default (small friends plans aren't asked and split)
+  const pays = asksPays(S.newMode, sz) && PAYS.includes(S.newPays) ? S.newPays : paysDefault(S.newMode, sz);
+  trip.pays = pays; if (pays === 'one') trip.payer = S.uid;
   try {
     await S.db.doc('trips/' + id).set(trip);
     const crew = S.crews.find(c => c.id === S.newCrew);
     await seedMembers(id, crew);
-    S.newCrew = null; S.creating = null; S.newMode = null; S.newSize = null; S.fromCrewPage = false;
+    celebrate(trip.name, planColor(trip));
+    for (const k of ['nt-name', 'nt-city', 'nt-start', 'nt-end']) delete DRAFT[k];
+    S.newCrew = null; S.creating = null; S.newMode = null; S.newSize = null; S.newPays = null; S.fromCrewPage = false;
     openTrip(id, 'overview'); S.setup = { step: 0 };
   } catch (e) { flash(writeErr(e)); }
 }
@@ -4974,8 +5118,9 @@ app.addEventListener('click', e => {
   if (ds.act === 'newCrew') { S.crewView = null; S.creating = 'newCrew'; render(); setTimeout(() => $('#nc-name')?.focus(), 50); return; }
   if (ds.crew) return openCrew(ds.crew);
   if (ds.act === 'copyCrewInvite') { const c = S.crews.find(x => x.id === ds.cid); return sendInvite(crewInviteText(c), crewLink(ds.cid), c?.name || 'Outta Here'); }
-  if (ds.mode) { S.newMode = ds.mode; S.creating = 'form'; render(); window.scrollTo({ top: 0 }); return; }
+  if (ds.mode) { S.newMode = ds.mode; S.newPays = null; S.creating = 'form'; render(); window.scrollTo({ top: 0 }); return; }
   if (ds.act === 'backModes') { S.creating = 'mode'; return render(); }
+  if (ds.when) { const [x, y] = ds.when.split('|'); for (const [id, v] of [['nt-start', x], ['nt-end', y]]) { const el = $('#' + id); if (el) el.value = v; DRAFT[id] = v; } return render(); }
   if (ds.act === 'cancelNew') { S.creating = null; S.newCrew = null; S.newSize = null; return render(); }
   if (ds.sec) { const sec = sections().find(x => x.k === ds.sec); S.tab = S.secTab[ds.sec] || (ds.sec === 'live' && !isLive() && !S.secTab.live ? 'live' : sec.tabs[0][0]); S.tabPicked = true; S.show = null; clearInterval(showTimer); render(); window.scrollTo({ top: 0 }); return; }
   if (ds.tab) { if (ds.tab === 'wrapped' && S.tid) lsSet('outta_wrapped_' + S.tid, true); S.guideJump = !!ds.guide; S.tab = TAB_ALIAS[ds.tab] || ds.tab; S.secTab[secOf(S.tab).k] = S.tab; S.tabPicked = true; if (ds.tab !== 'recap') { S.show = null; clearInterval(showTimer); } render(); window.scrollTo({ top: 0 }); return; }
@@ -5090,6 +5235,7 @@ app.addEventListener('click', e => {
   if (ds.act === 'wrapNext') { S.wrapI = (S.wrapI || 0) + 1; return render(); }
   if (ds.act === 'wrapPrev') { S.wrapI = Math.max(0, (S.wrapI || 0) - 1); return render(); }
   if (ds.act === 'wrappedCard') return makeWrappedCard();
+  if (ds.setpays) { const k = ds.setpays; return saveTrip({ pays: k, ...(k === 'one' && !S.trip.payer ? { payer: S.trip.createdBy || S.uid } : {}) }); }
   if (ds.setmode) { S.wrapI = 0; return saveTrip({ mode: ds.setmode }); }
   if (ds.reveal) { const it = (S.trip.itinerary || []).map(i => i.id === ds.reveal ? { ...i, revealed: true } : i); flash('Surprise revealed.'); return saveTrip({ itinerary: it }); }
   if (ds.swipe) { const [pid, v] = ds.swipe.split('|'); return swipe(pid, +v); }
@@ -5180,6 +5326,8 @@ app.addEventListener('change', e => {
   if (id === 'me-budget') saveMe({ budget: Math.max(0, Math.round(+e.target.value || 0)) }, true, true);
   if (id === 'ph-files') { const files = [...e.target.files]; e.target.value = ''; once('photos-up', () => uploadPhotos(files)); return; }
   if (id === 'set-honoree') { saveTrip({ honoree: e.target.value || null }); return; }
+  if (id === 'set-payer') { if (e.target.value) saveTrip({ payer: e.target.value }); return; }
+  if (e.target.name === 'nt-pays') { S.newPays = e.target.value; return render(); }
   if (id === 'set-free') { saveTrip({ honoreeFree: e.target.checked }); return; }
   if (id === 'pot-keeper') { saveTrip({ potKeeper: e.target.value }); return; }
   if (id === 'tk-file') { S.tkFile = e.target.files[0] || null; render(); }
@@ -5239,7 +5387,11 @@ let lastDown = null;
 app.addEventListener('pointerdown', e => { const f = e.target.closest && e.target.closest('input,textarea,select'); lastDown = f && f.id ? { id: f.id, at: Date.now() } : null; }, true);
 // keep half-typed text when someone else's change re-renders the page
 const DRAFT = {};
-app.addEventListener('input', e => { if (e.target.id && e.target.type !== 'file') DRAFT[e.target.id] = e.target.value; });
+app.addEventListener('input', e => {
+  if (e.target.id && e.target.type !== 'file') DRAFT[e.target.id] = e.target.value;
+  // the new plan's cover preview shows the name as it's typed
+  if (e.target.id === 'nt-name') { const t = $('.nf-pv-title'), v = e.target.value.trim(); if (t) { t.textContent = v || e.target.placeholder; t.classList.toggle('is-ph', !v); } }
+});
 const clearDrafts = f => f.querySelectorAll('[id]').forEach(el => delete DRAFT[el.id]);
 app.addEventListener('submit', async e => {
   e.preventDefault();
