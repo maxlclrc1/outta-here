@@ -78,10 +78,18 @@ app.addEventListener('click', e => {
   if (ds.act === 'startRunoff') return startRunoff();
   if (ds.act === 'endRunoff') return saveTrip({ runoff: null });
   if (ds.act === 'nudgeSwipe') return sendInvite(`Swipe on our ${planWord()} options for ${S.trip.name}. We’re waiting on you!`, inviteLink(), S.trip.name);
+  // a tap is free / not free; in ★ Favorites mode it stars a day instead (and counts you free on it)
   if (ds.day) {
     const days = new Set(meDoc()?.days || []), pref = new Set(meDoc()?.pref || []), d = ds.day;
-    if (!days.has(d)) days.add(d); else if (!pref.has(d)) pref.add(d); else { days.delete(d); pref.delete(d); }
+    if (S.starMode) { if (pref.has(d)) pref.delete(d); else { pref.add(d); days.add(d); } }
+    else if (days.has(d)) { days.delete(d); pref.delete(d); } else days.add(d);
     return saveMe({ days: [...days].sort(), pref: [...pref].filter(x => days.has(x)).sort() });
+  }
+  if (ds.act === 'starMode') { S.starMode = !S.starMode; return render(); }
+  if (ds.addwin) {
+    const [a, z] = ds.addwin.split('|'), days = new Set([...(meDoc()?.days || []), ...span(a, z)]);
+    saveMe({ days: [...days].sort() }, true); votePop('Works for me ✓', 'y');
+    return flash(`You’re in for ${a === z ? fmt(a) : dayRange(a, z)}. The crew can see it.`);
   }
   if (ds.taskdone) { const x = (S.trip.tasks || {})[ds.taskdone]; if (x) { patchTask(ds.taskdone, { done: !x.done, doneBy: x.done ? '' : S.uid }); if (!x.done) flash(`Done: ${x.title}`); } return; }
   if (ds.taketask) return patchTask(ds.taketask, { owner: S.uid });

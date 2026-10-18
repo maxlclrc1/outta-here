@@ -1258,7 +1258,7 @@ html .setup-nav .btn.primary.setup-go.skip{background:var(--surface);color:var(-
 .vote-pop{position:fixed;left:50%;bottom:calc(110px + env(safe-area-inset-bottom,0px));z-index:40;transform:translateX(-50%);font:900 26px var(--f-display);font-variation-settings:"wdth" 80;white-space:nowrap;pointer-events:none;animation:praise 1.1s var(--spring) forwards;text-shadow:0 2px 12px rgb(0 0 0/.25)}
 .vote-pop.vp-y{color:var(--good)}.vote-pop.vp-m{color:var(--gold)}.vote-pop.vp-n{color:var(--muted)}
 html .btn.chunky{border-radius:14px;font-weight:800;box-shadow:0 4px 0 var(--line);transition:transform .1s var(--ease),box-shadow .1s var(--ease)}
-html .btn.chunky.primary{box-shadow:0 4px 0 color-mix(in oklab,var(--accent) 55%,#000)}
+html:root .btn.chunky.primary{box-shadow:0 4px 0 color-mix(in oklab,var(--accent) 55%,#000)}
 html .btn.chunky:active{transform:translateY(4px);box-shadow:0 0 0 transparent}
 .match{position:relative;overflow:hidden;border-radius:24px;padding:26px 22px;animation:cardIn .5s var(--spring) backwards}
 .match > :not(.m-confetti){position:relative}
@@ -1339,3 +1339,26 @@ html .j-focus .j-acts .btn:not(.primary):active{transform:translateY(4px);box-sh
 .ov-folds>.ov-fold{flex:1 1 150px;min-width:0}
 .ov-folds>.ov-fold[open],.ov-folds>.card{flex-basis:100%}
 @media (prefers-reduced-motion:reduce){.j-focus.fresh .j-ico,.ov-progress .j-road.leveled li.j-cur i,.ov-progress .j-road.leveled li.j-cur::before{animation:none}}
+
+/* ---------- free days: your answer stands out, one tap for a window that works ---------- */
+.cal .day.best{box-shadow:inset 0 -4px 0 var(--gold),0 3px 0 color-mix(in oklab,var(--line) 90%,transparent)}
+.cal .day.pref{box-shadow:inset 0 0 0 2px var(--gold),0 3px 0 color-mix(in oklab,var(--line) 90%,transparent)}
+.cal .day.best.pref{box-shadow:inset 0 0 0 2px var(--gold),inset 0 -4px 0 var(--gold),0 3px 0 color-mix(in oklab,var(--line) 90%,transparent)}
+.avail .day{position:relative;background:var(--surface)}
+.avail .day.mine{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);outline:0;font-weight:700}
+.avail .day.mine:not(.best):not(.pref){box-shadow:0 3px 0 color-mix(in oklab,var(--accent) 55%,#000)}
+.avail .day .dots{font-size:10px;line-height:1;letter-spacing:-1px;color:var(--accent);min-height:10px}
+.avail .day.mine .dots{color:inherit;opacity:.85}
+.avail .day.mine .star{color:#fff}
+.dots-k{color:var(--accent);letter-spacing:-1px}
+.avail-ask{display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:18px;border:2px solid color-mix(in oklab,var(--accent) 45%,var(--line));background:color-mix(in oklab,var(--accent) 9%,var(--surface));animation:cardIn .4s var(--spring) backwards}
+.avail-ask-t{font-size:15px;line-height:1.4}
+.avail-quick .btn.on{background:var(--gold);color:#1A1405;border-color:var(--gold);box-shadow:0 4px 0 color-mix(in oklab,var(--gold) 55%,#000)}
+.setup .btn.sm.on{background:var(--gold);color:#1A1405;border-color:var(--gold)}
+.avail-done{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:12px 14px;border-radius:16px;background:color-mix(in oklab,var(--muted) 8%,transparent)}
+.avail-done.on{background:color-mix(in oklab,var(--good) 12%,transparent)}
+.avail-done.on .btn{margin-left:auto}
+.avail-n{color:var(--good);font-weight:700;animation:pop .35s var(--spring)}
+.avail-n b{font:900 18px var(--f-display)}
+.dates-more summary{cursor:pointer;color:var(--muted);font-weight:600}
+@media (prefers-reduced-motion:reduce){.avail-ask,.avail-n{animation:none}}

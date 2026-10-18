@@ -764,18 +764,24 @@ function datesBody() {
   const max = Math.max(1, ms.length);
   const cells = days.map((d, i) => {
     const head = i === 0 ? '<span></span>'.repeat((D(d).getUTCDay() + 6) % 7) : D(d).getUTCDate() === 1 ? `<span class="cal-month">${monthName(d)}</span>${'<span></span>'.repeat((D(d).getUTCDay() + 6) % 7)}` : '';
-    const n = ms.filter(m => (m.days || []).includes(d)).length, np = ms.filter(m => (m.pref || []).includes(d)).length;
-    const pct = Math.round(n / max * 70);
-    return `${head}<button class="day ${mine.has(d) ? 'mine' : ''} ${myPref.has(d) ? 'pref' : ''} ${bestSet.has(d) ? 'best' : ''}" data-day="${d}" aria-pressed="${mine.has(d)}" title="${fmt(d)} · ${n} free${np ? ` · ${np} prefer it` : ''}"
-      style="background:color-mix(in oklab,var(--accent) ${pct}%,var(--surface));${pct > 40 ? 'color:var(--accent-ink)' : ''}">${D(d).getUTCDate()}<small style="${pct > 40 ? 'color:inherit' : ''}">${n ? n + '/' + ms.length : ''}</small>${myPref.has(d) ? '<i class="star" aria-hidden="true">★</i>' : ''}</button>`;
+    const n = ms.filter(m => (m.days || []).includes(d)).length, np = ms.filter(m => (m.pref || []).includes(d)).length, others = n - (mine.has(d) ? 1 : 0);
+    // your days are solid; everyone else's show as dots, so your own answer is what stands out
+    return `${head}<button class="day ${mine.has(d) ? 'mine' : ''} ${myPref.has(d) ? 'pref' : ''} ${bestSet.has(d) ? 'best' : ''}" data-day="${d}" aria-pressed="${mine.has(d)}" title="${fmt(d)} · ${n} free${np ? ` · ${np} prefer it` : ''}" aria-label="${fmt(d)}${mine.has(d) ? ', you’re free' : ''}${myPref.has(d) ? ', a favorite' : ''}${others ? `, ${others} more free` : ''}">${D(d).getUTCDate()}<small class="dots" aria-hidden="true">${others ? '•'.repeat(Math.min(others, 4)) + (others > 4 ? '+' : '') : ''}</small>${myPref.has(d) ? '<i class="star" aria-hidden="true">★</i>' : ''}</button>`;
   });
+  // a window the others can already do and you haven't answered for: one tap says it works for you
+  const ask = !S.readOnly && meDoc() && best.find(w => w.miss.some(m => m.id === S.uid) && w.ok.length && span(w.start, w.end).some(d => !mine.has(d)));
+  const settingsOpen = !t.winStart || !t.winEnd || !days.length;
   return `<section class="grid2">
-    <div class="card stack">
-      <div class="row" style="justify-content:space-between"><div class="stack" style="gap:2px"><h2>${isSmall() ? 'Which days work for you?' : 'Tap the days you’re free'}</h2><span class="small muted">Tap once: works. Twice: best for you ★. Three times: clear.</span></div>
-        <div class="row" style="gap:6px"><button class="btn sm ghost" data-act="allDays">All</button><button class="btn sm ghost" data-act="weekends">Fri–Sun</button><button class="btn sm ghost" data-act="noDays">Clear</button></div></div>
+    <div class="card stack avail">
+      <div class="stack" style="gap:2px"><h2>${isSmall() ? 'Which days work for you?' : 'When are you free?'}</h2><span class="small muted">${S.starMode ? 'Tap your favorite days ★. Tap again to unstar.' : 'Tap the days you could do. Tap again to take one off.'}</span></div>
+      ${ask ? `<div class="avail-ask"><span class="avail-ask-t">🙌 <b>${esc(listNames(ask.ok))}</b> ${ask.ok.length === 1 ? 'can' : 'can'} do <b>${ask.start === ask.end ? fmt(ask.start) : dayRange(ask.start, ask.end)}</b>. Can you?</span>
+        <div class="row" style="gap:8px"><button class="btn primary chunky" data-addwin="${ask.start}|${ask.end}">Works for me</button><span class="small muted">or tap your days below</span></div></div>` : ''}
+      <div class="row avail-quick" style="gap:6px"><button class="btn sm chunky" data-act="allDays">All of them</button><button class="btn sm chunky" data-act="weekends">Fri–Sun</button><button class="btn sm chunky ${S.starMode ? 'on' : ''}" data-act="starMode" aria-pressed="${!!S.starMode}">★ Favorites</button>${mine.size ? '<button class="btn sm ghost" data-act="noDays">Clear</button>' : ''}</div>
       <div class="cal">${days.length ? `<span class="cal-month first">${monthName(days[0])}</span>` : ''}${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x => `<span class="dow">${x}</span>`).join('')}${cells.join('')}</div>
-      <div class="legend"><span><i class="sw" style="background:var(--accent)"></i>More people free</span><span><i class="sw" style="outline:2px solid var(--ink)"></i>You</span><span>★ Best for you</span><span><i class="sw" style="box-shadow:inset 0 -3px 0 var(--gold)"></i>${isSmall() ? 'Best day' : 'Best window'}</span></div>
-      ${isSmall() ? '' : `<div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:12px"><span class="label">How flexible are you?</span>
+      <div class="legend"><span><i class="sw" style="background:var(--accent)"></i>Your days</span><span><b class="dots-k">•••</b> Friends free</span><span>★ Favorite</span><span><i class="sw" style="box-shadow:inset 0 -3px 0 var(--gold)"></i>${isSmall() ? 'Best day' : 'Best window'}</span></div>
+      <div class="avail-done ${mine.size ? 'on' : ''}" aria-live="polite">${mine.size ? `<span class="avail-n" data-key="avail-n-${mine.size}">✓ <b>${mine.size}</b> ${mine.size === 1 ? 'day' : 'days'} saved</span><span class="small muted">The crew sees them right away.</span><button class="btn sm chunky" data-tab="overview">Back to the plan</button>` : `<span class="small muted">Nothing picked yet. Your days save as you tap.</span>`}</div>
+      <details class="dates-more" data-key="dates-more" ${settingsOpen ? 'open' : ''}><summary class="small">${isSmall() ? 'Flexibility and the days that could work' : 'Flexibility, trip window and length'}</summary><div class="stack" style="gap:12px;margin-top:10px">
+      ${isSmall() ? '' : `<div class="stack" style="gap:6px"><span class="label">How flexible are you?</span>
         <div class="row" style="gap:6px"><button class="chip ${flex.late ? 'on' : ''}" data-flex="late" aria-pressed="${!!flex.late}">I can arrive a day late</button><button class="chip ${flex.early ? 'on' : ''}" data-flex="early" aria-pressed="${!!flex.early}">I can leave a day early</button></div>
         <span class="small muted">Counts you in for dates where you’d miss the first or last day.</span></div>`}
       <div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:12px">
@@ -786,7 +792,7 @@ function datesBody() {
           <label class="field" ${isSmall() ? 'hidden' : ''}><span class="small muted">Trip length</span><select id="nights">${(isSmall() ? [0] : [1,2,3,4,5,6,7,10,14]).map(n => `<option value="${n}" ${n === nightsSet(t) ? 'selected' : ''}>${n === 0 ? 'Same day' : n + ' night' + (n === 1 ? '' : 's')}</option>`).join('')}</select></label>
         </div>
         <span class="small muted">Change these any time. Days people already tapped are kept.</span>
-      </div>
+      </div></div></details>
     </div>
     <div class="card stack">
       <h2>${isSmall() ? 'Best day' : 'Best dates'}</h2>${S.demo ? '' : ruleLine()}
@@ -1090,8 +1096,8 @@ function setupView() {
   const nDays = (m.days || []).length, mq = m.quiz || {};
   const step = {
     days: { h: isSmall() ? 'Which days work for you?' : 'When are you free?',
-      p: `Tap every ${isSmall() ? 'day' : 'day you could be away'} between ${short(S.trip.winStart)} and ${short(S.trip.winEnd)}. Tap twice for the ones that are best for you ★.`,
-      c: `<div class="row" style="gap:6px"><button class="btn sm" data-act="allDays">All of them</button><button class="btn sm" data-act="weekends">Fri–Sun</button><button class="btn sm ghost" data-act="noDays">Clear</button></div>
+      p: S.starMode ? 'Tap your favorite days ★. Tap again to unstar.' : `Tap every ${isSmall() ? 'day' : 'day you could be away'} between ${short(S.trip.winStart)} and ${short(S.trip.winEnd)}. Tap again to take one off.`,
+      c: `<div class="row" style="gap:6px"><button class="btn sm" data-act="allDays">All of them</button><button class="btn sm" data-act="weekends">Fri–Sun</button><button class="btn sm ${S.starMode ? 'on' : ''}" data-act="starMode" aria-pressed="${!!S.starMode}">★ Favorites</button><button class="btn sm ghost" data-act="noDays">Clear</button></div>
         ${dayPicker()}<span class="small muted">${nDays ? `${nDays} day${nDays === 1 ? '' : 's'} picked` : 'Nothing picked yet'}</span>` },
     home: { h: size() === 'trip' ? 'Where are you flying from?' : 'Where are you coming from?',
       p: size() === 'trip' ? 'Your home airport or city. It’s used for flight prices and to pitch places that are easy for everyone to reach.' : 'Your city or neighborhood, so pitches stay within reach for everyone.',
@@ -5286,10 +5292,18 @@ app.addEventListener('click', e => {
   if (ds.act === 'startRunoff') return startRunoff();
   if (ds.act === 'endRunoff') return saveTrip({ runoff: null });
   if (ds.act === 'nudgeSwipe') return sendInvite(`Swipe on our ${planWord()} options for ${S.trip.name}. We’re waiting on you!`, inviteLink(), S.trip.name);
+  // a tap is free / not free; in ★ Favorites mode it stars a day instead (and counts you free on it)
   if (ds.day) {
     const days = new Set(meDoc()?.days || []), pref = new Set(meDoc()?.pref || []), d = ds.day;
-    if (!days.has(d)) days.add(d); else if (!pref.has(d)) pref.add(d); else { days.delete(d); pref.delete(d); }
+    if (S.starMode) { if (pref.has(d)) pref.delete(d); else { pref.add(d); days.add(d); } }
+    else if (days.has(d)) { days.delete(d); pref.delete(d); } else days.add(d);
     return saveMe({ days: [...days].sort(), pref: [...pref].filter(x => days.has(x)).sort() });
+  }
+  if (ds.act === 'starMode') { S.starMode = !S.starMode; return render(); }
+  if (ds.addwin) {
+    const [a, z] = ds.addwin.split('|'), days = new Set([...(meDoc()?.days || []), ...span(a, z)]);
+    saveMe({ days: [...days].sort() }, true); votePop('Works for me ✓', 'y');
+    return flash(`You’re in for ${a === z ? fmt(a) : dayRange(a, z)}. The crew can see it.`);
   }
   if (ds.taskdone) { const x = (S.trip.tasks || {})[ds.taskdone]; if (x) { patchTask(ds.taskdone, { done: !x.done, doneBy: x.done ? '' : S.uid }); if (!x.done) flash(`Done: ${x.title}`); } return; }
   if (ds.taketask) return patchTask(ds.taketask, { owner: S.uid });
