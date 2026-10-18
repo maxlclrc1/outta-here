@@ -9,6 +9,8 @@ const COST_LINES = {
   weekend: [['travel', 'Getting there', 'Gas, tolls, train or a short flight', true], ['stay', 'Stay', 'Your share, all nights', true], ['local', 'Getting around', 'Ubers, parking', false], ['food', 'Food & drinks', 'Every meal and night out', true], ['fun', 'Activities', 'Tickets, cover, rentals', false], ['fees', 'Fees', 'Cleaning, resort and booking fees', false]],
   trip: [['travel', 'Flights', 'Round trip from your city', true], ['stay', 'Stay', 'Your share, all nights', true], ['local', 'Getting around', 'Airport transfer, Ubers', true], ['food', 'Food & drinks', 'Every meal and night out', true], ['fun', 'Activities', 'Tickets, tours, cover charges', false], ['fees', 'Fees', 'Cleaning, resort, baggage, booking fees', false]],
 };
+// Family trips and offsites keep the same lines, but hints about nights out and cover charges get plain ones.
+const costLines = (t = S.trip) => { const h = planKind(t).costHints, ls = COST_LINES[sizeOf(t)]; return h ? ls.map(l => h[l[0]] && /night|cover|rounds/i.test(l[2]) ? [l[0], l[1], h[l[0]], l[3]] : l) : ls; };
 const SRC_LABEL = { estimate: 'Estimate', ai: 'AI estimate', quote: 'Real quote', booked: 'Booked', paid: 'Paid' };
 // "$650–800 all-in" → [650, 800]; "$180/night" → [180, 180]
 function moneyRange(s) {
@@ -68,7 +70,7 @@ function costHints() {
 }
 // who: 'crew' (a typical person's range) or 'me' (your own, using your real numbers)
 function costSummary(t = S.trip, who = 'crew') {
-  const lines = COST_LINES[sizeOf(t)], saved = t.costs || {}, hints = t === S.trip ? costHints() : {};
+  const lines = costLines(t), saved = t.costs || {}, hints = t === S.trip ? costHints() : {};
   const paid = t === S.trip ? paidSoFar(who) : { by: {}, other: 0 }, fl = t === S.trip && size() === 'trip' ? (who === 'me' ? myFlight() : crewFlights()) : null;
   const rows = lines.map(([k, label, hint, major]) => {
     const s = saved[k], h = hints[k];
@@ -208,7 +210,7 @@ function saveCostLineNow(k) {
 }
 // AI fills only the lines that don't have a real quote or booking yet.
 function estimateCosts() {
-  const lines = COST_LINES[size()], saved = S.trip.costs || {}, heads = planHeads();
+  const lines = costLines(), saved = S.trip.costs || {}, heads = planHeads();
   // skip what's already real: paid expenses, and flights once everyone's has a price
   const paid = paidSoFar('crew').by, fl = size() === 'trip' ? crewFlights() : null;
   const open = lines.filter(([k]) => (!saved[k] || ['estimate', 'ai'].includes(saved[k].src) && saved[k].by === 'ai') && !paid[k] && !(k === 'travel' && fl && fl.prices.length >= heads));

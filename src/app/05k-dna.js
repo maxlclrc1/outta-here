@@ -13,17 +13,19 @@ const pitchPrice = (p, t, base) => { const r = moneyRange(p.perPerson); return r
 function crewDNA(c) {
   const ps = crewPlans(c.id), dna = c.dna || {}, traits = [], memory = [];
   const items = ps.flatMap(t => (t.itinerary || []).filter(i => !i.secret));
+  // late stops and nightlife in a family trip or offsite came from picks once added at 22:30 as nightlife, so they don't make a crew night owls
+  const social = ps.filter(t => !planKind(t).spots).flatMap(t => (t.itinerary || []).filter(i => !i.secret));
   const timed = items.filter(i => i.time);
   const add = (k, label, evidence) => traits.push({ k, label: (dna.fix || {})[k] || label, auto: label, evidence, hidden: !!(dna.hidden || {})[k], fixed: !!(dna.fix || {})[k] });
   // when they go out
   if (timed.length >= 5) {
-    const late = timed.filter(i => isLate(i.time)).length, early = timed.filter(i => i.time < '10:00' && i.time >= '04:00').length;
+    const late = social.filter(i => i.time && isLate(i.time)).length, early = timed.filter(i => i.time < '10:00' && i.time >= '04:00').length;
     if (late / timed.length >= 0.3) add('owls', 'Night owls', `${late} of ${timed.length} planned stops start after 10pm`);
     else if (early / timed.length >= 0.3) add('early', 'Early starters', `${early} of ${timed.length} planned stops start before 10am`);
   }
   // what fills the itinerary
   if (items.length >= 5) {
-    const food = items.filter(isFoody).length, night = items.filter(i => i.kind === 'nightlife').length, act = items.filter(i => i.kind === 'activity').length;
+    const food = items.filter(isFoody).length, night = social.filter(i => i.kind === 'nightlife').length, act = items.filter(i => i.kind === 'activity').length;
     if (food / items.length >= 0.35) add('food', 'Food-first', `${food} of ${items.length} stops are about eating`);
     if (night / items.length >= 0.3) add('night', 'Here for the nights out', `${night} of ${items.length} stops are nightlife`);
     if (act / items.length >= 0.35) add('doers', 'Always doing something', `${act} of ${items.length} stops are activities`);

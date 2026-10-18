@@ -59,8 +59,9 @@ const mode = () => MODES[S.trip?.mode] || MODES.friends;
    trips and team offsites get their own. A missing or unknown mode is a friends trip, as before. */
 const SPEND_Q = QUIZ.find(q => q.k === 'spend');
 const CALM_SPOT = '"type":"%T","area":"neighborhood","why":"one sentence on why this group would like it","price":"$|$$|$$$|$$$$","cover":"entry price per person, e.g. Free or $15","bestNight":"best time, e.g. Sat morning","tip":"one practical insider tip","lat":0,"lng":0';
-// adding a calm pick to the itinerary: meals at dinner time, everything else in the morning, never as nightlife
-const calmAdd = s => /restaurant|cafe|food/.test(s.type || '') ? { time: '18:30', kind: 'food' } : { time: '10:00', kind: 'activity' };
+// adding a calm pick to the itinerary: cafés in the morning, meals at dinner time, a bar or lounge as a relaxed
+// evening, everything else as a daytime activity; never as nightlife
+const calmAdd = s => { const t = s.type || ''; return /cafe/.test(t) ? { time: '09:30', kind: 'food' } : /restaurant|food/.test(t) ? { time: '18:30', kind: 'food' } : /bar|lounge/.test(t) ? { time: '20:00', kind: 'chill' } : { time: '10:00', kind: 'activity' }; };
 const PLAN_KINDS = {
   social: {
     quiz: QUIZ, persona: w => `The ${PERSONA_LATE[w.late?.a] || 'Wild'} ${PERSONA_NIGHT[w.night?.a] || 'Party'} Crew`, blendEg: '60% Big club, 40% Rooftop cocktails',
@@ -83,6 +84,7 @@ const PLAN_KINDS = {
     hypes: ['LET’S GOOO', 'Who’s packing already?', 'I just booked!', 'Countdown is on'], hypesLive: ['Where is everyone?', 'Best day yet', 'Who’s hungry?', 'Heading back soon'], hangover: false,
     picks: 'Places the group already likes', mix: 'Mix food, activities, downtime and easy evenings (use the picks at their best times). Nothing late at night or 21+ only.',
     pack: 'sunscreen, snacks, phone chargers, games, first aid, wipes, etc.',
+    costHints: { food: 'Every meal and snack', fun: 'Tickets, entry fees, rentals' }, dealsFun: 'activities', evening: 'Evenings',
   },
   work: {
     quiz: [
@@ -97,10 +99,11 @@ const PLAN_KINDS = {
     hypes: ['Can’t wait!', 'Who’s packing already?', 'I just booked!', 'See you there'], hypesLive: ['Where is everyone?', 'Great session', 'Dinner plans?', 'Heading back soon'], hangover: false,
     picks: 'Places the team already likes', mix: 'Mix work sessions, team meals, one group activity and relaxed evenings (use the picks at their best times).',
     pack: 'laptop chargers, plug adapters, a speaker, snacks, first aid, etc.',
+    costHints: { food: 'Every meal and team dinner', fun: 'Team activity, tickets, entry fees' }, dealsFun: 'activities', evening: 'Evenings',
   },
 };
 const KIND_OF = { family: 'family', work: 'work' };
-const planKind = () => PLAN_KINDS[KIND_OF[S.trip?.mode]] || PLAN_KINDS.social;
+const planKind = (t = S.trip) => PLAN_KINDS[KIND_OF[t?.mode]] || PLAN_KINDS.social;
 const quiz = () => planKind().quiz;
 const vibeDefault = where => { const v = planKind().vibe; return typeof v === 'string' ? v : v[where]; };
 const modeLabel = (v, sz) => sz === 'weekend' ? v.label.replace(/ trip$/, ' weekend') : v.label;

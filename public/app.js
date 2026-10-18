@@ -457,7 +457,7 @@ ${context()}
 Be realistic and give ranges. Reply with only JSON:
 {"flights":[{"from":"origin city","roundTrip":"$180–260","tip":"best airport/airline/time tip"}],
  "stay":{"areas":[{"name":"neighborhood","why":"one line","perNight":"$X–Y per room or per house"}],"groupPlay":"one or two sentences: rooms vs one big rental for this group size, and per-person cost"},
- "perPerson":{"flights":"$","stay":"$","food":"$","nightlife":"$","total":"$"},
+ "perPerson":{"flights":"$","stay":"$","food":"$","${planKind().dealsFun || 'nightlife'}":"$","total":"$"},
  "verdict":"fits|tight|over",
  "savings":["3 to 5 short, specific money-saving moves for this trip"]}`;
   askAI('deals', prompt, data => {
@@ -863,9 +863,9 @@ function ticketsSection() {
 }
 function dealsBody(x, cap) {
   const v = { fits: ['in', 'Fits the budget'], tight: ['maybe', 'Tight'], over: ['out', 'Over budget'] }[x.verdict] || null;
-  const pp = x.perPerson || {};
+  const pk = planKind(), pp = pk.dealsFun ? { ...x.perPerson, [pk.dealsFun]: x.perPerson?.[pk.dealsFun] || x.perPerson?.nightlife, nightlife: undefined } : x.perPerson || {};
   return `${v ? `<div class="row"><span class="pill ${v[0]}">${v[1]}</span>${cap ? `<span class="small muted">vs. ${money(cap)} cap</span>` : ''}</div>` : ''}
-    <div class="split">${['flights', 'stay', 'food', 'nightlife', 'total'].filter(k => pp[k]).map(k => `<div><span class="label">${k}</span><b style="font-size:16px">${esc(pp[k])}</b></div>`).join('')}</div>
+    <div class="split">${['flights', 'stay', 'food', pk.dealsFun || 'nightlife', 'total'].filter(k => pp[k]).map(k => `<div><span class="label">${k}</span><b style="font-size:16px">${esc(pp[k])}</b></div>`).join('')}</div>
     ${(x.flights || []).length ? `<div><span class="label">Typical round trips</span>${x.flights.map(f => `<div class="linkrow"><div style="min-width:0"><b>${esc(f.from)}</b><div class="small muted">${esc(f.tip)}</div></div><span class="mono">${esc(f.roundTrip)}</span></div>`).join('')}</div>` : ''}
     ${x.stay?.areas?.length ? `<div><span class="label">Where to stay cheap</span>${x.stay.areas.map(a => `<div class="linkrow"><div style="min-width:0"><b>${esc(a.name)}</b><div class="small muted">${esc(a.why)}</div></div><span class="mono small">${esc(a.perNight)}</span></div>`).join('')}
       ${x.stay.groupPlay ? `<p class="small" style="margin-top:6px">${esc(x.stay.groupPlay)}</p>` : ''}</div>` : ''}
@@ -1685,8 +1685,9 @@ const mode = () => MODES[S.trip?.mode] || MODES.friends;
    trips and team offsites get their own. A missing or unknown mode is a friends trip, as before. */
 const SPEND_Q = QUIZ.find(q => q.k === 'spend');
 const CALM_SPOT = '"type":"%T","area":"neighborhood","why":"one sentence on why this group would like it","price":"$|$$|$$$|$$$$","cover":"entry price per person, e.g. Free or $15","bestNight":"best time, e.g. Sat morning","tip":"one practical insider tip","lat":0,"lng":0';
-// adding a calm pick to the itinerary: meals at dinner time, everything else in the morning, never as nightlife
-const calmAdd = s => /restaurant|cafe|food/.test(s.type || '') ? { time: '18:30', kind: 'food' } : { time: '10:00', kind: 'activity' };
+// adding a calm pick to the itinerary: cafés in the morning, meals at dinner time, a bar or lounge as a relaxed
+// evening, everything else as a daytime activity; never as nightlife
+const calmAdd = s => { const t = s.type || ''; return /cafe/.test(t) ? { time: '09:30', kind: 'food' } : /restaurant|food/.test(t) ? { time: '18:30', kind: 'food' } : /bar|lounge/.test(t) ? { time: '20:00', kind: 'chill' } : { time: '10:00', kind: 'activity' }; };
 const PLAN_KINDS = {
   social: {
     quiz: QUIZ, persona: w => `The ${PERSONA_LATE[w.late?.a] || 'Wild'} ${PERSONA_NIGHT[w.night?.a] || 'Party'} Crew`, blendEg: '60% Big club, 40% Rooftop cocktails',
@@ -1709,6 +1710,7 @@ const PLAN_KINDS = {
     hypes: ['LET’S GOOO', 'Who’s packing already?', 'I just booked!', 'Countdown is on'], hypesLive: ['Where is everyone?', 'Best day yet', 'Who’s hungry?', 'Heading back soon'], hangover: false,
     picks: 'Places the group already likes', mix: 'Mix food, activities, downtime and easy evenings (use the picks at their best times). Nothing late at night or 21+ only.',
     pack: 'sunscreen, snacks, phone chargers, games, first aid, wipes, etc.',
+    costHints: { food: 'Every meal and snack', fun: 'Tickets, entry fees, rentals' }, dealsFun: 'activities', evening: 'Evenings',
   },
   work: {
     quiz: [
@@ -1723,10 +1725,11 @@ const PLAN_KINDS = {
     hypes: ['Can’t wait!', 'Who’s packing already?', 'I just booked!', 'See you there'], hypesLive: ['Where is everyone?', 'Great session', 'Dinner plans?', 'Heading back soon'], hangover: false,
     picks: 'Places the team already likes', mix: 'Mix work sessions, team meals, one group activity and relaxed evenings (use the picks at their best times).',
     pack: 'laptop chargers, plug adapters, a speaker, snacks, first aid, etc.',
+    costHints: { food: 'Every meal and team dinner', fun: 'Team activity, tickets, entry fees' }, dealsFun: 'activities', evening: 'Evenings',
   },
 };
 const KIND_OF = { family: 'family', work: 'work' };
-const planKind = () => PLAN_KINDS[KIND_OF[S.trip?.mode]] || PLAN_KINDS.social;
+const planKind = (t = S.trip) => PLAN_KINDS[KIND_OF[t?.mode]] || PLAN_KINDS.social;
 const quiz = () => planKind().quiz;
 const vibeDefault = where => { const v = planKind().vibe; return typeof v === 'string' ? v : v[where]; };
 const modeLabel = (v, sz) => sz === 'weekend' ? v.label.replace(/ trip$/, ' weekend') : v.label;
@@ -2007,6 +2010,8 @@ const COST_LINES = {
   weekend: [['travel', 'Getting there', 'Gas, tolls, train or a short flight', true], ['stay', 'Stay', 'Your share, all nights', true], ['local', 'Getting around', 'Ubers, parking', false], ['food', 'Food & drinks', 'Every meal and night out', true], ['fun', 'Activities', 'Tickets, cover, rentals', false], ['fees', 'Fees', 'Cleaning, resort and booking fees', false]],
   trip: [['travel', 'Flights', 'Round trip from your city', true], ['stay', 'Stay', 'Your share, all nights', true], ['local', 'Getting around', 'Airport transfer, Ubers', true], ['food', 'Food & drinks', 'Every meal and night out', true], ['fun', 'Activities', 'Tickets, tours, cover charges', false], ['fees', 'Fees', 'Cleaning, resort, baggage, booking fees', false]],
 };
+// Family trips and offsites keep the same lines, but hints about nights out and cover charges get plain ones.
+const costLines = (t = S.trip) => { const h = planKind(t).costHints, ls = COST_LINES[sizeOf(t)]; return h ? ls.map(l => h[l[0]] && /night|cover|rounds/i.test(l[2]) ? [l[0], l[1], h[l[0]], l[3]] : l) : ls; };
 const SRC_LABEL = { estimate: 'Estimate', ai: 'AI estimate', quote: 'Real quote', booked: 'Booked', paid: 'Paid' };
 // "$650–800 all-in" → [650, 800]; "$180/night" → [180, 180]
 function moneyRange(s) {
@@ -2066,7 +2071,7 @@ function costHints() {
 }
 // who: 'crew' (a typical person's range) or 'me' (your own, using your real numbers)
 function costSummary(t = S.trip, who = 'crew') {
-  const lines = COST_LINES[sizeOf(t)], saved = t.costs || {}, hints = t === S.trip ? costHints() : {};
+  const lines = costLines(t), saved = t.costs || {}, hints = t === S.trip ? costHints() : {};
   const paid = t === S.trip ? paidSoFar(who) : { by: {}, other: 0 }, fl = t === S.trip && size() === 'trip' ? (who === 'me' ? myFlight() : crewFlights()) : null;
   const rows = lines.map(([k, label, hint, major]) => {
     const s = saved[k], h = hints[k];
@@ -2206,7 +2211,7 @@ function saveCostLineNow(k) {
 }
 // AI fills only the lines that don't have a real quote or booking yet.
 function estimateCosts() {
-  const lines = COST_LINES[size()], saved = S.trip.costs || {}, heads = planHeads();
+  const lines = costLines(), saved = S.trip.costs || {}, heads = planHeads();
   // skip what's already real: paid expenses, and flights once everyone's has a price
   const paid = paidSoFar('crew').by, fl = size() === 'trip' ? crewFlights() : null;
   const open = lines.filter(([k]) => (!saved[k] || ['estimate', 'ai'].includes(saved[k].src) && saved[k].by === 'ai') && !paid[k] && !(k === 'travel' && fl && fl.prices.length >= heads));
@@ -2857,17 +2862,19 @@ const pitchPrice = (p, t, base) => { const r = moneyRange(p.perPerson); return r
 function crewDNA(c) {
   const ps = crewPlans(c.id), dna = c.dna || {}, traits = [], memory = [];
   const items = ps.flatMap(t => (t.itinerary || []).filter(i => !i.secret));
+  // late stops and nightlife in a family trip or offsite came from picks once added at 22:30 as nightlife, so they don't make a crew night owls
+  const social = ps.filter(t => !planKind(t).spots).flatMap(t => (t.itinerary || []).filter(i => !i.secret));
   const timed = items.filter(i => i.time);
   const add = (k, label, evidence) => traits.push({ k, label: (dna.fix || {})[k] || label, auto: label, evidence, hidden: !!(dna.hidden || {})[k], fixed: !!(dna.fix || {})[k] });
   // when they go out
   if (timed.length >= 5) {
-    const late = timed.filter(i => isLate(i.time)).length, early = timed.filter(i => i.time < '10:00' && i.time >= '04:00').length;
+    const late = social.filter(i => i.time && isLate(i.time)).length, early = timed.filter(i => i.time < '10:00' && i.time >= '04:00').length;
     if (late / timed.length >= 0.3) add('owls', 'Night owls', `${late} of ${timed.length} planned stops start after 10pm`);
     else if (early / timed.length >= 0.3) add('early', 'Early starters', `${early} of ${timed.length} planned stops start before 10am`);
   }
   // what fills the itinerary
   if (items.length >= 5) {
-    const food = items.filter(isFoody).length, night = items.filter(i => i.kind === 'nightlife').length, act = items.filter(i => i.kind === 'activity').length;
+    const food = items.filter(isFoody).length, night = social.filter(i => i.kind === 'nightlife').length, act = items.filter(i => i.kind === 'activity').length;
     if (food / items.length >= 0.35) add('food', 'Food-first', `${food} of ${items.length} stops are about eating`);
     if (night / items.length >= 0.3) add('night', 'Here for the nights out', `${night} of ${items.length} stops are nightlife`);
     if (act / items.length >= 0.35) add('doers', 'Always doing something', `${act} of ${items.length} stops are activities`);
@@ -3647,7 +3654,9 @@ function mapPoints() {
   const st = S.trip.stay; if (st && st.lat) push({ key: 'stay', name: st.name, lat: st.lat, lng: st.lng, kind: 'stay' });
   const geo = S.trip.geo || {};
   if (S.trip.meet?.text) { const g = geo[rkey(S.trip.meet.text)]; if (g) push({ key: 'meet', name: S.trip.meet.text, lat: g.lat, lng: g.lng, kind: 'meet' }); }
-  for (const s of S.trip.spots?.items || []) push({ key: rkey('sp' + s.name), name: s.name, lat: s.lat, lng: s.lng, kind: /food/.test(s.type || '') ? 'food' : /activity|museum|park|tour|beach/.test(s.type || '') ? 'activity' : 'nightlife' });
+  // a family trip's or offsite's picks: meals as food, a bar or lounge as an evening (shown as “Evenings”), the rest as plans
+  const calm = planKind().spots, calmPin = s => ({ food: 'food', chill: 'nightlife' })[calm.add(s).kind] || 'activity';
+  for (const s of S.trip.spots?.items || []) push({ key: rkey('sp' + s.name), name: s.name, lat: s.lat, lng: s.lng, kind: calm ? calmPin(s) : /food/.test(s.type || '') ? 'food' : /activity|museum|park|tour|beach/.test(s.type || '') ? 'activity' : 'nightlife' });
   for (const i of visItems()) { if (i.hidden) continue; const g = geo[rkey(i.title)]; if (g) push({ key: rkey('it' + i.id), name: i.title, lat: g.lat, lng: g.lng, kind: i.kind === 'food' ? 'food' : i.kind === 'nightlife' ? 'nightlife' : 'activity' }); }
   for (const [k, g] of Object.entries(geo)) push({ key: k, name: g.name, lat: g.lat, lng: g.lng, kind: g.kind || 'plan' });
   return pts;
@@ -3695,7 +3704,7 @@ function mapView(height) {
     <g transform="translate(${W - 34},34)"><circle r="16" fill="var(--surface)" stroke="var(--map-line)"/><path d="M0 -10 L5 4 L0 1 L-5 4Z" fill="var(--ink)"/><text y="-19" text-anchor="middle" class="pin-label" style="font-size:10px">N</text></g>
     <g transform="translate(18,${H - 20})"><rect x="-6" y="-16" width="${barPx + 70}" height="26" rx="6" fill="var(--surface)" opacity=".85"/><line x1="0" y1="0" x2="${barPx}" y2="0" stroke="var(--ink)" stroke-width="3"/><text x="${barPx + 8}" y="4" class="pin-label" style="text-anchor:start;font-size:11px">${barKm < 1 ? barKm * 1000 + ' m' : barKm + ' km'}</text></g>
   </svg>
-  <div class="legend" style="margin-top:8px">${[['stay', 'Stay'], ['nightlife', 'Nightlife'], ['food', 'Food'], ['activity', 'Plans'], ['meet', 'Meet-up']].filter(([k]) => pts.some(p => p.kind === k)).map(([k, l]) => `<span><i class="sw" style="background:${KCOL[k]}"></i>${l}</span>`).join('')}</div>
+  <div class="legend" style="margin-top:8px">${[['stay', 'Stay'], ['nightlife', planKind().evening || 'Nightlife'], ['food', 'Food'], ['activity', 'Plans'], ['meet', 'Meet-up']].filter(([k]) => pts.some(p => p.kind === k)).map(([k, l]) => `<span><i class="sw" style="background:${KCOL[k]}"></i>${l}</span>`).join('')}</div>
   ${sel ? (() => { const ds = dest(), km = stay && sel !== stay ? kmBetween(stay, sel) : null;
     return `<div class="card stack pin-card"><div class="row" style="justify-content:space-between"><b>${esc(sel.name)}</b><span class="kind">${esc(sel.kind)}</span></div>
       ${km !== null ? `<span class="small muted">${(km * 0.621).toFixed(1)} mi from ${esc(stay.name)} · about ${Math.max(1, Math.round(km / 5 * 60))} min walk</span>` : ''}
@@ -3735,7 +3744,7 @@ function mapTab() {
   return `<section class="card stack">
     <div class="row" style="justify-content:space-between"><div class="stack" style="gap:2px"><h2>Crew map</h2><span class="small muted">${isSmall() ? 'Your spots and plans' + (S.trip.city ? ' in ' + esc(S.trip.city) : '') : 'Your stay, spots and plans in ' + esc(ds.city)}. Tap a pin for walking time and directions.</span></div>
       <div class="row" style="gap:6px"><button class="btn sm lost-btn" data-act="lostOpen">I’m lost</button>${S.sample !== null ? `<button class="btn sm" data-act="pinPlaces" ${S.busy.pin ? 'disabled' : ''}>${S.busy.pin ? '<i class="spin"></i>Pinning…' : 'Pin everything'}</button>` : ''}</div></div>
-    ${pts.length ? mapView() : `<div class="empty"><b>Nothing on the map yet.</b><span>${isSmall() ? 'Get spot picks or build the plan' : 'Lock a stay, get nightlife picks or build the itinerary'}, then tap “Pin everything”.</span></div>`}
+    ${pts.length ? mapView() : `<div class="empty"><b>Nothing on the map yet.</b><span>${isSmall() ? 'Get spot picks or build the plan' : `Lock a stay, get ${planKind().spots ? 'picks' : 'nightlife picks'} or build the itinerary`}, then tap “Pin everything”.</span></div>`}
     <p class="small muted">Pins are approximate. Use Directions for turn-by-turn.</p>
   </section>
   ${lostAt().length ? `<section class="card stack"><h3>Lost right now</h3>${lostAt().map(m => `<div class="nudge"><b>${esc(m.nick || 'Someone')}</b><span class="small">near ${esc(m.lost.where)} · ${ago(m.lost.at)}</span></div>`).join('')}</section>` : ''}`;

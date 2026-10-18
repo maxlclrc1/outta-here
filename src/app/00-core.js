@@ -457,7 +457,7 @@ ${context()}
 Be realistic and give ranges. Reply with only JSON:
 {"flights":[{"from":"origin city","roundTrip":"$180–260","tip":"best airport/airline/time tip"}],
  "stay":{"areas":[{"name":"neighborhood","why":"one line","perNight":"$X–Y per room or per house"}],"groupPlay":"one or two sentences: rooms vs one big rental for this group size, and per-person cost"},
- "perPerson":{"flights":"$","stay":"$","food":"$","nightlife":"$","total":"$"},
+ "perPerson":{"flights":"$","stay":"$","food":"$","${planKind().dealsFun || 'nightlife'}":"$","total":"$"},
  "verdict":"fits|tight|over",
  "savings":["3 to 5 short, specific money-saving moves for this trip"]}`;
   askAI('deals', prompt, data => {
