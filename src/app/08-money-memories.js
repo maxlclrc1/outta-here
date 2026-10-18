@@ -27,7 +27,7 @@ function meterTab() {
         ${state === 'warn' ? `<span class="pill maybe" style="align-self:flex-start">Heads up: ${Math.round(pct * 100)}% used</span>` : state === 'over' ? `<span class="pill out" style="align-self:flex-start;color:var(--meter-over)">Over budget</span>` : ''}
       </div></div>
     <div><div class="linkrow"><span>Your share of group expenses</span><span class="mono">${money2(exp)}</span></div>
-      ${HIDE_TABS[size()].includes('pot') ? '' : `<div class="linkrow"><span>Put in the group pot</span><span class="mono">${money2(pot)}</span></div>`}
+      ${!tabOn('pot') ? '' : `<div class="linkrow"><span>Put in the group pot</span><span class="mono">${money2(pot)}</span></div>`}
       ${(S.mySpend || []).map(x => `<div class="linkrow"><span>${esc(x.note)}</span><span class="row" style="gap:6px"><span class="mono">${money2(+x.amount)}</span><button class="x" data-delspend="${esc(x.id)}" aria-label="Remove ${esc(x.note)}">×</button></span></div>`).join('')}</div>
     <form id="spendForm" class="row" style="gap:6px;align-items:flex-end">
       <label class="field" style="flex:2 1 160px"><span class="label">Log something you paid yourself</span><input id="sp-note" maxlength="50" required placeholder="${({ hangout: 'Cab home', day: 'Train tickets', weekend: 'Gas', trip: 'My flight' })[size()]}"></label>
@@ -189,7 +189,7 @@ function liveQuick() {
     <button class="qa qa-lost" data-act="lostOpen"><b>I’m lost</b><span>Send the crew my spot</span></button>
     <button class="qa" data-act="ciJump"><b>Check in</b><span>${myCi ? 'You: ' + esc(myCi.text) : 'Where are you?'}</span></button>
     <button class="qa" data-act="meetJump"><b>Meet-up</b><span>${meet?.text ? esc(meet.text) + (meet.time ? ' · ' + esc(tShow(meet.time)) : '') : 'Not set yet'}</span></button>
-    <button class="qa" data-tab="map"><b>Map</b><span>${mapPoints().length} places pinned</span></button>
+    ${tabOn('map') ? `<button class="qa" data-tab="map"><b>Map</b><span>${mapPoints().length} places pinned</span></button>` : ''}
   </section>`;
 }
 function jumpTo(sel) { const el = $(sel); if (!el) return; el.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); setTimeout(() => el.focus({ preventScroll: true }), 300); }

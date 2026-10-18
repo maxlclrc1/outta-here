@@ -185,7 +185,7 @@ function nudges() {
     if (!m.budget && !m.budgetSet) todo.push('set your budget');
     if (hasDest && !(m.votes || []).length && !S.trip.lockedDest) todo.push(isSmall() ? 'vote on the plan' : 'vote on where');
     if (size() === 'trip' && booking_time() && going(m) && !tk[m.id]) todo.push('book your flight and upload your boarding pass');
-    if (quiz().some(q => !q.o.includes((m.quiz || {})[q.k]))) todo.push('take the vibe quiz');
+    if (!['family', 'work'].includes(planGroup()) && quiz().some(q => !q.o.includes((m.quiz || {})[q.k]))) todo.push('take the vibe quiz');
     return { m, todo };
   }).filter(x => x.todo.length);
 }
@@ -1072,7 +1072,8 @@ async function delTicket() {
 // Creating or joining a plan starts with a short setup, one question per screen,
 // before the full plan with every tab opens up.
 const showWelcome = () => S.membersIn && !S.demo && !S.readOnly && (!meDoc() || (meDoc().status === 'maybe' && !meDoc().seen));
-const setupSteps = () => ['days', ...(isSmall() ? [] : ['home']), 'budget', 'vibe'];
+// family and team plans don't ask the vibe questions up front (they're still in Things to do)
+const setupSteps = () => ['days', ...(isSmall() ? [] : ['home']), 'budget', ...(['family', 'work'].includes(planGroup()) ? [] : ['vibe'])];
 const BUDGETS = { hangout: [30, 60, 100], day: [50, 100, 200], weekend: [250, 450, 700], trip: [600, 1000, 1600] };
 function dayPicker() {
   const t = S.trip, days = span(t.winStart, t.winEnd), mine = new Set(meDoc()?.days || []), pref = new Set(meDoc()?.pref || []);
@@ -1495,7 +1496,7 @@ function liveTab() {
     <form id="ciForm" class="row" style="gap:6px"><input aria-label="Where you are" id="ci-text" maxlength="60" placeholder="Or type it: “at the bar by the pool”" style="flex:1 1 200px"><button class="btn sm" type="submit">Check in</button></form>
     <div>${active().map(m => `<div class="nudge"><b>${esc(m.nick || 'Someone')}</b><span class="small ${m.checkin ? '' : 'muted'}">${m.checkin ? (m.hideLoc && m.id !== S.uid ? 'Checked in' : esc(m.checkin.text)) + ' · ' + ago(m.checkin.at) : 'No check-in yet'}</span></div>`).join('')}</div>
   </section>
-  ${mapPoints().length ? `<section class="card stack"><div class="row" style="justify-content:space-between"><h3>Map</h3><button class="btn sm ghost" data-tab="map">Full map</button></div>${mapView(300)}</section>` : ''}
+  ${tabOn('map') && mapPoints().length ? `<section class="card stack"><div class="row" style="justify-content:space-between"><h3>Map</h3><button class="btn sm ghost" data-tab="map">Full map</button></div>${mapView(300)}</section>` : ''}
   ${idx === 0 && size() === 'trip' ? arrivalsSection(true) : ''}`;
 }
 
@@ -1768,6 +1769,9 @@ const PLAN_KINDS = {
 };
 const KIND_OF = { family: 'family', work: 'work' };
 const planKind = (t = S.trip) => PLAN_KINDS[KIND_OF[t?.mode]] || PLAN_KINDS.social;
+// Friends, Celebration (a guest of honor), Family or Work: what decides which features a plan shows.
+// A missing or unknown type is a friends plan.
+const planGroup = (t = S.trip) => KIND_OF[t?.mode] || (MODES[t?.mode]?.honoree ? 'celebration' : 'friends');
 const quiz = () => planKind().quizBy?.[size()] || planKind().quiz;
 // Itinerary stop kinds the AI may use: social plans keep nightlife; family trips and offsites don't get it
 // (offsites get work sessions). Small plans have no travel or work stops.
@@ -1821,7 +1825,7 @@ function sections() {
     { k: 'live', label: 'Live', tabs: [['live', 'Today'], ['map', 'Map'], ['bucket', 'Bucket list'], ['hype', 'Hype']] },
     { k: 'money', label: 'Money', tabs: [['cost', 'All-in cost'], ['meter', 'My spend'], ['pot', 'Group pot'], ['money', 'Expenses']] },
     { k: 'memories', label: 'Memories', tabs: [['wrapped', isSmall() ? 'Recap' : 'Wrapped'], ['recap', 'Photos'], ['awards', 'Awards']] },
-  ].map(s => ({ ...s, tabs: s.tabs.filter(([k]) => !HIDE_TABS[size()].includes(k)) })).filter(s => s.tabs.length);
+  ].map(s => ({ ...s, tabs: s.tabs.filter(([k]) => tabOn(k)) })).filter(s => s.tabs.length);
 }
 const TAB_ALIAS = { deals: 'flights', where: 'match' };
 const secOf = tab => sections().find(s => s.tabs.some(t => t[0] === tab)) || sections()[0];
@@ -1832,7 +1836,7 @@ function tripView() {
   if (S.membersIn && accessState() !== 'ok') return blockedView(accessState());
   if (S.setup && S.membersIn && meDoc()) return setupView();
   if (TAB_ALIAS[S.tab]) S.tab = TAB_ALIAS[S.tab];
-  const fns = TABFN(); if (!fns[S.tab]) S.tab = 'overview';
+  const fns = TABFN(); if (!fns[S.tab] || !tabOn(S.tab)) S.tab = 'overview'; // a link to a tab this plan doesn't show opens the plan home
   const sec = secOf(S.tab), cd = countdown(), m = mode(), gd = guide(), crumbTab = gd && !gd.wait && gd.tab !== S.tab ? gd.tab : null;
   // someone deciding whether to join sees just the invitation, until they answer or choose to look around
   const inviteOnly = S.tab === 'overview' && showWelcome() && !S.peek;
@@ -3497,12 +3501,12 @@ function jSteps() {
     title: small ? 'Enjoy it' : 'Follow today’s plan', done: false, live: true,
     goal: 'It’s happening', why: (() => { const nowT = new Date().toTimeString().slice(0, 5), up = visItems().filter(i => i.date === TODAY).sort(byTime).find(i => timeKey(i.time) >= timeKey(nowT)); return up ? `Up next: ${up.title}${up.time ? ' at ' + t12(up.time) : ''}.` : 'Nothing else planned today.'; })(),
     todo: 'Open today’s plan. Check in when you get somewhere, and use SOS if you get separated.', after: 'Check-ins and photos feed the recap.',
-    act: () => `${btn('data-tab="live"', 'Open today')}${btn('data-tab="map"', 'Map', 'ghost')}`, help: { tab: 'live', sel: '.live' },
+    act: () => `${btn('data-tab="live"', 'Open today')}${tabOn('map') ? btn('data-tab="map"', 'Map', 'ghost') : ''}`, help: { tab: 'live', sel: '.live' },
   });
 
   /* ----- afterward ----- */
   if (over) {
-    const owe = settle(), mineO = owe.filter(x => x.from === S.uid);
+    const owe = settle().out, mineO = owe.filter(x => x.from === S.uid);
     add('settle', 'after', {
       title: mineO.length ? 'Pay back what you owe' : 'Settle up', done: !owe.length, applies: S.expenses.length > 0, mine: !!mineO.length,
       group: owe.length ? `${word(owe.length, 'payment', 'payments')} left to settle` : '', mineText: 'Pay back what you owe',
@@ -3515,7 +3519,7 @@ function jSteps() {
       goal: 'Put the photos in one place', why: `${word(S.photos.length, 'photo', 'photos')} so far.`, todo: 'Add your best ones. They go into the recap.',
       after: 'The recap and awards pick them up.', act: () => goBtn('photos', 'Add photos'), help: { tab: 'recap', sel: '#ph-files' }, parallel: true,
     });
-    add('wrapped', 'after', {
+    if (tabOn('wrapped')) add('wrapped', 'after', {
       title: small ? 'Watch the recap' : 'Watch your Wrapped', done: !!lsGet('outta_wrapped_' + S.tid, false), mine: true, mineText: small ? 'Watch the recap' : 'Watch your Wrapped', group: '',
       goal: 'Relive it', why: 'Your recap is ready.', todo: 'Watch it, then share it with the crew.', after: 'You can start the next one from this plan in Settings.',
       act: () => btn('data-tab="wrapped"', 'Watch it'), help: { tab: 'wrapped', sel: '.wslide' },
@@ -3655,7 +3659,7 @@ function ovGlance() {
     ${tile('dates', 'When', d ? esc(planWhen(t)) : !shared ? 'Nobody’s shared free days yet' : shared === ms.length ? 'Everyone’s free days are in' : `${shared} of ${ms.length} shared free days`, !!d)}
     ${tile('match', small ? 'What' : 'Where', ds ? esc(ds.city) : pitches ? `${pitches} to swipe on` : ideas ? `${ideas} idea${ideas === 1 ? '' : 's'} to vote on` : 'No ideas yet', !!ds)}
     ${tile('cost', 'Budget', b ? `${esc(b.label)} a person` : 'Nobody’s set one yet', !!b)}
-    ${tile('tasks', 'To-dos', open ? `${open} open` : all.length ? 'All done' : 'Nothing yet', all.length > 0 && !open)}
+    ${tabOn('tasks') ? tile('tasks', 'To-dos', open ? `${open} open` : all.length ? 'All done' : 'Nothing yet', all.length > 0 && !open) : tile('hype', 'Chat', S.feed.length ? `${S.feed.length} message${S.feed.length === 1 ? '' : 's'}` : 'Say hi to the crew', false)}
   </section>`;
 }
 function overviewTab() {
@@ -4087,7 +4091,7 @@ function meterTab() {
         ${state === 'warn' ? `<span class="pill maybe" style="align-self:flex-start">Heads up: ${Math.round(pct * 100)}% used</span>` : state === 'over' ? `<span class="pill out" style="align-self:flex-start;color:var(--meter-over)">Over budget</span>` : ''}
       </div></div>
     <div><div class="linkrow"><span>Your share of group expenses</span><span class="mono">${money2(exp)}</span></div>
-      ${HIDE_TABS[size()].includes('pot') ? '' : `<div class="linkrow"><span>Put in the group pot</span><span class="mono">${money2(pot)}</span></div>`}
+      ${!tabOn('pot') ? '' : `<div class="linkrow"><span>Put in the group pot</span><span class="mono">${money2(pot)}</span></div>`}
       ${(S.mySpend || []).map(x => `<div class="linkrow"><span>${esc(x.note)}</span><span class="row" style="gap:6px"><span class="mono">${money2(+x.amount)}</span><button class="x" data-delspend="${esc(x.id)}" aria-label="Remove ${esc(x.note)}">×</button></span></div>`).join('')}</div>
     <form id="spendForm" class="row" style="gap:6px;align-items:flex-end">
       <label class="field" style="flex:2 1 160px"><span class="label">Log something you paid yourself</span><input id="sp-note" maxlength="50" required placeholder="${({ hangout: 'Cab home', day: 'Train tickets', weekend: 'Gas', trip: 'My flight' })[size()]}"></label>
@@ -4249,7 +4253,7 @@ function liveQuick() {
     <button class="qa qa-lost" data-act="lostOpen"><b>I’m lost</b><span>Send the crew my spot</span></button>
     <button class="qa" data-act="ciJump"><b>Check in</b><span>${myCi ? 'You: ' + esc(myCi.text) : 'Where are you?'}</span></button>
     <button class="qa" data-act="meetJump"><b>Meet-up</b><span>${meet?.text ? esc(meet.text) + (meet.time ? ' · ' + esc(tShow(meet.time)) : '') : 'Not set yet'}</span></button>
-    <button class="qa" data-tab="map"><b>Map</b><span>${mapPoints().length} places pinned</span></button>
+    ${tabOn('map') ? `<button class="qa" data-tab="map"><b>Map</b><span>${mapPoints().length} places pinned</span></button>` : ''}
   </section>`;
 }
 function jumpTo(sel) { const el = $(sel); if (!el) return; el.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); setTimeout(() => el.focus({ preventScroll: true }), 300); }
@@ -4442,6 +4446,18 @@ const isSmall = (t = S.trip) => ['hangout', 'day'].includes(t?.size);
 const nightsSet = t => t.nights ?? (SIZES[t.size] || SIZES.trip).nights;
 const sizeOf = t => SIZES[t.size] ? t.size : 'trip';
 const HIDE_TABS = { hangout: ['flights', 'stays', 'tickets', 'pack', 'bucket', 'pot'], day: ['flights', 'stays', 'tickets', 'pack', 'pot'], weekend: ['flights', 'tickets'], trip: [] };
+// What each kind of plan doesn't get, on top of what its size hides (Friends, Celebration, Family, Work ×
+// small or away). Hiding is display only: nothing is deleted, and a feature a plan already uses (it has
+// to-dos, bucket items, pot entries or award votes) stays visible, so older plans keep everything they had.
+const GROUP_HIDE = {
+  friends: { small: ['tasks', 'map', 'bucket'], away: [] },
+  celebration: { small: ['map', 'bucket'], away: [] },
+  family: { small: ['tasks', 'map', 'bucket', 'awards'], away: ['pot', 'bucket', 'awards'] },
+  work: { small: ['map', 'bucket', 'awards', 'wrapped'], away: ['pot', 'bucket', 'awards', 'wrapped'] },
+};
+const IN_USE = { tasks: () => taskList().length > 0, bucket: () => S.bucket.length > 0, pot: () => S.pot.length > 0, awards: () => Object.keys(S.trip.superVotes || {}).length > 0 };
+const hiddenTabs = () => [...HIDE_TABS[size()], ...GROUP_HIDE[planGroup()][isSmall() ? 'small' : 'away'].filter(k => !IN_USE[k]?.())];
+const tabOn = k => !hiddenTabs().includes(k);
 const STEP_KEYS = { hangout: ['crew', 'where', 'dates'], day: ['crew', 'where', 'dates', 'plan'], weekend: ['crew', 'where', 'dates', 'stay', 'plan'], trip: ['crew', 'where', 'dates', 'flights', 'stay', 'plan'] };
 const t12 = hm => { if (!hm) return ''; const [h, m] = hm.split(':').map(Number); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
 const dayRange = (a, b) => a === b ? fmt(a) : `${fmt(a)} → ${fmt(b)}`;

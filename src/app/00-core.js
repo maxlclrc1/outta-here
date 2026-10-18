@@ -185,7 +185,7 @@ function nudges() {
     if (!m.budget && !m.budgetSet) todo.push('set your budget');
     if (hasDest && !(m.votes || []).length && !S.trip.lockedDest) todo.push(isSmall() ? 'vote on the plan' : 'vote on where');
     if (size() === 'trip' && booking_time() && going(m) && !tk[m.id]) todo.push('book your flight and upload your boarding pass');
-    if (quiz().some(q => !q.o.includes((m.quiz || {})[q.k]))) todo.push('take the vibe quiz');
+    if (!['family', 'work'].includes(planGroup()) && quiz().some(q => !q.o.includes((m.quiz || {})[q.k]))) todo.push('take the vibe quiz');
     return { m, todo };
   }).filter(x => x.todo.length);
 }

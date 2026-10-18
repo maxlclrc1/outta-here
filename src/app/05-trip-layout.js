@@ -141,6 +141,9 @@ const PLAN_KINDS = {
 };
 const KIND_OF = { family: 'family', work: 'work' };
 const planKind = (t = S.trip) => PLAN_KINDS[KIND_OF[t?.mode]] || PLAN_KINDS.social;
+// Friends, Celebration (a guest of honor), Family or Work: what decides which features a plan shows.
+// A missing or unknown type is a friends plan.
+const planGroup = (t = S.trip) => KIND_OF[t?.mode] || (MODES[t?.mode]?.honoree ? 'celebration' : 'friends');
 const quiz = () => planKind().quizBy?.[size()] || planKind().quiz;
 // Itinerary stop kinds the AI may use: social plans keep nightlife; family trips and offsites don't get it
 // (offsites get work sessions). Small plans have no travel or work stops.
@@ -194,7 +197,7 @@ function sections() {
     { k: 'live', label: 'Live', tabs: [['live', 'Today'], ['map', 'Map'], ['bucket', 'Bucket list'], ['hype', 'Hype']] },
     { k: 'money', label: 'Money', tabs: [['cost', 'All-in cost'], ['meter', 'My spend'], ['pot', 'Group pot'], ['money', 'Expenses']] },
     { k: 'memories', label: 'Memories', tabs: [['wrapped', isSmall() ? 'Recap' : 'Wrapped'], ['recap', 'Photos'], ['awards', 'Awards']] },
-  ].map(s => ({ ...s, tabs: s.tabs.filter(([k]) => !HIDE_TABS[size()].includes(k)) })).filter(s => s.tabs.length);
+  ].map(s => ({ ...s, tabs: s.tabs.filter(([k]) => tabOn(k)) })).filter(s => s.tabs.length);
 }
 const TAB_ALIAS = { deals: 'flights', where: 'match' };
 const secOf = tab => sections().find(s => s.tabs.some(t => t[0] === tab)) || sections()[0];
@@ -205,7 +208,7 @@ function tripView() {
   if (S.membersIn && accessState() !== 'ok') return blockedView(accessState());
   if (S.setup && S.membersIn && meDoc()) return setupView();
   if (TAB_ALIAS[S.tab]) S.tab = TAB_ALIAS[S.tab];
-  const fns = TABFN(); if (!fns[S.tab]) S.tab = 'overview';
+  const fns = TABFN(); if (!fns[S.tab] || !tabOn(S.tab)) S.tab = 'overview'; // a link to a tab this plan doesn't show opens the plan home
   const sec = secOf(S.tab), cd = countdown(), m = mode(), gd = guide(), crumbTab = gd && !gd.wait && gd.tab !== S.tab ? gd.tab : null;
   // someone deciding whether to join sees just the invitation, until they answer or choose to look around
   const inviteOnly = S.tab === 'overview' && showWelcome() && !S.peek;
