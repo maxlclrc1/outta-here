@@ -673,7 +673,7 @@ const skel = (kind = 'plan') => kind === 'rows'
 function topBar() {
   const day = document.documentElement.dataset.theme === 'light';
   return `<div class="top"><button class="logo" data-act="home">Outta<span>/</span>Here</button>
-    <div class="row" style="gap:10px;flex-wrap:nowrap">${S.tid ? `<span class="label">Code <span class="mono">${esc(S.demo ? 'DEMO' : S.tid)}</span></span>` : ''}<button class="theme-t" data-act="theme" aria-label="${day ? 'Switch to night mode' : 'Switch to day mode'}" title="${day ? 'Night mode' : 'Day mode'}">${day ? '☾' : '☀'}</button></div></div>`;
+    <div class="row" style="gap:10px;flex-wrap:nowrap"><button class="theme-t" data-act="theme" aria-label="${day ? 'Switch to night mode' : 'Switch to day mode'}" title="${day ? 'Night mode' : 'Day mode'}">${day ? '☾' : '☀'}</button></div></div>`;
 }
 
 function pass() {
@@ -1154,19 +1154,21 @@ async function joinCrewQuiet(cid) {
   try { await S.db.doc('crews/' + cid).update({ people: { [S.uid]: true }, profiles: { [S.uid]: { nick: S.myName || 'Someone' } } }); } catch {}
 }
 // First thing someone sees when they open an invite: what it is, who's in, and one tap to answer.
+// Until they answer, that's all they see (they can choose to look around first).
 function welcomeCard() {
   const t = S.trip, host = S.members.find(m => m.id === t.createdBy), ins = S.members.filter(going);
-  const crew = S.crews.find(c => c.id === t.crewId), ds = dest(), sz = SIZES[size()];
+  const crew = S.crews.find(c => c.id === t.crewId), ds = t.lockedDest ? dest() : null, sz = SIZES[size()], cv = coverOf(t, S.tid);
   const when = t.lockedDates ? planWhen(t) : `Picking ${isSmall() ? 'a day' : 'dates'} together`;
-  return `<section class="card welcome" style="--pc:${sz.color}">
-    <span class="label">${host ? `${esc(host.nick || 'A friend')} invited you` : 'You’re invited'}</span>
-    <h1>${esc(t.name)}</h1>
-    <p class="muted">${esc(sz.label)}${crew ? ' with ' + esc(crew.name) : ''} · ${esc(when)}${ds ? ' · ' + esc(ds.city) : ''}</p>
-    ${ins.length ? `<div class="row" style="gap:8px;align-items:center"><div class="avs">${ins.slice(0, 7).map(m => `<span class="av-sm" style="background:${colorFor(m.id)}" title="${esc(m.nick || 'Someone')}">${esc((m.nick || '?')[0].toUpperCase())}</span>`).join('')}</div><span class="small muted">${ins.length} in so far</span></div>` : ''}
-    ${S.trip.rsvpBy && TODAY <= S.trip.rsvpBy ? `<span class="small"><b>Answer by ${fmt(S.trip.rsvpBy)}</b> so the crew knows how many to plan for.</span>` : ''}
-    <div class="welcome-acts"><button class="btn primary big" data-join="in">I’m in</button><button class="btn big" data-join="maybe">Maybe</button><button class="btn ghost big" data-join="out">Can’t make it</button></div>
-    ${t.crewId ? `<span class="small muted">Saying you’re in also adds you to ${crew ? esc(crew.name) : 'the crew'}, so you’re part of their next plans too.</span>` : ''}
-  </section>`;
+  return `<section class="welcome ov-hero ${cv.cls}" style="${cv.style}">
+    <div class="ovh-top"><span class="ovh-chip">${host ? `${esc(host.nick || 'A friend')} invited you` : 'You’re invited'}</span><span class="ovh-chip soft">${esc(modeLabel(mode(), size()))}</span></div>
+    <h1 class="ovh-title">${esc(t.name)}</h1>
+    <p class="ovh-meta">${[esc(sz.label) + (crew ? ' with ' + esc(crew.name) : ''), esc(when), ds && esc(ds.city)].filter(Boolean).join(' · ')}</p>
+    ${ins.length ? `<div class="ovh-crew">${avStack(ins, 6)}<span class="ovh-who">${ins.length} in so far</span></div>` : ''}
+    ${S.trip.rsvpBy && TODAY <= S.trip.rsvpBy ? `<span class="small ovh-note"><b>Answer by ${fmt(S.trip.rsvpBy)}</b> so the crew knows how many to plan for.</span>` : ''}
+    <div class="welcome-acts"><button class="btn primary big" data-join="in">I’m in</button><button class="btn big glass" data-join="maybe">Maybe</button><button class="btn ghost big glass" data-join="out">Can’t make it</button></div>
+    ${t.crewId ? `<span class="small ovh-note">Saying you’re in also adds you to ${crew ? esc(crew.name) : 'the crew'}, so you’re part of their next plans too.</span>` : ''}
+  </section>
+  ${S.peek ? '' : '<button class="linkbtn small peek" data-act="peek">Look around the plan first</button>'}`;
 }
 function joinPlan(status) {
   saveMe({ status, seen: true }, true);
@@ -1833,6 +1835,8 @@ function tripView() {
   if (TAB_ALIAS[S.tab]) S.tab = TAB_ALIAS[S.tab];
   const fns = TABFN(); if (!fns[S.tab]) S.tab = 'overview';
   const sec = secOf(S.tab), cd = countdown(), m = mode(), gd = guide(), crumbTab = gd && !gd.wait && gd.tab !== S.tab ? gd.tab : null;
+  // someone deciding whether to join sees just the invitation, until they answer or choose to look around
+  const inviteOnly = S.tab === 'overview' && showWelcome() && !S.peek;
   const head = S.tab === 'overview' ? '' : `<div class="mini"><span class="sec-eyebrow">${esc(sec.label)}</span><button class="mini-name" data-tab="overview">${esc(S.trip.name)}</button>
       ${isSmall() ? `<span class="mode-chip" style="--mc:${SIZES[size()].color}">${esc(SIZES[size()].label)}</span>` : `<span class="mode-chip" style="--mc:${m.color}">${esc(modeLabel(m, size()))}</span>`}${cd ? `<span class="small muted">${esc(cd.n > 0 ? cd.text + ' to go' : cd.text)}</span>` : ''}</div>`;
   return `${topBar()}
@@ -1842,31 +1846,14 @@ function tripView() {
   ${head}
   ${liveBanner()}
   ${journeyPill()}
-  ${sec.tabs.length > 1 ? `<nav class="subtabs" aria-label="${esc(sec.label)}">${sec.tabs.map(([k, l]) => `<button class="subtab ${S.tab === k ? 'on' : ''}" data-tab="${k}" aria-current="${S.tab === k}">${esc(l)}${crumbTab === k ? '<i class="crumb" aria-hidden="true"></i>' : ''}${k === 'log' && !S.demo && logList().some(x => needsMe(x)) ? ` <span class="count">${logList().filter(x => needsMe(x)).length}</span>` : ''}</button>`).join('')}</nav>` : ''}
+  ${sec.tabs.length > 1 && !inviteOnly ? `<nav class="subtabs" aria-label="${esc(sec.label)}">${sec.tabs.map(([k, l]) => `<button class="subtab ${S.tab === k ? 'on' : ''}" data-tab="${k}" aria-current="${S.tab === k}">${esc(l)}${crumbTab === k ? '<i class="crumb" aria-hidden="true"></i>' : ''}${k === 'log' && !S.demo && logList().some(x => needsMe(x)) ? ` <span class="count">${logList().filter(x => needsMe(x)).length}</span>` : ''}</button>`).join('')}</nav>` : ''}
   ${fns[S.tab]()}
   ${isLive() && !S.lostOpen && !['live', 'map', 'overview'].includes(S.tab) ? '<button class="fab-lost" data-act="lostOpen" aria-label="I’m lost: send the crew my spot">SOS</button>' : ''}
   ${S.lostOpen ? lostSheet() : ''}
-  <nav class="bottomnav" aria-label="Trip sections"><div class="bn-inner" style="grid-template-columns:repeat(${sections().length},1fr)">${sections().map(s => `<button class="bn ${s.k === sec.k ? 'on' : ''}" data-sec="${s.k}" aria-current="${s.k === sec.k}">${icon(s.k)}${crumbTab && secOf(crumbTab).k === s.k && s.k !== sec.k ? '<i class="crumb" aria-hidden="true"></i>' : ''}<span>${s.label}${s.k === 'live' && isLive() ? ' ●' : ''}</span></button>`).join('')}</div></nav>`;
+  ${inviteOnly ? '' : `<nav class="bottomnav" aria-label="Trip sections"><div class="bn-inner" style="grid-template-columns:repeat(${sections().length},1fr)">${sections().map(s => `<button class="bn ${s.k === sec.k ? 'on' : ''}" data-sec="${s.k}" aria-current="${s.k === sec.k}">${icon(s.k)}${crumbTab && secOf(crumbTab).k === s.k && s.k !== sec.k ? '<i class="crumb" aria-hidden="true"></i>' : ''}<span>${s.label}${s.k === 'live' && isLive() ? ' ●' : ''}</span></button>`).join('')}</div></nav>`}`;
 }
 
-/* ---------- home: overview ---------- */
-/* ---------- home: overview ----------
-   The journey leads. Everything else on the plan home is secondary: the pass, recent changes,
-   "something changed?", and the crew at a glance. Booking, money and the rest stay one tap
-   away in the bottom menu. */
-function overviewTab() {
-  const t = S.trip, ns = nudges(), welcome = showWelcome();
-  return `${welcome ? welcomeCard() : journeyCard()}
-  ${isLive() ? '<div class="row" style="gap:8px"><button class="btn lost-btn" data-act="lostOpen">I’m lost</button><span class="small muted">Sends the crew your spot.</span></div>' : ''}
-  ${welcome ? '' : changesCard()}
-  ${STAGES.findIndex(([k]) => k === stageOf(t, S.members)) >= 2 ? passport() : pass()}
-  ${welcome ? '' : recoveryCard()}
-  <section class="card stack">
-    <div class="row" style="justify-content:space-between"><h3>Crew</h3><button class="btn sm" data-tab="crew">Invite & manage</button></div>
-    <div class="row" style="gap:6px">${S.members.map(m => `<span class="av-sm" title="${esc(m.nick || 'Someone')}" style="background:${colorFor(m.id)};${m.status === 'out' ? 'opacity:.35' : ''}">${esc((m.nick || '?')[0].toUpperCase())}</span>`).join('')}</div>
-    ${ns.length ? `<span class="small muted">${ns.length} ${ns.length === 1 ? 'person has' : 'people have'} stuff to do. <button class="linkbtn" data-tab="crew">See who</button></span>` : '<span class="small" style="color:var(--good)">Everyone’s done their part.</span>'}
-  </section>`;
-}
+/* the plan home (overviewTab) is in 05o-overview.js */
 function settingsTab() {
   const m = mode();
   return `<section class="card stack"><h3>Plan size</h3><div class="row" style="gap:6px">${Object.entries(SIZES).map(([k, v]) => `<button class="chip ${size() === k ? 'on' : ''}" data-setsize="${k}">${esc(v.label)}</button>`).join('')}</div><p class="small muted">Changing the size keeps everyone’s votes and free days.</p></section>
@@ -3565,37 +3552,40 @@ function journeyNow() {
   return { stage, si, steps, focus, also, later: steps.filter(s => s.status !== 'done' && s !== focus && !also.includes(s)), done: steps.filter(s => s.status === 'done') };
 }
 
-/* ----- the guide card: the plan home's main thing ----- */
+/* ----- the plan home's next move and progress ----- */
+// One card with the single next move (its button is the only bright one), then a compact progress
+// card: the six stages, what else is open, and what's coming up or done, folded.
 function journeyCard() {
   const j = journey(), f = j.focus, fresh = f && S.jLast && S.jLast !== f.k; if (f) S.jLast = f.k;
-  const strip = `<div class="card stage-track j-track"><ol class="j-strip" aria-label="Where the plan is">${JSTAGES.map(([k, l], i) => `<li class="${i < j.si ? 'j-done' : i === j.si ? 'j-cur' : ''}"><i></i><span>${l}</span></li>`).join('')}</ol></div>`;
-  const head = f ? `<div class="j-focus ${f.mine ? 'mine' : ''} ${fresh ? 'fresh' : ''}" data-key="jf-${f.k}">
-      <span class="j-eyebrow">${esc(JSTAGE_LABEL[f.stage])}${f.mine ? ' · Your move' : ''}</span>
+  const waitOn = f && (f.who || []).filter(x => x.id !== S.uid);
+  const head = f ? `<section class="j-focus ${f.mine ? 'mine' : ''} ${fresh ? 'fresh' : ''}" data-key="jf-${f.k}">
+      <span class="j-eyebrow">${f.mine ? 'Your move' : 'Up next'}</span>
       <h2>${esc(f.goal)}</h2>
-      ${f.why ? `<p class="j-why">${esc(f.why)}</p>` : ''}
-      <div class="j-do"><span class="label">Here’s what to do</span><b>${esc(f.todo)}</b></div>
-      ${f.who && f.who.filter(x => x.id !== S.uid).length ? `<div class="avs">${f.who.filter(x => x.id !== S.uid).slice(0, 8).map(x => `<span class="av-sm" title="${esc(x.nick || 'Someone')}" style="background:${colorFor(x.id)}">${esc((x.nick || '?')[0].toUpperCase())}</span>`).join('')}</div>` : ''}
-      <div class="j-acts">${f.act()}${f.help && !f.live ? `<button class="linkbtn small j-help" data-jgo="${f.k}">Help me finish this step</button>` : ''}</div>
+      ${f.why || f.todo ? `<p class="j-why">${esc(f.why || f.todo)}</p>` : ''}
+      ${waitOn.length ? `<div class="j-wait">${avStack(waitOn, 5)}<span class="small">Waiting on ${esc(namesOrCount(waitOn))}</span></div>` : ''}
+      <div class="j-acts">${f.act()}</div>
+      ${f.help && !f.live ? `<button class="linkbtn small j-help" data-jgo="${f.k}">Show me where</button>` : ''}
       ${f.k === 'invite' && S.copyText ? `<textarea aria-label="Text to copy" id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
-      ${f.after ? `<p class="j-after"><span class="label">After this</span> ${esc(f.after)}</p>` : ''}
-    </div>`
-    : `<div class="j-focus done"><span class="j-eyebrow">${esc(JSTAGE_LABEL[j.stage])}</span><h2>${j.stage === 'after' ? 'All wrapped up' : 'You’re all set'}</h2><p class="j-why">${(() => { const c = countdown(); return c && j.stage !== 'after' ? `${c.text} to go. Nothing needs doing right now.` : 'Nothing needs doing right now.'; })()}</p></div>`;
+    </section>`
+    : `<section class="j-focus done"><span class="j-eyebrow">${j.stage === 'after' ? 'That’s a wrap' : 'All set'}</span><h2>${j.stage === 'after' ? 'All wrapped up' : 'You’re all set'}</h2><p class="j-why">${(() => { const c = countdown(); return c && j.stage !== 'after' ? `${c.text} to go. Nothing needs doing right now.` : 'Nothing needs doing right now.'; })()}</p></section>`;
   const row = (s, later) => `<div class="j-row s-${s.status}" data-key="j-${s.k}">
-      <span class="j-ic" aria-hidden="true">${s.status === 'done' ? '✓' : s.status === 'blocked' ? '🔒' : s.status === 'later' ? '◷' : s.mine ? '●' : '○'}</span>
-      <div class="stack" style="gap:2px;min-width:0;flex:1"><b>${esc(s.mine && s.mineText && s.status !== 'done' ? s.mineText : s.title)}</b>
-        <span class="small muted">${s.status === 'blocked' ? `Unlocks after: ${esc(s.blocked.join(', ').toLowerCase())}` : s.status === 'later' ? 'Closer to the day' : later && s.status === 'ready' ? `Later, in ${esc(JSTAGE_LABEL[s.stage].toLowerCase())}` : s.status === 'waiting' ? esc(s.group || 'Waiting on the crew') : s.status === 'done' ? 'Done' : esc(s.group || JSTAGE_LABEL[s.stage])}</span></div>
-      ${s.status === 'ready' || s.status === 'waiting' ? `<button class="btn sm ${s.mine ? 'primary' : ''}" data-jgo="${s.k}">${s.mine ? 'Do it' : s.status === 'waiting' ? 'See' : 'Open'}</button>` : ''}
+      <span class="j-ic" aria-hidden="true">${s.status === 'done' ? '✓' : ''}</span>
+      <div class="stack" style="gap:1px;min-width:0;flex:1"><b>${esc(s.mine && s.mineText && s.status !== 'done' ? s.mineText : s.title)}</b>
+        <span class="small muted">${s.status === 'blocked' ? `After ${esc(s.blocked.join(', ').toLowerCase())}` : s.status === 'later' ? 'Closer to the day' : later && s.status === 'ready' ? `Later, in ${esc(JSTAGE_LABEL[s.stage].toLowerCase())}` : s.status === 'waiting' ? esc(s.group || 'Waiting on the crew') : s.status === 'done' ? 'Done' : esc(s.group || JSTAGE_LABEL[s.stage])}</span></div>
+      ${s.status === 'ready' || s.status === 'waiting' ? `<button class="btn sm" data-jgo="${s.k}">${s.mine ? 'Do it' : s.status === 'waiting' ? 'See' : 'Open'}</button>` : ''}
     </div>`;
-  return `<section class="journey" id="journey">
-    ${strip}
+  const progress = `<section class="card ov-progress j-track">
+      <div class="ovp-head"><span class="g-k">Plan progress</span><span class="small muted">${esc(JSTAGE_LABEL[j.stage])} · ${j.si + 1} of ${JSTAGES.length}</span></div>
+      <ol class="j-strip" aria-label="Where the plan is">${JSTAGES.map(([k, l], i) => `<li class="${i < j.si ? 'j-done' : i === j.si ? 'j-cur' : ''}"><i></i><span>${l}</span></li>`).join('')}</ol>
+      ${j.also.length ? `<div class="j-list"><span class="g-k">Also open</span>${j.also.slice(0, 2).map(s => row(s)).join('')}</div>` : ''}
+      ${j.also.length > 2 || j.later.length || j.done.length ? `<details class="j-more" data-key="j-more"><summary class="small">${[j.also.length > 2 && `${j.also.length - 2} more open`, j.later.length && `${j.later.length} coming up`, j.done.length && `${j.done.length} done`].filter(Boolean).join(' · ')}</summary>
+        <div class="j-list">${j.also.slice(2).map(s => row(s)).join('')}${j.later.map(s => row(s, true)).join('')}${j.done.map(s => row(s)).join('')}</div></details>` : ''}
+    </section>`;
+  return `<div class="journey" id="journey">
     ${head}
-    ${j.also.length || j.later.length || j.done.length ? `<div class="card j-lists">` : ''}
-    ${j.also.length ? `<div class="j-list"><span class="label">Also open now</span>${j.also.map(s => row(s)).join('')}</div>` : ''}
-    ${j.later.length || j.done.length ? `<details class="j-more" ${S.jMore ? 'open' : ''}><summary class="small">${[j.later.length && `${j.later.length} coming up`, j.done.length && `${j.done.length} done`].filter(Boolean).join(' · ')}</summary>
-      <div class="j-list">${j.later.map(s => row(s, true)).join('')}${j.done.map(s => row(s)).join('')}</div></details>` : ''}
-    ${j.also.length || j.later.length || j.done.length ? '</div>' : ''}
     ${isHonoree() ? `<p class="small muted">Some of this ${planWord()} is a surprise for you. You’ll see those parts when they’re revealed.</p>` : ''}
-  </section>`;
+    ${progress}
+  </div>`;
 }
 // open the workspace for a step and light up the exact control; click it if that's the action
 function jGo(k) {
@@ -3619,6 +3609,70 @@ function journeyPill() {
   const here = f.help && f.help.tab === S.tab;
   return `<div class="j-pill ${f.mine ? 'mine' : ''}"><span class="small"><span class="np-k">${f.mine ? 'Your move' : 'Next'}</span> ${esc(f.mine && f.mineText ? f.mineText : f.title)}</span>
     ${here ? '' : `<button class="btn sm ${f.mine ? 'primary' : ''}" data-jgo="${f.k}">Go</button>`}</div>`;
+}
+/* ---------- plan covers and the plan home ----------
+   The plan home leads with the plan itself: a cover with its name, type, where and when, and who's
+   coming. Then the one thing to do next (from the journey), then compact progress and four
+   at-a-glance tiles that open their sections. The pass, the story card and "Something changed?"
+   are folded underneath, so they're there without competing with the next move. */
+
+// A plan's color: its type's, or for friends plans its size's, so a crew's plans don't all look alike.
+const planColor = t => t.mode && t.mode !== 'friends' && MODES[t.mode] ? MODES[t.mode].color : SIZES[sizeOf(t)].color;
+// A cover: the crew's latest photo when there is one, otherwise the plan's color with one of a few
+// soft shapes, picked from the plan's id so it never changes.
+function coverOf(t, id, photo) {
+  let h = 0; for (const c of String(id || t.name || '')) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return { cls: `cv cv-${h % 4}${photo ? ' cv-photo' : ''}`, style: `--pc:${planColor(t)}${photo ? `;--img:url('/_blob/${encodeURIComponent(photo)}')` : ''}` };
+}
+// Overlapping avatars; people who haven't said yes are faded.
+function avStack(ms, max = 5) {
+  const list = ms.slice(0, max);
+  return `<div class="avstack" aria-hidden="true">${list.map(m => `<span class="av ${m.faded ? 'av-maybe' : ''}" style="background:${colorFor(m.id)}">${esc((m.nick || '').trim()[0]?.toUpperCase() || '')}</span>`).join('')}${ms.length > max ? `<span class="av av-more">+${ms.length - max}</span>` : ''}</div>`;
+}
+function planHero() {
+  const t = S.trip, m = mode(), sz = size(), small = isSmall(), d = t.lockedDates, ds = t.lockedDest ? dest() : null, cd = d ? countdown() : null;
+  const here = S.members.filter(x => !x.removed && x.status !== 'out'), goers = here.filter(going), maybes = here.length - goers.length;
+  const photo = [...S.photos].filter(p => p.asset).sort((a, b) => (b.at || 0) - (a.at || 0))[0]?.asset;
+  const cv = coverOf(t, S.tid, photo);
+  const meta = [ds && esc(ds.city), d && esc(planWhen(t))].filter(Boolean).join(' · ') || (small ? 'Picking the plan and the day' : 'Picking where and when');
+  const who = here.length <= 1 ? 'Just you so far' : `${goers.length} going${maybes ? ` · ${maybes} maybe` : ''}`;
+  const onInvite = journey().focus?.k === 'invite';
+  return `<section class="ov-hero ${cv.cls}" style="${cv.style}">
+    <div class="ovh-top"><span class="ovh-chip">${esc(modeLabel(m, sz))}</span>${!modeLabel(m, sz).toLowerCase().includes(SIZES[sz].label.toLowerCase()) ? `<span class="ovh-chip soft">${esc(SIZES[sz].label)}</span>` : ''}
+      ${cd ? `<span class="ovh-count ${cd.n === 0 ? 'now' : ''}">${cd.n > 0 ? `<b>${cd.n}</b> ${cd.n === 1 ? 'day' : 'days'} to go` : esc(cd.text)}</span>` : ''}</div>
+    <h1 class="ovh-title">${esc(t.name)}</h1>
+    <p class="ovh-meta">${meta}</p>
+    <div class="ovh-crew">${avStack([...goers, ...here.filter(x => !going(x)).map(x => ({ ...x, faded: true }))], 6)}<span class="ovh-who">${who}</span>
+      ${!onInvite && !S.readOnly && canInvite() ? '<button class="btn sm glass" data-tab="crew">Invite</button>' : ''}</div>
+  </section>`;
+}
+// Four tiles with where each part of the plan stands; each opens its section.
+function ovGlance() {
+  const t = S.trip, small = isSmall(), d = t.lockedDates, ms = active(), ds = t.lockedDest ? dest() : null;
+  const shared = ms.filter(m => (m.days || []).length).length, ideas = (t.destinations || []).length, pitches = (t.pitches?.items || []).length;
+  const b = budgetCap(), all = taskList(), open = all.filter(x => !x.done).length;
+  const tile = (tab, k, v, done) => `<button class="glance ${done ? 'g-done' : ''}" data-tab="${tab}"><span class="g-k">${k}</span><b>${v}</b></button>`;
+  return `<section class="glance-grid" aria-label="At a glance">
+    ${tile('dates', 'When', d ? esc(planWhen(t)) : !shared ? 'Nobody’s shared free days yet' : shared === ms.length ? 'Everyone’s free days are in' : `${shared} of ${ms.length} shared free days`, !!d)}
+    ${tile('match', small ? 'What' : 'Where', ds ? esc(ds.city) : pitches ? `${pitches} to swipe on` : ideas ? `${ideas} idea${ideas === 1 ? '' : 's'} to vote on` : 'No ideas yet', !!ds)}
+    ${tile('cost', 'Budget', b ? `${esc(b.label)} a person` : 'Nobody’s set one yet', !!b)}
+    ${tile('tasks', 'To-dos', open ? `${open} open` : all.length ? 'All done' : 'Nothing yet', all.length > 0 && !open)}
+  </section>`;
+}
+function overviewTab() {
+  const t = S.trip, welcome = showWelcome();
+  // someone who hasn't answered yet sees the invitation first, not the whole planning screen
+  if (welcome && !S.peek) return welcomeCard();
+  const f = journey().focus, me = meDoc(), stage = STAGES.findIndex(([k]) => k === stageOf(t, S.members));
+  const rsvpShown = f && ['rsvp', 'confirm'].includes(f.k) && f.mine;
+  return `${welcome ? welcomeCard() : planHero()}
+  ${isLive() ? '<div class="row" style="gap:8px"><button class="btn lost-btn" data-act="lostOpen">I’m lost</button><span class="small muted">Sends the crew your spot.</span></div>' : ''}
+  ${welcome ? '' : journeyCard()}
+  ${welcome ? '' : changesCard()}
+  ${me && !welcome && !rsvpShown && !S.readOnly ? `<section class="card ov-me"><span class="g-k">Are you in?</span>${commitLadder()}</section>` : ''}
+  ${ovGlance()}
+  ${S.recover ? recoveryCard() : welcome ? '' : `<details class="ov-fold" data-key="fold-recover"><summary><b>Something changed?</b><span class="small muted">See what it affects before anything moves</span></summary>${recoveryCard()}</details>`}
+  <details class="ov-fold" data-key="fold-pass" ${S.cardUrl ? 'open' : ''}><summary><b>${stage >= 2 ? 'Plan passport' : 'Plan pass'}</b><span class="small muted">Share it, or make a story card</span></summary>${stage >= 2 ? passport() : pass()}</details>`;
 }
 /* ---------- home screen + trip creation ---------- */
 /* ---------- book: flights ---------- */
@@ -4477,31 +4531,31 @@ function planStatus(t) {
   if (t.lockedDates) return isSmall(t) ? 'Picking the plan' : 'Picking where';
   return isSmall(t) ? 'Picking the plan and the day' : 'Picking where and when';
 }
-// Split-flap letters, one tile per character, flipping in left to right.
-const flap = text => String(text || '').split(' ').map((w, wi, all) => `<span class="fw">${[...w].map((ch, k) => `<i style="--i:${Math.min(24, all.slice(0, wi).join(' ').length + wi + k)}">${esc(ch)}</i>`).join('')}</span>`).join(' ');
-const BOARD = { draft: 'Standby', gathering: 'Voting', decided: 'Scheduled', organizing: 'Check-in', confirmed: 'On time', happening: 'Now', memories: 'Landed' };
+// A plan on the home page: a cover in the plan's color with its name and type, then where and when,
+// what it's waiting on, and who's in. The whole card opens the plan; share and delete sit on top.
 function planRow(t, opts = {}) {
-  const sz = SIZES[sizeOf(t)], crew = S.crews.find(c => c.id === t.crewId), name = (t.destinations || []).find(d => d.id === t.lockedDest)?.city;
+  const sz = SIZES[sizeOf(t)], crew = S.crews.find(c => c.id === t.crewId), where = (t.destinations || []).find(d => d.id === t.lockedDest)?.city;
   const daysTo = t.lockedDates ? Math.round((D(t.lockedDates.start) - D(TODAY)) / 864e5) : null, st = stageOf(t), p = t.pulse || {};
-  const mine = (p.who || []).includes(S.uid) && p.mine && st !== 'memories';
-  const d = t.lockedDates, n = Object.values(t.people || {}).filter(Boolean).length;
-  // lead with where it's happening; the plan's own name and the crew go underneath
-  const trip = sizeOf(t) === 'trip', main = name || (trip ? 'TBD' : t.name);
-  const sub = [main !== t.name && esc(t.name), crew && !opts.noCrew && esc(crew.name)].filter(Boolean).join(' · ');
-  return `<div class="card plan-row dep-row st-${st} ${mine ? 'needs-me' : ''}" style="--pc:${sz.color}">
-    <div class="pr-date">${d ? `<span>${fmt(d.start, { month: 'short' })}</span><b>${D(d.start).getUTCDate()}</b><span>${t.time ? t12(t.time) : fmt(d.start, { weekday: 'short' })}</span>` : '<span>Date</span><b>TBD</b><span>&nbsp;</span>'}</div>
-    <div class="pr-mid">
-      <span class="pr-kind"><i style="background:var(--pc)"></i>${esc(sz.label)}${n ? ` · ${n} in` : ''}</span>
-      ${trip ? `<h3><span class="sr-only">${esc(main)}</span><span class="flap" aria-hidden="true">${flap(main)}</span></h3>` : `<h3 class="pr-name">${esc(main)}</h3>`}
-      ${sub ? `<span class="pr-sub">${sub}</span>` : ''}
-      <span class="small muted pr-line">${moveLine(t)}${daysTo !== null && daysTo > 0 && daysTo <= 30 ? ` · <b style="color:var(--pc)">${daysTo === 1 ? 'Tomorrow' : 'in ' + daysTo + ' days'}</b>` : ''}</span>
+  const mine = (p.who || []).includes(S.uid) && p.mine && st !== 'memories', cv = coverOf(t, t.id);
+  const ids = Object.keys(t.people || {}).filter(k => t.people[k]), kind = MODES[t.mode] ? modeLabel(MODES[t.mode], sizeOf(t)) : sz.label;
+  const nick = id => id === S.uid ? S.myName : crew?.profiles?.[id]?.nick || '';
+  const meta = [where && esc(where), t.lockedDates && esc(planWhen(t)), crew && !opts.noCrew && esc(crew.name)].filter(Boolean).join(' · ');
+  const soon = daysTo !== null && daysTo >= 0 && daysTo <= 30 ? (daysTo === 0 ? 'Today' : daysTo === 1 ? 'Tomorrow' : `In ${daysTo} days`) : '';
+  return `<article class="plan-row pcard st-${st} ${mine ? 'needs-me' : ''}" style="${cv.style}" data-key="pc-${esc(t.id)}">
+    <button class="pc-hit" data-open="${esc(t.id)}" aria-label="Open ${esc(t.name)}"></button>
+    <div class="pc-cover ${cv.cls}">
+      <div class="pc-top"><span class="ovh-chip">${esc(kind)}</span>${mine ? '<span class="pc-flag">Your move</span>' : soon ? `<span class="pc-soon">${soon}</span>` : ''}</div>
+      <h3 class="pc-title">${esc(t.name)}</h3>
     </div>
-    <div class="pr-status"><span class="board-st">${BOARD[st]}</span>${mine ? '<span class="your-flag">Your move</span>' : ''}</div>
-    <div class="pr-acts">${S.confirmHome === t.id
-      ? `<span class="small pr-ask">Delete for everyone?</span><button class="btn sm ghost" data-act="homeCancel">Cancel</button><button class="btn sm danger-fill" data-homedo="${esc(t.id)}" ${S.busy.delete ? 'disabled' : ''}>${S.busy.delete ? 'Deleting…' : 'Delete'}</button>`
-      : `${canDelete(t) ? `<button class="btn sm ghost icon pr-del" data-homedel="${esc(t.id)}" aria-label="Delete ${esc(t.name)}" title="Delete"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg></button>` : ''}<button class="btn sm" data-share="${esc(t.id)}" aria-label="Share ${esc(t.name)}">Share</button><button class="btn sm primary" data-open="${esc(t.id)}">Open</button>`}</div>
-    ${S.shareHome === t.id && S.copyText ? `<textarea aria-label="Text to copy" class="pr-copy" id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
-  </div>`;
+    <div class="pc-body">
+      ${meta ? `<span class="pc-meta">${meta}</span>` : ''}
+      <span class="small pc-line">${moveLine(t)}</span>
+      <div class="pc-foot">${ids.length ? `${avStack(ids.map(id => ({ id, nick: nick(id) })), 4)}<span class="small muted">${ids.length === 1 ? 'Just you' : ids.length + ' in'}</span>` : ''}
+        <span class="pc-acts">${S.confirmHome === t.id ? '' : `<button class="btn sm ghost icon" data-share="${esc(t.id)}" aria-label="Share ${esc(t.name)}" title="Share"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg></button>${canDelete(t) ? `<button class="btn sm ghost icon pr-del" data-homedel="${esc(t.id)}" aria-label="Delete ${esc(t.name)}" title="Delete"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg></button>` : ''}`}</span></div>
+      ${S.confirmHome === t.id ? `<div class="pc-confirm"><span class="small">Delete this for everyone?</span><button class="btn sm ghost" data-act="homeCancel">Keep it</button><button class="btn sm danger-fill" data-homedo="${esc(t.id)}" ${S.busy.delete ? 'disabled' : ''}>${S.busy.delete ? 'Deleting…' : 'Delete'}</button></div>` : ''}
+      ${S.shareHome === t.id && S.copyText ? `<textarea aria-label="Text to copy" class="pr-copy" id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
+    </div>
+  </article>`;
 }
 function homeView() {
   if (S.loading && parseTripHash(location.hash.slice(1))) return `${topBar()}${skel()}`;
@@ -4516,27 +4570,30 @@ function homeView() {
   const deciding = plans.filter(t => !t.lockedDates && (!t.winEnd || t.winEnd >= TODAY)).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   const past = plans.filter(t => (t.lockedDates && t.lockedDates.end < TODAY) || (!t.lockedDates && t.winEnd && t.winEnd < TODAY));
   const fresh = canSave && S.tripsLoaded && !plans.length && !crews.length;
+  const group = (title, list, extra = '') => list.length ? `<section class="stack home-group"><h2 class="hg-h">${title}</h2>${extra}<div class="pcards">${list.map(t => planRow(t)).join('')}</div></section>` : '';
   return `${topBar()}
-  <section class="hero ${fresh ? '' : 'hero-sm'}">
-    <span class="label">${S.myName ? 'Hey ' + esc(S.myName) : 'Your crew’s plans, from Friday night to Tulum'}</span>
-    <h1>${fresh ? 'Get the group chat out the door.' : 'What are we doing?'}</h1>
-    ${fresh ? '<p>Hangouts, day trips and full-on trips with your crews. The AI pitches plans that fit everyone, the crew swipes, and when everyone matches, it’s on.</p>' : ''}
-    <div class="row"><button class="btn primary big" data-act="newTrip" ${canSave ? '' : 'disabled'}>New plan</button>${canSave ? '<button class="btn" data-act="newCrew">New crew</button>' : ''}<button class="btn ghost" data-act="demo">See the demo</button></div>
+  <section class="home-hero ${fresh ? 'fresh' : ''}">
+    <span class="hh-hi">${S.myName ? 'Hey ' + esc(S.myName) : 'Hey there'}</span>
+    <h1>${fresh ? 'Get the group chat out the door.' : 'What are we doing next?'}</h1>
+    ${fresh ? '<p>Dinners, day trips and full-on getaways. The AI pitches plans that fit everyone, your crew swipes, and when it’s a match, it’s on.</p>' : ''}
+    <button class="btn primary big hh-cta" data-act="newTrip" ${canSave ? '' : 'disabled'}>Make a plan</button>
+    ${fresh ? `<ol class="hh-steps"><li><b>Start a plan</b><span>A night out or a week away</span></li><li><b>Invite your crew</b><span>One link for the group chat</span></li><li><b>Swipe till it’s a match</b><span>Then it’s on</span></li></ol>
+      <div class="hh-more"><button class="linkbtn small" data-act="demo">See a demo trip</button>${canSave ? '<span class="muted" aria-hidden="true">·</span><button class="linkbtn small" data-act="newCrew">Make a crew</button>' : ''}</div>` : ''}
     ${!canSave && !S.loading ? `<span class="small muted">${IN_CLAUDE ? 'Couldn’t connect. Reload the page to try again.' : 'Can’t reach the local server. Start it with npm run dev, then reload.'}</span>` : ''}
   </section>
   ${S.creating === 'newCrew' ? `<section class="card stack"><h2>New crew</h2><p class="small muted">A crew is a group you make plans with. You’ll get an invite link for it next.</p>
     <form id="newCrewForm" class="row" style="gap:6px"><input aria-label="Crew name" id="nc-name" maxlength="40" required placeholder="The Vegas Six" style="flex:1 1 200px"><button class="btn primary" type="submit">Create crew</button><button class="btn ghost" type="button" data-act="cancelNew">Cancel</button></form></section>` : ''}
-  ${!canSave ? '' : !S.tripsLoaded ? skel('rows') : `
+  ${!canSave ? '' : !S.tripsLoaded ? skel('rows') : fresh ? '' : `
   ${inboxCard()}
-  <div class="home-bar"><span class="small muted">${[live.length && live.length + ' happening now', upcoming.length && upcoming.length + ' coming up', deciding.length && deciding.length + ' deciding'].filter(Boolean).join(' · ') || 'No plans yet'}</span>${viewSwitch()}</div>
+  ${plans.length ? `<div class="home-bar"><h2 class="hg-h">Your plans</h2>${viewSwitch()}</div>` : ''}
   ${homeMode === 'cal' ? calView(plans, deciding) : `
-  ${live.length ? `<section class="stack"><h2 class="board-h"><i class="live-dot" aria-hidden="true"></i> Happening now</h2>${live.map(t => planRow(t)).join('')}</section>` : ''}
-  <section class="stack"><div class="row" style="justify-content:space-between"><h2 class="board-h">Departures</h2><span class="small muted mono">${upcoming.length} locked in · <span data-clock>${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span></span></div>
-    ${upcoming.length ? upcoming.map(t => planRow(t)).join('') : `<div class="empty"><span>Nothing locked yet. When a plan has a place and a day, it shows up here like a calendar.</span></div>`}</section>
-  ${deciding.length ? `<section class="stack"><div class="row" style="justify-content:space-between"><h2 class="board-h">On standby</h2><span class="small muted">Still deciding</span></div>${deciding.map(t => planRow(t, { del: true })).join('')}</section>` : ''}`}
-  <section class="stack"><div class="row" style="justify-content:space-between"><h2>Your crews</h2><button class="btn sm" data-act="newCrew">New crew</button></div>
-    ${crews.length ? `<div class="crew-grid">${crews.map(c => crewCard(c, plans)).join('')}</div>` : `<div class="empty"><span>Crews are the groups you make plans with. Make one, share its invite link, and every plan after that starts with everyone already in.</span><button class="btn sm primary" data-act="newCrew">Make a crew</button></div>`}</section>
-  ${past.length && homeMode !== 'cal' ? `<details class="card past"><summary><b>Landed</b> <span class="small muted">Past plans ·</span> <span class="small muted">${past.length}</span></summary><div class="stack" style="margin-top:10px">${past.map(t => planRow(t, { del: true })).join('')}</div></details>` : ''}`}`;
+  ${group('<i class="live-dot" aria-hidden="true"></i> Happening now', live)}
+  ${group('Coming up', upcoming)}
+  ${group('Still deciding', deciding)}`}
+  <section class="stack home-group"><div class="home-bar"><h2 class="hg-h">Your crews</h2>${crews.length ? '<button class="btn sm" data-act="newCrew">New crew</button>' : ''}</div>
+    ${crews.length ? `<div class="crew-grid">${crews.map(c => crewCard(c, plans)).join('')}</div>` : `<div class="hh-crew-empty"><span class="small muted">Plan with the same people a lot? Make a crew and everyone’s in from the start.</span><button class="btn sm" data-act="newCrew">Make a crew</button></div>`}</section>
+  ${past.length && homeMode !== 'cal' ? `<details class="ov-fold past" data-key="home-past"><summary><b>Past plans</b><span class="small muted">${past.length}</span></summary><div class="pcards" style="margin-top:12px">${past.map(t => planRow(t)).join('')}</div></details>` : ''}
+  <div class="hh-more"><button class="linkbtn small" data-act="demo">See a demo trip</button></div>`}`;
 }
 /* ---------- home: calendar view ---------- */
 const ICON_LIST = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>';
@@ -4892,6 +4949,7 @@ app.addEventListener('click', e => {
   if (ds.act === 'notifyAsk') { try { Notification.requestPermission().then(render); } catch {} return; }
   if (ds.act === 'theme') { const day = document.documentElement.dataset.theme !== 'light'; document.documentElement.dataset.theme = day ? 'light' : 'dark'; try { localStorage.setItem('outta_theme', day ? 'light' : 'dark'); } catch {} return render(); }
   if (ds.act === 'demo') return openDemo();
+  if (ds.act === 'peek') { S.peek = true; return render(); }
   if (ds.open) return openTrip(ds.open);
   if (ds.homedel) { S.confirmHome = ds.homedel; return render(); }
   if (ds.homeview) { homeMode = ds.homeview; try { localStorage.setItem('outta_homeview', homeMode); } catch {} return render(); }
@@ -5246,7 +5304,7 @@ app.addEventListener('submit', async e => {
 function stop() { if (S.meDirty && S.tid && !S.demo) flushMe(); S.unsub.forEach(u => { try { u(); } catch {} }); S.unsub = []; }
 function setHash(h) { try { history.replaceState(null, '', h ? '#' + h : location.pathname + location.search); } catch {} }
 function resetTrip() {
-  S.trip = null; S.members = []; S.membersIn = false; S.busy = {}; meSaved = false; S.setup = null; S.addStay = false; S.whatif = null; S.repeat = null; S.recover = null; S.rc = null; S.editItem = null; S.alts = null; S.expenses = []; S.packing = []; S.readOnly = false;
+  S.trip = null; S.members = []; S.membersIn = false; S.busy = {}; meSaved = false; S.setup = null; S.addStay = false; S.whatif = null; S.repeat = null; S.recover = null; S.rc = null; S.editItem = null; S.alts = null; S.peek = false; S.expenses = []; S.packing = []; S.readOnly = false;
   S.cardUrl = null; S.cardBlob = null; S.copyText = ''; S.split = null; S.confirm = null; S.tkFile = null; S.feed = []; S.bucket = []; S.photos = []; S.pot = []; S.mySpend = []; S.lostOpen = false; S.pinSel = null; S.hangPlan = null; S.wrapI = 0; S.img = null; S.show = null; clearInterval(showTimer);
   for (const k of Object.keys(DRAFT)) delete DRAFT[k];
 }

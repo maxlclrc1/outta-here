@@ -11,13 +11,13 @@ const a = await mk('Ali');
 await a.click('[data-act=newCrew] >> nth=0'); await a.fill('#nc-name', 'Taco Crew'); await a.click('#newCrewForm [type=submit]'); await a.waitForSelector('text=Invite to the crew'); await settle(a);
 const crewHash = await a.evaluate(() => location.hash);
 await a.click('[data-startcrew] >> nth=0'); await settle(a); await a.click('[data-size=hangout]'); await settle(a); await a.click('[data-mode=friends]'); await settle(a);
-await a.fill('#nt-name', 'Friday tacos at a really long named place downtown'); await a.fill('#nt-city', 'Brooklyn'); await a.click('#newTrip [type=submit]'); await a.waitForSelector('.pass, .passport, .setup').then(() => skipSetup(a)); await settle(a);
+await a.fill('#nt-name', 'Friday tacos at a really long named place downtown'); await a.fill('#nt-city', 'Brooklyn'); await a.click('#newTrip [type=submit]'); await a.waitForSelector('.ov-hero, .pass, .passport, .setup').then(() => skipSetup(a)); await settle(a);
 const tid = await a.evaluate(() => location.hash);
 const j = await mk('Jay'); await j.goto((process.env.BASE || 'http://localhost:3000') + '/' + crewHash); await j.waitForSelector('text=Invite to the crew'); await settle(j);
 await j.click('[data-act=home] >> nth=0'); await settle(j);
 console.log('Jay sees delete on Ali plan:', await j.locator('[data-homedel]').count(), '| Ali:', await (async () => { await a.click('[data-act=home] >> nth=0'); await settle(a); return a.locator('[data-homedel]').count(); })());
 await a.screenshot({ path: S + 'home-phone.png', fullPage: true });
-await j.click('[data-open]'); await j.waitForSelector('.pass, .passport, .setup').then(() => skipSetup(j)); await j.click('[data-status=in]'); await skipSetup(j); await settle(j);
+await j.click('[data-open]'); await j.waitForSelector('.ov-hero, .pass, .passport, .setup').then(() => skipSetup(j)); await j.click('[data-status=in]'); await skipSetup(j); await settle(j);
 await go(j, 'home', 'settings'); console.log('Jay settings delete btn:', await j.locator('[data-act=askDelete]').count(), '| type section (hangout):', await j.locator('text=Type').count());
 await j.click('[data-act=askLeave]'); await settle(j); console.log('leave banner:', await j.locator('.banner').first().innerText());
 await j.click('[data-act=doLeave]'); await j.waitForTimeout(1200); await settle(j);
@@ -26,7 +26,7 @@ console.log('Jay plans after leaving:', await j.locator('.plan-row h3').allInner
 await j.goto((process.env.BASE || 'http://localhost:3000') + '/' + tid); await j.waitForTimeout(2500); await j.screenshot({ path: S + 'rejoin.png', fullPage: true }); await j.waitForSelector('[data-status=in]'); await j.click('[data-status=in]'); await skipSetup(j); await j.waitForTimeout(800); await j.click('[data-act=home] >> nth=0'); await settle(j);
 console.log('Jay plans after rejoin:', await j.locator('.plan-row h3').allInnerTexts());
 // 2. hangout empty states + month labels
-await a.click('[data-open]'); await a.waitForSelector('.pass, .passport, .setup').then(() => skipSetup(a)); await settle(a);
+await a.click('[data-open]'); await a.waitForSelector('.ov-hero, .pass, .passport, .setup').then(() => skipSetup(a)); await settle(a);
 await go(a, 'plan', 'spots'); console.log('spots empty:', (await a.locator('.empty').first().innerText()).replace(/\n/g, ' | '));
 await go(a, 'plan', 'match'); console.log('match (AI off):', (await a.locator('.empty').first().innerText()).replace(/\n/g, ' | '));
 await go(a, 'plan', 'dates'); console.log('months:', await a.locator('.cal-month').allInnerTexts());

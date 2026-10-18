@@ -8,9 +8,9 @@ const go = async (p, sec, tab) => { await p.click('.bottomnav [data-sec=' + sec 
 const a = await mk('A');
 await a.fill('#join-name', 'Ali'); await a.click('.join-card [type=submit]');
 await a.click('[data-act=newTrip]'); await a.click('[data-size=trip]'); await a.click('[data-mode=birthday]');
-await a.fill('#nt-name', 'Dev turns 30'); await a.evaluate(() => { const d = document.querySelector('.more-opts-inline'); if (d) d.open = true; }); await a.fill('#nt-honoree','Dev'); await a.click('#newTrip [type=submit]'); await a.waitForSelector('.pass, .passport, .setup').then(() => skipSetup(a));
+await a.fill('#nt-name', 'Dev turns 30'); await a.evaluate(() => { const d = document.querySelector('.more-opts-inline'); if (d) d.open = true; }); await a.fill('#nt-honoree','Dev'); await a.click('#newTrip [type=submit]'); await a.waitForSelector('.ov-hero, .pass, .passport, .setup').then(() => skipSetup(a));
 const hash = await a.evaluate(() => location.hash);
-const bp = await mk('B'); await bp.goto((process.env.BASE || 'http://localhost:3000') + '/' + hash); await bp.fill('#join-name', 'Dev'); await bp.click('.join-card [type=submit]'); await bp.waitForSelector('.pass, .passport, .setup').then(() => skipSetup(bp));
+const bp = await mk('B'); await bp.goto((process.env.BASE || 'http://localhost:3000') + '/' + hash); await bp.fill('#join-name', 'Dev'); await bp.click('.join-card [type=submit]'); await bp.waitForSelector('.ov-hero, .pass, .passport, .setup').then(() => skipSetup(bp));
 await bp.click('[data-status=in]'); await skipSetup(bp);
 // budgets + homes
 await go(a,'home','crew'); await a.fill('#me-home','JFK'); await a.fill('#me-budget','900'); await a.locator('#me-budget').blur(); await a.fill('#me-venmo','ali-v'); await a.locator('#me-venmo').blur();

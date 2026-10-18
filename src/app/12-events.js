@@ -9,6 +9,7 @@ app.addEventListener('click', e => {
   if (ds.act === 'notifyAsk') { try { Notification.requestPermission().then(render); } catch {} return; }
   if (ds.act === 'theme') { const day = document.documentElement.dataset.theme !== 'light'; document.documentElement.dataset.theme = day ? 'light' : 'dark'; try { localStorage.setItem('outta_theme', day ? 'light' : 'dark'); } catch {} return render(); }
   if (ds.act === 'demo') return openDemo();
+  if (ds.act === 'peek') { S.peek = true; return render(); }
   if (ds.open) return openTrip(ds.open);
   if (ds.homedel) { S.confirmHome = ds.homedel; return render(); }
   if (ds.homeview) { homeMode = ds.homeview; try { localStorage.setItem('outta_homeview', homeMode); } catch {} return render(); }

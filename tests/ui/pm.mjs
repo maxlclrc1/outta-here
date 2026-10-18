@@ -17,7 +17,7 @@ const mk = async (name, link) => {
 };
 const a = await mk('Ali');
 await a.click('[data-act=newTrip]'); await settle(a); await a.click('[data-size=hangout]'); await settle(a); await a.click('[data-mode=friends]'); await settle(a);
-await a.fill('#nt-name', 'Saturday'); await a.fill('#nt-city', 'Brooklyn'); await a.click('#newTrip [type=submit]'); await a.waitForSelector('.pass, .passport, .setup').then(() => skipSetup(a)); await settle(a);
+await a.fill('#nt-name', 'Saturday'); await a.fill('#nt-city', 'Brooklyn'); await a.click('#newTrip [type=submit]'); await a.waitForSelector('.ov-hero, .pass, .passport, .setup').then(() => skipSetup(a)); await settle(a);
 const tid = await a.evaluate(() => location.hash);
 const j = await mk('Jay', tid), k = await mk('Kim', tid);
 for (const p of [j, k]) { await p.waitForSelector('.welcome'); await p.click('[data-join=in]'); await skipSetup(p); await p.waitForTimeout(600); }

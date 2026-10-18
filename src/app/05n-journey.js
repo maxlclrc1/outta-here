@@ -281,37 +281,40 @@ function journeyNow() {
   return { stage, si, steps, focus, also, later: steps.filter(s => s.status !== 'done' && s !== focus && !also.includes(s)), done: steps.filter(s => s.status === 'done') };
 }
 
-/* ----- the guide card: the plan home's main thing ----- */
+/* ----- the plan home's next move and progress ----- */
+// One card with the single next move (its button is the only bright one), then a compact progress
+// card: the six stages, what else is open, and what's coming up or done, folded.
 function journeyCard() {
   const j = journey(), f = j.focus, fresh = f && S.jLast && S.jLast !== f.k; if (f) S.jLast = f.k;
-  const strip = `<div class="card stage-track j-track"><ol class="j-strip" aria-label="Where the plan is">${JSTAGES.map(([k, l], i) => `<li class="${i < j.si ? 'j-done' : i === j.si ? 'j-cur' : ''}"><i></i><span>${l}</span></li>`).join('')}</ol></div>`;
-  const head = f ? `<div class="j-focus ${f.mine ? 'mine' : ''} ${fresh ? 'fresh' : ''}" data-key="jf-${f.k}">
-      <span class="j-eyebrow">${esc(JSTAGE_LABEL[f.stage])}${f.mine ? ' · Your move' : ''}</span>
+  const waitOn = f && (f.who || []).filter(x => x.id !== S.uid);
+  const head = f ? `<section class="j-focus ${f.mine ? 'mine' : ''} ${fresh ? 'fresh' : ''}" data-key="jf-${f.k}">
+      <span class="j-eyebrow">${f.mine ? 'Your move' : 'Up next'}</span>
       <h2>${esc(f.goal)}</h2>
-      ${f.why ? `<p class="j-why">${esc(f.why)}</p>` : ''}
-      <div class="j-do"><span class="label">Here’s what to do</span><b>${esc(f.todo)}</b></div>
-      ${f.who && f.who.filter(x => x.id !== S.uid).length ? `<div class="avs">${f.who.filter(x => x.id !== S.uid).slice(0, 8).map(x => `<span class="av-sm" title="${esc(x.nick || 'Someone')}" style="background:${colorFor(x.id)}">${esc((x.nick || '?')[0].toUpperCase())}</span>`).join('')}</div>` : ''}
-      <div class="j-acts">${f.act()}${f.help && !f.live ? `<button class="linkbtn small j-help" data-jgo="${f.k}">Help me finish this step</button>` : ''}</div>
+      ${f.why || f.todo ? `<p class="j-why">${esc(f.why || f.todo)}</p>` : ''}
+      ${waitOn.length ? `<div class="j-wait">${avStack(waitOn, 5)}<span class="small">Waiting on ${esc(namesOrCount(waitOn))}</span></div>` : ''}
+      <div class="j-acts">${f.act()}</div>
+      ${f.help && !f.live ? `<button class="linkbtn small j-help" data-jgo="${f.k}">Show me where</button>` : ''}
       ${f.k === 'invite' && S.copyText ? `<textarea aria-label="Text to copy" id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
-      ${f.after ? `<p class="j-after"><span class="label">After this</span> ${esc(f.after)}</p>` : ''}
-    </div>`
-    : `<div class="j-focus done"><span class="j-eyebrow">${esc(JSTAGE_LABEL[j.stage])}</span><h2>${j.stage === 'after' ? 'All wrapped up' : 'You’re all set'}</h2><p class="j-why">${(() => { const c = countdown(); return c && j.stage !== 'after' ? `${c.text} to go. Nothing needs doing right now.` : 'Nothing needs doing right now.'; })()}</p></div>`;
+    </section>`
+    : `<section class="j-focus done"><span class="j-eyebrow">${j.stage === 'after' ? 'That’s a wrap' : 'All set'}</span><h2>${j.stage === 'after' ? 'All wrapped up' : 'You’re all set'}</h2><p class="j-why">${(() => { const c = countdown(); return c && j.stage !== 'after' ? `${c.text} to go. Nothing needs doing right now.` : 'Nothing needs doing right now.'; })()}</p></section>`;
   const row = (s, later) => `<div class="j-row s-${s.status}" data-key="j-${s.k}">
-      <span class="j-ic" aria-hidden="true">${s.status === 'done' ? '✓' : s.status === 'blocked' ? '🔒' : s.status === 'later' ? '◷' : s.mine ? '●' : '○'}</span>
-      <div class="stack" style="gap:2px;min-width:0;flex:1"><b>${esc(s.mine && s.mineText && s.status !== 'done' ? s.mineText : s.title)}</b>
-        <span class="small muted">${s.status === 'blocked' ? `Unlocks after: ${esc(s.blocked.join(', ').toLowerCase())}` : s.status === 'later' ? 'Closer to the day' : later && s.status === 'ready' ? `Later, in ${esc(JSTAGE_LABEL[s.stage].toLowerCase())}` : s.status === 'waiting' ? esc(s.group || 'Waiting on the crew') : s.status === 'done' ? 'Done' : esc(s.group || JSTAGE_LABEL[s.stage])}</span></div>
-      ${s.status === 'ready' || s.status === 'waiting' ? `<button class="btn sm ${s.mine ? 'primary' : ''}" data-jgo="${s.k}">${s.mine ? 'Do it' : s.status === 'waiting' ? 'See' : 'Open'}</button>` : ''}
+      <span class="j-ic" aria-hidden="true">${s.status === 'done' ? '✓' : ''}</span>
+      <div class="stack" style="gap:1px;min-width:0;flex:1"><b>${esc(s.mine && s.mineText && s.status !== 'done' ? s.mineText : s.title)}</b>
+        <span class="small muted">${s.status === 'blocked' ? `After ${esc(s.blocked.join(', ').toLowerCase())}` : s.status === 'later' ? 'Closer to the day' : later && s.status === 'ready' ? `Later, in ${esc(JSTAGE_LABEL[s.stage].toLowerCase())}` : s.status === 'waiting' ? esc(s.group || 'Waiting on the crew') : s.status === 'done' ? 'Done' : esc(s.group || JSTAGE_LABEL[s.stage])}</span></div>
+      ${s.status === 'ready' || s.status === 'waiting' ? `<button class="btn sm" data-jgo="${s.k}">${s.mine ? 'Do it' : s.status === 'waiting' ? 'See' : 'Open'}</button>` : ''}
     </div>`;
-  return `<section class="journey" id="journey">
-    ${strip}
+  const progress = `<section class="card ov-progress j-track">
+      <div class="ovp-head"><span class="g-k">Plan progress</span><span class="small muted">${esc(JSTAGE_LABEL[j.stage])} · ${j.si + 1} of ${JSTAGES.length}</span></div>
+      <ol class="j-strip" aria-label="Where the plan is">${JSTAGES.map(([k, l], i) => `<li class="${i < j.si ? 'j-done' : i === j.si ? 'j-cur' : ''}"><i></i><span>${l}</span></li>`).join('')}</ol>
+      ${j.also.length ? `<div class="j-list"><span class="g-k">Also open</span>${j.also.slice(0, 2).map(s => row(s)).join('')}</div>` : ''}
+      ${j.also.length > 2 || j.later.length || j.done.length ? `<details class="j-more" data-key="j-more"><summary class="small">${[j.also.length > 2 && `${j.also.length - 2} more open`, j.later.length && `${j.later.length} coming up`, j.done.length && `${j.done.length} done`].filter(Boolean).join(' · ')}</summary>
+        <div class="j-list">${j.also.slice(2).map(s => row(s)).join('')}${j.later.map(s => row(s, true)).join('')}${j.done.map(s => row(s)).join('')}</div></details>` : ''}
+    </section>`;
+  return `<div class="journey" id="journey">
     ${head}
-    ${j.also.length || j.later.length || j.done.length ? `<div class="card j-lists">` : ''}
-    ${j.also.length ? `<div class="j-list"><span class="label">Also open now</span>${j.also.map(s => row(s)).join('')}</div>` : ''}
-    ${j.later.length || j.done.length ? `<details class="j-more" ${S.jMore ? 'open' : ''}><summary class="small">${[j.later.length && `${j.later.length} coming up`, j.done.length && `${j.done.length} done`].filter(Boolean).join(' · ')}</summary>
-      <div class="j-list">${j.later.map(s => row(s, true)).join('')}${j.done.map(s => row(s)).join('')}</div></details>` : ''}
-    ${j.also.length || j.later.length || j.done.length ? '</div>' : ''}
     ${isHonoree() ? `<p class="small muted">Some of this ${planWord()} is a surprise for you. You’ll see those parts when they’re revealed.</p>` : ''}
-  </section>`;
+    ${progress}
+  </div>`;
 }
 // open the workspace for a step and light up the exact control; click it if that's the action
 function jGo(k) {
