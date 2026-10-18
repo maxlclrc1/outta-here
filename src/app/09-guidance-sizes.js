@@ -114,11 +114,11 @@ function genPlanPitches() {
   takeNote();
   const opts = dateOptions().slice(0, 4); if (!opts.length) { flash('Set which days could work first.'); return; }
   const t = S.trip, b = budgetCap(), evening = size() === 'hangout';
-  const prompt = `You're pitching plans to a friend group. Each person swipes yes or no, like a dating app, so make every pitch specific, fun and honest.
+  const prompt = `You're pitching plans to a ${planKind().group}. Each person swipes yes or no, like a dating app, so make every pitch specific, fun and honest.
 Plan type: ${evening ? 'one evening out or in' : 'a full day out'}${mode().label !== 'Friends trip' ? ` (${mode().label}. ${mode().ai})` : ''}.
 City: ${t.city || 'unknown, assume a big US city'}.
 Crew: ${active().length} people. Max spend per person: ${b ? `${b.label}; keep it at or under ${money(b.cap)}` : 'not set, keep it moderate'}.
-${blend() ? 'Crew vibe quiz:\n' + blendText() : 'Vibe: fun, social'}
+${blend() ? 'Crew vibe quiz:\n' + blendText() : 'Vibe: ' + vibeDefault('small')}
 Ideas the crew already suggested: ${(t.destinations || []).map(d => d.city).join(', ') || 'none'}
 ${pitchMemory()}
 Day options (use one exactly per pitch):

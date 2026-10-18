@@ -185,7 +185,7 @@ function nudges() {
     if (!m.budget && !m.budgetSet) todo.push('set your budget');
     if (hasDest && !(m.votes || []).length && !S.trip.lockedDest) todo.push(isSmall() ? 'vote on the plan' : 'vote on where');
     if (size() === 'trip' && booking_time() && going(m) && !tk[m.id]) todo.push('book your flight and upload your boarding pass');
-    if (!m.quiz || Object.keys(m.quiz).length < QUIZ.length) todo.push('take the vibe quiz');
+    if (quiz().some(q => !q.o.includes((m.quiz || {})[q.k]))) todo.push('take the vibe quiz');
     return { m, todo };
   }).filter(x => x.todo.length);
 }
@@ -209,17 +209,18 @@ function settle() {
   return { net, out };
 }
 function blend() {
-  const takers = S.members.filter(m => m.status !== 'out' && m.quiz && Object.keys(m.quiz).length);
+  // only this plan type's questions, and only answers that are still one of its options
+  const Q = quiz(), takers = S.members.filter(m => m.status !== 'out' && Q.some(q => q.o.includes((m.quiz || {})[q.k])));
   if (!takers.length) return null;
   const res = {}, win = {};
-  for (const q of QUIZ) {
+  for (const q of Q) {
     const counts = {}; let n = 0;
-    for (const m of takers) { const a = m.quiz[q.k]; if (a) { counts[a] = (counts[a] || 0) + 1; n++; } }
+    for (const m of takers) { const a = m.quiz[q.k]; if (q.o.includes(a)) { counts[a] = (counts[a] || 0) + 1; n++; } }
     const list = Object.entries(counts).map(([a, c]) => ({ a, c, pct: Math.round(c / n * 100) })).sort((x, y) => y.c - x.c || q.o.indexOf(x.a) - q.o.indexOf(y.a));
     res[q.k] = list;
     win[q.k] = tiebreak(q, list, takers);
   }
-  const persona = `The ${PERSONA_LATE[win.late?.a] || 'Wild'} ${PERSONA_NIGHT[win.night?.a] || 'Party'} Crew`;
+  const persona = planKind().persona(win);
   return { res, win, n: takers.length, persona };
 }
 // A tie at the top goes to a runoff between the tied answers; if the runoff ties too
@@ -237,7 +238,7 @@ function tiebreak(q, list, takers) {
 }
 function blendText() {
   const b = blend(); if (!b) return '';
-  return QUIZ.map(q => `${q.q} ` + b.res[q.k].map(x => `${x.pct}% ${x.a}`).join(', ') + (b.win[q.k] ? ` → crew pick: ${b.win[q.k].a}` : '')).join('\n');
+  return quiz().map(q => `${q.q} ` + b.res[q.k].map(x => `${x.pct}% ${x.a}`).join(', ') + (b.win[q.k] ? ` → crew pick: ${b.win[q.k].a}` : '')).join('\n');
 }
 const rkey = s => 'k' + String(s).toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40);
 function score(key) {
@@ -387,21 +388,22 @@ async function askAI(kind, prompt, done) {
 function context() {
   const d = dates(), ds = dest(), b = budgetCap();
   const days = d ? span(d.start, d.end).map(x => `${x} (${dow(x)})`).join(', ') : 'not set';
-  if (isSmall()) return `Plan type: ${size() === 'hangout' ? 'one evening out' : 'a day out'} with friends. ${mode().label !== 'Friends trip' ? mode().ai : ''}
+  const pk = planKind();
+  if (isSmall()) return `Plan type: ${size() === 'hangout' ? 'one evening out' : 'a day out'} with ${pk.with}. ${mode().label !== 'Friends trip' ? mode().ai : ''}
 City: ${S.trip.city || 'not set'}
 The plan: ${ds ? ds.city : 'not decided'}${S.trip.venue ? ' at ' + S.trip.venue : ''}
 Day: ${d ? `${d.start} (${dow(d.start)})` : 'not set'}${S.trip.time ? ', starting ' + S.trip.time : ''}
-Group size: ${active().length} adults
+Group size: ${active().length} ${pk.people}
 Max spend per person: ${b ? `${b.label} (the tightest budget in the group is in this range; stay at or under ${money(b.cap)})` : 'not given'}${blend() ? `
 Crew vibe quiz results (${blend().n} answered):
 ${blendText()}` : ''}`;
   return `Trip type: ${mode().label}. ${mode().ai}${size() === 'weekend' ? ' It is a weekend getaway (1–2 nights), likely by car.' : ''}
 Destination: ${ds ? ds.city + (ds.code ? ' (' + ds.code + ')' : '') : 'not set'}
 Trip days: ${days} — ${nightsOf(d)} nights
-Group size: ${active().length} adults
+Group size: ${active().length} ${pk.people}
 ${size() === 'trip' ? 'Flying from' : 'Coming from'}: ${homes().join(', ') || 'unknown'}
 Per-person total budget (everything${size() === 'trip' ? ' incl. flights' : ''}): ${b ? `${b.label} (the tightest budget in the group is in this range; stay at or under ${money(b.cap)})` : 'not given'}
-Group vibe: ${(S.trip.vibes || []).join(', ') || 'mixed, fun'}${blend() ? `
+Group vibe: ${(S.trip.vibes || []).join(', ') || vibeDefault('ctx')}${blend() ? `
 Crew vibe quiz results (${blend().n} answered):
 ${blendText()}` : ''}`;
 }
@@ -414,7 +416,7 @@ ${context()}
 Dress codes at the planned spots: ${dress || 'unknown'}
 Planned activities: ${plans || 'not planned yet'}
 
-Think about typical weather in ${ds.city} on those dates. Split items into "group" (one person brings it for everyone: speaker, phone chargers, games, first aid, hangover kit, etc.) and "personal" (everyone packs their own). 6–8 group items, 12–16 personal items, specific to this trip.
+Think about typical weather in ${ds.city} on those dates. Split items into "group" (one person brings it for everyone: ${planKind().pack}) and "personal" (everyone packs their own). 6–8 group items, 12–16 personal items, specific to this trip.
 Reply with only JSON: {"weather":"one line on expected weather","items":[{"text":"short item","kind":"group|personal"}]}`;
   askAI('pack', prompt, async data => {
     const items = Array.isArray(data?.items) ? data.items.filter(x => x && x.text).slice(0, 30) : [];
@@ -430,7 +432,13 @@ Reply with only JSON: {"weather":"one line on expected weather","items":[{"text"
   });
 }
 function findSpots() {
-  const prompt = `You're a nightlife scout planning ${isSmall() ? 'a night out for a friend group' : 'a group trip'}. Recommend real, well-known venues that are open as of your latest knowledge.
+  const sp = planKind().spots;
+  const prompt = sp ? `You're ${sp.who}${isSmall() ? ` for ${size() === 'hangout' ? 'an evening' : 'a day out'}` : ' for a group trip'}. Recommend real, well-known places that are open as of your latest knowledge.
+${context()}
+
+${sp.ask}
+Reply with only JSON: {"items":[{"name":"",${CALM_SPOT.replace('%T', sp.types)}}]}
+lat/lng: your best estimate of the place's coordinates.` : `You're a nightlife scout planning ${isSmall() ? 'a night out for a friend group' : 'a group trip'}. Recommend real, well-known venues that are open as of your latest knowledge.
 ${context()}
 
 Give 9 picks that fit the trip type and vibe. For nightlife trips: mostly clubs and bars, plus at least one rooftop or lounge and one late-night food spot. For family or work trips: activities, good restaurants and relaxed evening spots instead of clubs. Favor places that work for a group this size (table or guestlist options for clubs). Match the night each place is best to the trip days.
@@ -463,10 +471,10 @@ function draftPlan() {
   if (isSmall()) return draftNight();
   const prompt = `Build a fun, realistic day-by-day itinerary for this group trip.
 ${context()}
-Nightlife picks the group already likes: ${spots || 'none yet — suggest real venues'}
+${planKind().picks}: ${spots || 'none yet — suggest real venues'}
 ${S.trip.crewId ? dnaText(S.trip.crewId) : ''}
 
-Arrival and departure days are lighter. Mix food, daytime activities, recovery time, and nights out (use the picks on their best nights). 3–5 items per day.
+Arrival and departure days are lighter. ${planKind().mix} 3–5 items per day.
 Reply with only JSON: {"days":[{"date":"YYYY-MM-DD","items":[{"time":"HH:MM","title":"short title with the place name","kind":"food|activity|nightlife|travel|chill","note":"one short line"}]}]}`;
   askAI('plan', prompt, data => {
     const days = Array.isArray(data?.days) ? data.days : [];

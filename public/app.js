@@ -185,7 +185,7 @@ function nudges() {
     if (!m.budget && !m.budgetSet) todo.push('set your budget');
     if (hasDest && !(m.votes || []).length && !S.trip.lockedDest) todo.push(isSmall() ? 'vote on the plan' : 'vote on where');
     if (size() === 'trip' && booking_time() && going(m) && !tk[m.id]) todo.push('book your flight and upload your boarding pass');
-    if (!m.quiz || Object.keys(m.quiz).length < QUIZ.length) todo.push('take the vibe quiz');
+    if (quiz().some(q => !q.o.includes((m.quiz || {})[q.k]))) todo.push('take the vibe quiz');
     return { m, todo };
   }).filter(x => x.todo.length);
 }
@@ -209,17 +209,18 @@ function settle() {
   return { net, out };
 }
 function blend() {
-  const takers = S.members.filter(m => m.status !== 'out' && m.quiz && Object.keys(m.quiz).length);
+  // only this plan type's questions, and only answers that are still one of its options
+  const Q = quiz(), takers = S.members.filter(m => m.status !== 'out' && Q.some(q => q.o.includes((m.quiz || {})[q.k])));
   if (!takers.length) return null;
   const res = {}, win = {};
-  for (const q of QUIZ) {
+  for (const q of Q) {
     const counts = {}; let n = 0;
-    for (const m of takers) { const a = m.quiz[q.k]; if (a) { counts[a] = (counts[a] || 0) + 1; n++; } }
+    for (const m of takers) { const a = m.quiz[q.k]; if (q.o.includes(a)) { counts[a] = (counts[a] || 0) + 1; n++; } }
     const list = Object.entries(counts).map(([a, c]) => ({ a, c, pct: Math.round(c / n * 100) })).sort((x, y) => y.c - x.c || q.o.indexOf(x.a) - q.o.indexOf(y.a));
     res[q.k] = list;
     win[q.k] = tiebreak(q, list, takers);
   }
-  const persona = `The ${PERSONA_LATE[win.late?.a] || 'Wild'} ${PERSONA_NIGHT[win.night?.a] || 'Party'} Crew`;
+  const persona = planKind().persona(win);
   return { res, win, n: takers.length, persona };
 }
 // A tie at the top goes to a runoff between the tied answers; if the runoff ties too
@@ -237,7 +238,7 @@ function tiebreak(q, list, takers) {
 }
 function blendText() {
   const b = blend(); if (!b) return '';
-  return QUIZ.map(q => `${q.q} ` + b.res[q.k].map(x => `${x.pct}% ${x.a}`).join(', ') + (b.win[q.k] ? ` → crew pick: ${b.win[q.k].a}` : '')).join('\n');
+  return quiz().map(q => `${q.q} ` + b.res[q.k].map(x => `${x.pct}% ${x.a}`).join(', ') + (b.win[q.k] ? ` → crew pick: ${b.win[q.k].a}` : '')).join('\n');
 }
 const rkey = s => 'k' + String(s).toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40);
 function score(key) {
@@ -387,21 +388,22 @@ async function askAI(kind, prompt, done) {
 function context() {
   const d = dates(), ds = dest(), b = budgetCap();
   const days = d ? span(d.start, d.end).map(x => `${x} (${dow(x)})`).join(', ') : 'not set';
-  if (isSmall()) return `Plan type: ${size() === 'hangout' ? 'one evening out' : 'a day out'} with friends. ${mode().label !== 'Friends trip' ? mode().ai : ''}
+  const pk = planKind();
+  if (isSmall()) return `Plan type: ${size() === 'hangout' ? 'one evening out' : 'a day out'} with ${pk.with}. ${mode().label !== 'Friends trip' ? mode().ai : ''}
 City: ${S.trip.city || 'not set'}
 The plan: ${ds ? ds.city : 'not decided'}${S.trip.venue ? ' at ' + S.trip.venue : ''}
 Day: ${d ? `${d.start} (${dow(d.start)})` : 'not set'}${S.trip.time ? ', starting ' + S.trip.time : ''}
-Group size: ${active().length} adults
+Group size: ${active().length} ${pk.people}
 Max spend per person: ${b ? `${b.label} (the tightest budget in the group is in this range; stay at or under ${money(b.cap)})` : 'not given'}${blend() ? `
 Crew vibe quiz results (${blend().n} answered):
 ${blendText()}` : ''}`;
   return `Trip type: ${mode().label}. ${mode().ai}${size() === 'weekend' ? ' It is a weekend getaway (1–2 nights), likely by car.' : ''}
 Destination: ${ds ? ds.city + (ds.code ? ' (' + ds.code + ')' : '') : 'not set'}
 Trip days: ${days} — ${nightsOf(d)} nights
-Group size: ${active().length} adults
+Group size: ${active().length} ${pk.people}
 ${size() === 'trip' ? 'Flying from' : 'Coming from'}: ${homes().join(', ') || 'unknown'}
 Per-person total budget (everything${size() === 'trip' ? ' incl. flights' : ''}): ${b ? `${b.label} (the tightest budget in the group is in this range; stay at or under ${money(b.cap)})` : 'not given'}
-Group vibe: ${(S.trip.vibes || []).join(', ') || 'mixed, fun'}${blend() ? `
+Group vibe: ${(S.trip.vibes || []).join(', ') || vibeDefault('ctx')}${blend() ? `
 Crew vibe quiz results (${blend().n} answered):
 ${blendText()}` : ''}`;
 }
@@ -414,7 +416,7 @@ ${context()}
 Dress codes at the planned spots: ${dress || 'unknown'}
 Planned activities: ${plans || 'not planned yet'}
 
-Think about typical weather in ${ds.city} on those dates. Split items into "group" (one person brings it for everyone: speaker, phone chargers, games, first aid, hangover kit, etc.) and "personal" (everyone packs their own). 6–8 group items, 12–16 personal items, specific to this trip.
+Think about typical weather in ${ds.city} on those dates. Split items into "group" (one person brings it for everyone: ${planKind().pack}) and "personal" (everyone packs their own). 6–8 group items, 12–16 personal items, specific to this trip.
 Reply with only JSON: {"weather":"one line on expected weather","items":[{"text":"short item","kind":"group|personal"}]}`;
   askAI('pack', prompt, async data => {
     const items = Array.isArray(data?.items) ? data.items.filter(x => x && x.text).slice(0, 30) : [];
@@ -430,7 +432,13 @@ Reply with only JSON: {"weather":"one line on expected weather","items":[{"text"
   });
 }
 function findSpots() {
-  const prompt = `You're a nightlife scout planning ${isSmall() ? 'a night out for a friend group' : 'a group trip'}. Recommend real, well-known venues that are open as of your latest knowledge.
+  const sp = planKind().spots;
+  const prompt = sp ? `You're ${sp.who}${isSmall() ? ` for ${size() === 'hangout' ? 'an evening' : 'a day out'}` : ' for a group trip'}. Recommend real, well-known places that are open as of your latest knowledge.
+${context()}
+
+${sp.ask}
+Reply with only JSON: {"items":[{"name":"",${CALM_SPOT.replace('%T', sp.types)}}]}
+lat/lng: your best estimate of the place's coordinates.` : `You're a nightlife scout planning ${isSmall() ? 'a night out for a friend group' : 'a group trip'}. Recommend real, well-known venues that are open as of your latest knowledge.
 ${context()}
 
 Give 9 picks that fit the trip type and vibe. For nightlife trips: mostly clubs and bars, plus at least one rooftop or lounge and one late-night food spot. For family or work trips: activities, good restaurants and relaxed evening spots instead of clubs. Favor places that work for a group this size (table or guestlist options for clubs). Match the night each place is best to the trip days.
@@ -463,10 +471,10 @@ function draftPlan() {
   if (isSmall()) return draftNight();
   const prompt = `Build a fun, realistic day-by-day itinerary for this group trip.
 ${context()}
-Nightlife picks the group already likes: ${spots || 'none yet — suggest real venues'}
+${planKind().picks}: ${spots || 'none yet — suggest real venues'}
 ${S.trip.crewId ? dnaText(S.trip.crewId) : ''}
 
-Arrival and departure days are lighter. Mix food, daytime activities, recovery time, and nights out (use the picks on their best nights). 3–5 items per day.
+Arrival and departure days are lighter. ${planKind().mix} 3–5 items per day.
 Reply with only JSON: {"days":[{"date":"YYYY-MM-DD","items":[{"time":"HH:MM","title":"short title with the place name","kind":"food|activity|nightlife|travel|chill","note":"one short line"}]}]}`;
   askAI('plan', prompt, data => {
     const days = Array.isArray(data?.days) ? data.days : [];
@@ -867,39 +875,39 @@ function dealsBody(x, cap) {
 
 function spotsTab() {
   const d = dates(), ds = dest();
-  if (!ds) return needDestDates(isSmall() ? 'Spot picks' : 'Nightlife picks', 'dest');
+  if (!ds) return needDestDates(isSmall() ? 'Spot picks' : mode().nightlife || 'Nightlife picks', 'dest');
   const spots = S.trip.spots && S.trip.spots.city === ds.city ? S.trip.spots.items : null;
-  const mq = meDoc()?.quiz || {}, b = blend();
+  const mq = meDoc()?.quiz || {}, b = blend(), pk = planKind(), Q = quiz();
   const ranked = spots ? spots.map((s, i) => ({ s, i, sc: score(rkey('sp' + s.name)) })).sort((a, b) => b.sc.net - a.sc.net || a.i - b.i) : [];
   return `<section class="grid2">
-    <div class="card"><div class="row" style="justify-content:space-between;margin-bottom:4px"><h2>Vibe quiz</h2><span class="label">${Object.keys(mq).length}/${QUIZ.length}</span></div>
-      ${QUIZ.map(q => `<div class="q"><span class="small"><b>${esc(q.q)}</b></span><div class="row" style="gap:6px">${q.o.map(o => `<button class="chip ${mq[q.k] === o ? 'on' : ''}" data-quiz="${q.k}|${esc(o)}">${esc(o)}</button>`).join('')}</div></div>`).join('')}
+    <div class="card"><div class="row" style="justify-content:space-between;margin-bottom:4px"><h2>Vibe quiz</h2><span class="label">${Q.filter(q => q.o.includes(mq[q.k])).length}/${Q.length}</span></div>
+      ${Q.map(q => `<div class="q"><span class="small"><b>${esc(q.q)}</b></span><div class="row" style="gap:6px">${q.o.map(o => `<button class="chip ${mq[q.k] === o ? 'on' : ''}" data-quiz="${q.k}|${esc(o)}">${esc(o)}</button>`).join('')}</div></div>`).join('')}
     </div>
     ${b ? `<div class="blend">
       <span class="label">${b.n} of ${active().length} took the quiz</span>
       <h2>${esc(b.persona)}</h2>
-      ${QUIZ.map(q => { const top = b.res[q.k].slice(0, 3), w = b.win[q.k]; if (!top.length) return '';
+      ${Q.map(q => { const top = b.res[q.k].slice(0, 3), w = b.win[q.k]; if (!top.length) return '';
         const myRun = (meDoc()?.runoff || {})[q.k];
         return `<div class="stack" style="gap:4px"><div class="row" style="justify-content:space-between"><span class="label">${esc(q.q)}</span>${w.how !== 'majority' ? `<span class="tie">Tie</span>` : ''}</div>
         ${top.map(x => `<div class="row" style="gap:8px;flex-wrap:nowrap"><span class="small" style="flex:0 0 46%">${x.a === w.a ? '<b>★ ' : ''}${x.pct}% ${esc(x.a)}${x.a === w.a ? '</b>' : ''}</span><div class="bar" style="flex:1"><i style="width:${x.pct}%"></i></div></div>`).join('')}
         ${w.how !== 'majority' ? `<div class="runoff"><span class="small">${w.how === 'runoff' ? `Runoff winner: <b>${esc(w.a)}</b> (${w.tied.map(a => (w.rv[a] || 0)).join('–')})` : w.votes ? `Runoff is tied too, so a coin flip picked <b>${esc(w.a)}</b>` : `Coin flip picked <b>${esc(w.a)}</b> for now. Vote in the runoff to decide it yourselves.`}</span>
           <div class="row" style="gap:6px">${w.tied.map(a => `<button class="chip ${myRun === a ? 'on' : ''}" data-qrunoff="${q.k}|${esc(a)}">${esc(a)}</button>`).join('')}</div></div>` : ''}</div>`; }).join('')}
       <span class="small" style="opacity:.75">Screenshot this and drop it in the chat.</span>
-    </div>` : `<div class="empty"><b>Your crew’s vibe shows up here.</b><span>Answer the 5 questions. Once friends answer too, you’ll see the blend, like “60% Big club, 40% Rooftop cocktails”, and the AI uses it for its picks.</span></div>`}
+    </div>` : `<div class="empty"><b>Your crew’s vibe shows up here.</b><span>Answer the ${Q.length} questions. Once ${pk.spots ? 'everyone answers' : 'friends answer'} too, you’ll see the blend, like “${pk.blendEg}”, and the AI uses it for its picks.</span></div>`}
   </section>
   <section class="card stack">
-    <div class="row" style="justify-content:space-between"><h2>Where we’re going out in ${esc(ds.city)}</h2></div>
+    <div class="row" style="justify-content:space-between"><h2>${pk.spots ? pk.spots.heading : 'Where we’re going out in'} ${esc(ds.city)}</h2></div>
     ${S.sample !== null ? `<div><button class="btn primary" data-act="spots" ${S.busy.spots ? 'disabled' : ''}>${S.busy.spots ? '<i class="spin"></i>Scouting spots…' : spots ? 'Find new spots' : 'Find our spots'}</button></div>` : `<p class="small muted">${IN_CLAUDE ? "AI picks aren’t available for you right now." : "AI picks are off. Add your Anthropic API key to turn them on."}</p>`}
   </section>
   ${spots ? `<section class="grid2">${ranked.map(({ s, i }) => `<article class="card spot">
       <div class="spot-head"><div style="min-width:0"><span class="kind">${esc(s.type)}</span><h3>${esc(s.name)}</h3><span class="small muted">${esc(s.area)}</span></div><span class="mono" style="color:var(--accent)">${esc(s.price)}</span></div>
       <p class="small">${esc(s.why)}</p>
-      <div class="meta">${s.cover ? `<span>Cover <b>${esc(s.cover)}</b></span>` : ''}${s.bestNight ? `<span>Best <b>${esc(s.bestNight)}</b></span>` : ''}${s.dress ? `<span>Dress <b>${esc(s.dress)}</b></span>` : ''}</div>
+      <div class="meta">${s.cover ? `<span>${pk.spots ? 'Entry' : 'Cover'} <b>${esc(s.cover)}</b></span>` : ''}${s.bestNight ? `<span>Best <b>${esc(s.bestNight)}</b></span>` : ''}${s.dress ? `<span>Dress <b>${esc(s.dress)}</b></span>` : ''}</div>
       ${s.tip ? `<p class="small muted">Tip: ${esc(s.tip)}</p>` : ''}
       <div class="row" style="gap:6px;margin-top:auto">${voteBtns(rkey('sp' + s.name))}<a class="btn sm" href="${maps(s.name, ds.city)}" target="_blank" rel="noopener">Map</a>${d ? `<button class="btn sm" data-addspot="${i}">Add to itinerary</button>` : ''}</div>
     </article>`).join('')}</section>
     <p class="small muted">AI picks. Check hours, covers and age rules before you go.</p>`
-  : `<div class="empty"><span>${isSmall() ? 'Take the vibe quiz, then let AI pull spots that fit your crew, budget and the day.' : 'Take the vibe quiz, then let AI pull clubs, bars, rooftops and a late-night food spot that fit your crew, budget and the nights you’re there.'}</span></div>`}`;
+  : `<div class="empty"><span>${isSmall() ? 'Take the vibe quiz, then let AI pull spots that fit your crew, budget and the day.' : pk.spots ? pk.spots.empty : 'Take the vibe quiz, then let AI pull clubs, bars, rooftops and a late-night food spot that fit your crew, budget and the nights you’re there.'}</span></div>`}`;
 }
 
 function planTab() {
@@ -1090,7 +1098,7 @@ function setupView() {
         <label class="field"><span class="label">Or type it (${cur()})</span><input id="me-budget" class="big-input" type="number" min="0" step="${isSmall() ? 5 : 50}" inputmode="numeric" value="${m.budget ? esc(m.budget) : ''}" placeholder="${niceIn(BUDGETS[size()][1])}" enterkeyhint="next"></label>` },
     vibe: { h: 'Quick vibe check',
       p: 'A few taps. It shapes what the AI pitches and the crew’s vibe.',
-      c: QUIZ.map(q => `<div class="q"><span class="small"><b>${esc(q.q)}</b></span><div class="row" style="gap:6px">${q.o.map(o => `<button class="chip ${mq[q.k] === o ? 'on' : ''}" data-quiz="${q.k}|${esc(o)}">${esc(o)}</button>`).join('')}</div></div>`).join('') },
+      c: quiz().map(q => `<div class="q"><span class="small"><b>${esc(q.q)}</b></span><div class="row" style="gap:6px">${q.o.map(o => `<button class="chip ${mq[q.k] === o ? 'on' : ''}" data-quiz="${q.k}|${esc(o)}">${esc(o)}</button>`).join('')}</div></div>`).join('') },
   }[k];
   return `${topBar()}
   <section class="setup">
@@ -1305,12 +1313,12 @@ function genPitches() {
   if (isSmall()) return genPlanPitches();
   const opts = dateOptions(); if (!opts.length) { flash('Set a date window first.'); return; }
   const b = budgetCap();
-  const prompt = `You're pitching ${size() === 'weekend' ? 'weekend getaways (1–2 nights, ideally a few hours’ drive or a short flight away)' : 'group trips'} to a friend group. They will each swipe yes or no on every pitch, like a dating app, so make each pitch exciting, specific and honest.
+  const prompt = `You're pitching ${size() === 'weekend' ? 'weekend getaways (1–2 nights, ideally a few hours’ drive or a short flight away)' : 'group trips'} to a ${planKind().group}. They will each swipe yes or no on every pitch, like a dating app, so make each pitch exciting, specific and honest.
 Trip type: ${mode().label}. ${mode().ai}
 Crew: ${active().length} people ${size() === 'trip' ? 'flying' : 'coming'} from ${homes().join(', ') || 'unknown cities'}.
 Per-person budget cap (all-in, flights included): ${b ? `${b.label}. That's the range the tightest budget in the crew falls in; keep every pitch at or under ${money(b.cap)}` : 'not set, assume moderate'}.
 Trip length: ${nightsSet(S.trip)} nights.
-${blend() ? 'Crew vibe quiz:\n' + blendText() : 'Vibe: fun, social, nightlife'}
+${blend() ? 'Crew vibe quiz:\n' + blendText() : 'Vibe: ' + vibeDefault('pitch')}
 Destinations already suggested by the crew: ${(S.trip.destinations || []).map(d => d.city).join(', ') || 'none'}
 ${pitchMemory()}
 Date options (each pitch must use one of these exactly):
@@ -1466,7 +1474,7 @@ function liveTab() {
   </section>
   ${live ? liveQuick() : ''}
   ${recapCard(day)}
-  ${isSmall() ? '' : hangoverCard(day)}
+  ${isSmall() || !planKind().hangover ? '' : hangoverCard(day)}
   <section class="grid2">
     <div class="card stack"><h3>Today’s plan</h3>
       ${items.length ? `<div>${items.map(i => `<div class="tline ${i.id === nextId ? 'today-next' : ''}"><span class="mono small">${esc(tShow(i.time) || '—')}</span><div style="min-width:0">${i.id === nextId ? '<span class="kind">Up next</span> ' : ''}<b>${esc(i.title)}</b>${i.note ? `<div class="small muted">${esc(i.note)}</div>` : ''}</div><span></span></div>`).join('')}</div>`
@@ -1482,7 +1490,7 @@ function liveTab() {
     </div>
   </section>
   <section class="card stack"><div class="row" style="justify-content:space-between"><h3>Where’s everyone</h3>${myCi ? `<span class="small muted">You: ${esc(myCi.text)} · ${ago(myCi.at)}</span>` : ''}</div>
-    <div class="row" style="gap:6px">${(isSmall() ? CHECKINS_SMALL : CHECKINS).map(c => `<button class="chip ${myCi?.text === c ? 'on' : ''}" data-checkin="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+    <div class="row" style="gap:6px">${(isSmall() ? CHECKINS_SMALL : planKind().checkins).map(c => `<button class="chip ${myCi?.text === c ? 'on' : ''}" data-checkin="${esc(c)}">${esc(c)}</button>`).join('')}</div>
     <form id="ciForm" class="row" style="gap:6px"><input aria-label="Where you are" id="ci-text" maxlength="60" placeholder="Or type it: “at the bar by the pool”" style="flex:1 1 200px"><button class="btn sm" type="submit">Check in</button></form>
     <div>${active().map(m => `<div class="nudge"><b>${esc(m.nick || 'Someone')}</b><span class="small ${m.checkin ? '' : 'muted'}">${m.checkin ? (m.hideLoc && m.id !== S.uid ? 'Checked in' : esc(m.checkin.text)) + ' · ' + ago(m.checkin.at) : 'No check-in yet'}</span></div>`).join('')}</div>
   </section>
@@ -1524,7 +1532,7 @@ function hypeTab() {
   <section class="card stack">
     <div class="feed" id="feed">${feed.length ? feed.map(f => `<div class="bubble ${f.by === S.uid ? 'mine' : ''} ${f.by === 'ai' ? 'ai' : ''}">${f.secret ? '<span class="secret-tag">Planners only</span><br>' : ''}${f.by !== S.uid ? `<span class="small" style="font-weight:700">${esc(nameOf(f.by))}</span><br>` : ''}${linkify(f.text)}
       <span class="small" style="opacity:.7;display:block;margin-top:2px">${ago(f.at)}${f.by === S.uid ? ` · <button class="linkbtn" data-delfeed="${esc(f.id)}">delete</button>` : ''}</span></div>`).join('') : '<p class="small muted">Drop links, outfit ideas and hype here so they don’t get buried in the group chat.</p>'}</div>
-    <div class="row" style="gap:6px">${(isLive() ? HYPES_LIVE : isSmall() ? HYPES_SMALL : HYPES).map(h => `<button class="chip" data-hype="${esc(h)}">${esc(h)}</button>`).join('')}</div>
+    <div class="row" style="gap:6px">${(isLive() ? planKind().hypesLive : isSmall() ? HYPES_SMALL : planKind().hypes).map(h => `<button class="chip" data-hype="${esc(h)}">${esc(h)}</button>`).join('')}</div>
     <form id="feedForm" class="row" style="gap:6px"><input aria-label="Message to the crew" id="fd-text" maxlength="500" placeholder="Say something…" style="flex:1 1 200px" autocomplete="off"><button class="btn primary" type="submit">Send</button>
       ${honoreeMode() && !isHonoree() ? `<label class="row small" style="gap:6px;flex:1 1 100%"><input type="checkbox" id="fd-secret" style="width:auto"> Planners only (hidden from the ${esc(mode().honoree)})</label>` : ''}</form>
   </section>`;
@@ -1671,6 +1679,56 @@ const MODES = {
     supers: ['Team MVP', 'Best idea of the trip', 'Most likely to answer email at dinner', 'Best dressed', 'First one asleep', 'Best karaoke', 'Most likely to miss the flight', 'Best team spirit'] },
 };
 const mode = () => MODES[S.trip?.mode] || MODES.friends;
+/* ---------- what a plan type changes beyond its AI line ----------
+   Plan type (mode) and plan size are separate: size is how long, type is who's going and what for.
+   Most types are social plans and keep the original quiz, nightlife picks and Live chips. Family
+   trips and team offsites get their own. A missing or unknown mode is a friends trip, as before. */
+const SPEND_Q = QUIZ.find(q => q.k === 'spend');
+const CALM_SPOT = '"type":"%T","area":"neighborhood","why":"one sentence on why this group would like it","price":"$|$$|$$$|$$$$","cover":"entry price per person, e.g. Free or $15","bestNight":"best time, e.g. Sat morning","tip":"one practical insider tip","lat":0,"lng":0';
+// adding a calm pick to the itinerary: meals at dinner time, everything else in the morning, never as nightlife
+const calmAdd = s => /restaurant|cafe|food/.test(s.type || '') ? { time: '18:30', kind: 'food' } : { time: '10:00', kind: 'activity' };
+const PLAN_KINDS = {
+  social: {
+    quiz: QUIZ, persona: w => `The ${PERSONA_LATE[w.late?.a] || 'Wild'} ${PERSONA_NIGHT[w.night?.a] || 'Party'} Crew`, blendEg: '60% Big club, 40% Rooftop cocktails',
+    group: 'friend group', with: 'friends', people: 'adults', vibe: { ctx: 'mixed, fun', pitch: 'fun, social, nightlife', small: 'fun, social' },
+    spots: null, // the original nightlife scout prompt and card
+    checkins: CHECKINS, hypes: HYPES, hypesLive: HYPES_LIVE, hangover: true,
+    picks: 'Nightlife picks the group already likes', mix: 'Mix food, daytime activities, recovery time, and nights out (use the picks on their best nights).',
+    pack: 'speaker, phone chargers, games, first aid, hangover kit, etc.',
+  },
+  family: {
+    quiz: [
+      { k: 'fpace', q: 'Ideal pace?', o: ['Packed days', 'A good mix', 'Slow and easy'] },
+      { k: 'fday', q: 'Days are for…', o: ['Pool or beach', 'Parks & outdoors', 'Museums & sights', 'Theme parks', 'Exploring & eating'] },
+      { k: 'feve', q: 'Evenings are for…', o: ['Early dinner, early night', 'Dinner out together', 'Games or a movie in'] },
+      SPEND_Q],
+    persona: w => `The ${{ 'Packed days': 'Go-Go', 'A good mix': 'Easygoing', 'Slow and easy': 'Slow-Days' }[w.fpace?.a] || 'Happy'} Family`, blendEg: '60% Parks & outdoors, 40% Museums & sights',
+    group: 'family group', with: 'family', people: 'people of mixed ages, possibly kids', vibe: 'relaxed and family-friendly',
+    spots: { who: 'a local guide finding family-friendly places', ask: 'Give 9 picks that work for all ages: activities, parks, sights and easy places to eat. No clubs or bars. Favor places that work for a group this size. Match the best time for each place to the trip days.', types: 'activity|park|museum|sight|restaurant|cafe|show', heading: 'Things to do in', empty: 'Take the vibe quiz, then let AI pull activities, parks and easy places to eat that fit your crew, budget and the days you’re there.', add: calmAdd },
+    checkins: ['At the hotel', 'At the pool', 'Getting food', 'Out exploring', 'Heading back', 'Asleep'],
+    hypes: ['LET’S GOOO', 'Who’s packing already?', 'I just booked!', 'Countdown is on'], hypesLive: ['Where is everyone?', 'Best day yet', 'Who’s hungry?', 'Heading back soon'], hangover: false,
+    picks: 'Places the group already likes', mix: 'Mix food, activities, downtime and easy evenings (use the picks at their best times). Nothing late at night or 21+ only.',
+    pack: 'sunscreen, snacks, phone chargers, games, first aid, wipes, etc.',
+  },
+  work: {
+    quiz: [
+      { k: 'wact', q: 'Best team activity?', o: ['Something active', 'Food or cooking', 'Culture & a tour', 'Games or a challenge', 'Keep it low-key'] },
+      { k: 'wpace', q: 'Work vs team time?', o: ['Mostly working', 'Half and half', 'Mostly team time'] },
+      { k: 'weve', q: 'Evenings are for…', o: ['Team dinner, early night', 'Dinner, then a drink', 'A proper night out'] },
+      SPEND_Q],
+    persona: w => `The ${{ 'Mostly working': 'Heads-Down', 'Half and half': 'Balanced', 'Mostly team time': 'All-Hands' }[w.wpace?.a] || 'Dream'} Team`, blendEg: '60% Food or cooking, 40% Something active',
+    group: 'work team', with: 'colleagues', people: 'colleagues', vibe: 'professional but fun',
+    spots: { who: 'a local guide finding places for a work team offsite', ask: 'Give 9 picks: group activities, good restaurants for a team dinner, and one or two relaxed spots for an evening drink. Nothing rowdy. Favor places that take group bookings for a team this size. Match the best time for each place to the trip days.', types: 'activity|restaurant|bar|cafe|venue|tour', heading: 'Things to do in', empty: 'Take the vibe quiz, then let AI pull team activities, dinner spots and a relaxed place for the evening that fit your team, budget and the days you’re there.', add: calmAdd },
+    checkins: ['At the hotel', 'In a session', 'Getting food', 'At dinner', 'Heading back', 'Asleep'],
+    hypes: ['Can’t wait!', 'Who’s packing already?', 'I just booked!', 'See you there'], hypesLive: ['Where is everyone?', 'Great session', 'Dinner plans?', 'Heading back soon'], hangover: false,
+    picks: 'Places the team already likes', mix: 'Mix work sessions, team meals, one group activity and relaxed evenings (use the picks at their best times).',
+    pack: 'laptop chargers, plug adapters, a speaker, snacks, first aid, etc.',
+  },
+};
+const KIND_OF = { family: 'family', work: 'work' };
+const planKind = () => PLAN_KINDS[KIND_OF[S.trip?.mode]] || PLAN_KINDS.social;
+const quiz = () => planKind().quiz;
+const vibeDefault = where => { const v = planKind().vibe; return typeof v === 'string' ? v : v[where]; };
 const modeLabel = (v, sz) => sz === 'weekend' ? v.label.replace(/ trip$/, ' weekend') : v.label;
 const honoreeMode = () => !!mode().honoree;
 const isHonoree = () => honoreeMode() && S.trip.honoree && S.trip.honoree === S.uid;
@@ -4294,11 +4352,11 @@ function genPlanPitches() {
   takeNote();
   const opts = dateOptions().slice(0, 4); if (!opts.length) { flash('Set which days could work first.'); return; }
   const t = S.trip, b = budgetCap(), evening = size() === 'hangout';
-  const prompt = `You're pitching plans to a friend group. Each person swipes yes or no, like a dating app, so make every pitch specific, fun and honest.
+  const prompt = `You're pitching plans to a ${planKind().group}. Each person swipes yes or no, like a dating app, so make every pitch specific, fun and honest.
 Plan type: ${evening ? 'one evening out or in' : 'a full day out'}${mode().label !== 'Friends trip' ? ` (${mode().label}. ${mode().ai})` : ''}.
 City: ${t.city || 'unknown, assume a big US city'}.
 Crew: ${active().length} people. Max spend per person: ${b ? `${b.label}; keep it at or under ${money(b.cap)}` : 'not set, keep it moderate'}.
-${blend() ? 'Crew vibe quiz:\n' + blendText() : 'Vibe: fun, social'}
+${blend() ? 'Crew vibe quiz:\n' + blendText() : 'Vibe: ' + vibeDefault('small')}
 Ideas the crew already suggested: ${(t.destinations || []).map(d => d.city).join(', ') || 'none'}
 ${pitchMemory()}
 Day options (use one exactly per pitch):
@@ -4665,7 +4723,7 @@ function notifyNew(trips) {
 function draftNight() {
   const d = dates(); if (!d) return;
   const spots = (S.trip.spots?.items || []).map(s => s.name).join('; ');
-  const prompt = `Plan ${size() === 'hangout' ? 'this evening' : 'this day out'} for a friend group: 3–5 stops with times, in order, close to each other.
+  const prompt = `Plan ${size() === 'hangout' ? 'this evening' : 'this day out'} for a ${planKind().group}: 3–5 stops with times, in order, close to each other.
 ${context()}
 Spots the crew likes: ${spots || 'none yet, suggest real places'}
 Reply with only JSON: {"items":[{"time":"HH:MM","title":"short title with the place name","kind":"food|activity|nightlife|chill","note":"one short line"}]}`;
@@ -4950,7 +5008,8 @@ app.addEventListener('click', e => {
     const days = span(d.start, d.end).slice(0, -1);
     const pref = days.find(x => (s.bestNight || '').toLowerCase().startsWith(dow(x).toLowerCase())) || days[0] || d.start;
     flash(`Added ${s.name} to ${fmt(pref)}`);
-    return saveTrip({ itinerary: [...(S.trip.itinerary || []), { id: rid(6), date: pref, time: s.type === 'late-night food' ? '01:30' : '22:30', title: s.name, kind: 'nightlife', note: s.why || '' }] });
+    const at = planKind().spots?.add(s) || { time: s.type === 'late-night food' ? '01:30' : '22:30', kind: 'nightlife' };
+    return saveTrip({ itinerary: [...(S.trip.itinerary || []), { id: rid(6), date: pref, ...at, title: s.name, note: s.why || '' }] });
   }
   if (ds.delitem) { const it = (S.trip.itinerary || []).find(i => i.id === ds.delitem); if (!it) return; return saveTrip(withLog({ itinerary: (S.trip.itinerary || []).filter(i => i.id !== ds.delitem) }, { area: 'plan', text: `${it.title} removed from the plan`, act: it.secret ? '' : 'all', undo: { k: 'item', item: it } })); }
   if (ds.edititem) { S.editItem = ds.edititem; render(); setTimeout(() => $('#ei-time')?.focus(), 50); return; }

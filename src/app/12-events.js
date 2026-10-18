@@ -204,7 +204,8 @@ app.addEventListener('click', e => {
     const days = span(d.start, d.end).slice(0, -1);
     const pref = days.find(x => (s.bestNight || '').toLowerCase().startsWith(dow(x).toLowerCase())) || days[0] || d.start;
     flash(`Added ${s.name} to ${fmt(pref)}`);
-    return saveTrip({ itinerary: [...(S.trip.itinerary || []), { id: rid(6), date: pref, time: s.type === 'late-night food' ? '01:30' : '22:30', title: s.name, kind: 'nightlife', note: s.why || '' }] });
+    const at = planKind().spots?.add(s) || { time: s.type === 'late-night food' ? '01:30' : '22:30', kind: 'nightlife' };
+    return saveTrip({ itinerary: [...(S.trip.itinerary || []), { id: rid(6), date: pref, ...at, title: s.name, note: s.why || '' }] });
   }
   if (ds.delitem) { const it = (S.trip.itinerary || []).find(i => i.id === ds.delitem); if (!it) return; return saveTrip(withLog({ itinerary: (S.trip.itinerary || []).filter(i => i.id !== ds.delitem) }, { area: 'plan', text: `${it.title} removed from the plan`, act: it.secret ? '' : 'all', undo: { k: 'item', item: it } })); }
   if (ds.edititem) { S.editItem = ds.edititem; render(); setTimeout(() => $('#ei-time')?.focus(), 50); return; }

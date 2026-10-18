@@ -53,6 +53,56 @@ const MODES = {
     supers: ['Team MVP', 'Best idea of the trip', 'Most likely to answer email at dinner', 'Best dressed', 'First one asleep', 'Best karaoke', 'Most likely to miss the flight', 'Best team spirit'] },
 };
 const mode = () => MODES[S.trip?.mode] || MODES.friends;
+/* ---------- what a plan type changes beyond its AI line ----------
+   Plan type (mode) and plan size are separate: size is how long, type is who's going and what for.
+   Most types are social plans and keep the original quiz, nightlife picks and Live chips. Family
+   trips and team offsites get their own. A missing or unknown mode is a friends trip, as before. */
+const SPEND_Q = QUIZ.find(q => q.k === 'spend');
+const CALM_SPOT = '"type":"%T","area":"neighborhood","why":"one sentence on why this group would like it","price":"$|$$|$$$|$$$$","cover":"entry price per person, e.g. Free or $15","bestNight":"best time, e.g. Sat morning","tip":"one practical insider tip","lat":0,"lng":0';
+// adding a calm pick to the itinerary: meals at dinner time, everything else in the morning, never as nightlife
+const calmAdd = s => /restaurant|cafe|food/.test(s.type || '') ? { time: '18:30', kind: 'food' } : { time: '10:00', kind: 'activity' };
+const PLAN_KINDS = {
+  social: {
+    quiz: QUIZ, persona: w => `The ${PERSONA_LATE[w.late?.a] || 'Wild'} ${PERSONA_NIGHT[w.night?.a] || 'Party'} Crew`, blendEg: '60% Big club, 40% Rooftop cocktails',
+    group: 'friend group', with: 'friends', people: 'adults', vibe: { ctx: 'mixed, fun', pitch: 'fun, social, nightlife', small: 'fun, social' },
+    spots: null, // the original nightlife scout prompt and card
+    checkins: CHECKINS, hypes: HYPES, hypesLive: HYPES_LIVE, hangover: true,
+    picks: 'Nightlife picks the group already likes', mix: 'Mix food, daytime activities, recovery time, and nights out (use the picks on their best nights).',
+    pack: 'speaker, phone chargers, games, first aid, hangover kit, etc.',
+  },
+  family: {
+    quiz: [
+      { k: 'fpace', q: 'Ideal pace?', o: ['Packed days', 'A good mix', 'Slow and easy'] },
+      { k: 'fday', q: 'Days are for…', o: ['Pool or beach', 'Parks & outdoors', 'Museums & sights', 'Theme parks', 'Exploring & eating'] },
+      { k: 'feve', q: 'Evenings are for…', o: ['Early dinner, early night', 'Dinner out together', 'Games or a movie in'] },
+      SPEND_Q],
+    persona: w => `The ${{ 'Packed days': 'Go-Go', 'A good mix': 'Easygoing', 'Slow and easy': 'Slow-Days' }[w.fpace?.a] || 'Happy'} Family`, blendEg: '60% Parks & outdoors, 40% Museums & sights',
+    group: 'family group', with: 'family', people: 'people of mixed ages, possibly kids', vibe: 'relaxed and family-friendly',
+    spots: { who: 'a local guide finding family-friendly places', ask: 'Give 9 picks that work for all ages: activities, parks, sights and easy places to eat. No clubs or bars. Favor places that work for a group this size. Match the best time for each place to the trip days.', types: 'activity|park|museum|sight|restaurant|cafe|show', heading: 'Things to do in', empty: 'Take the vibe quiz, then let AI pull activities, parks and easy places to eat that fit your crew, budget and the days you’re there.', add: calmAdd },
+    checkins: ['At the hotel', 'At the pool', 'Getting food', 'Out exploring', 'Heading back', 'Asleep'],
+    hypes: ['LET’S GOOO', 'Who’s packing already?', 'I just booked!', 'Countdown is on'], hypesLive: ['Where is everyone?', 'Best day yet', 'Who’s hungry?', 'Heading back soon'], hangover: false,
+    picks: 'Places the group already likes', mix: 'Mix food, activities, downtime and easy evenings (use the picks at their best times). Nothing late at night or 21+ only.',
+    pack: 'sunscreen, snacks, phone chargers, games, first aid, wipes, etc.',
+  },
+  work: {
+    quiz: [
+      { k: 'wact', q: 'Best team activity?', o: ['Something active', 'Food or cooking', 'Culture & a tour', 'Games or a challenge', 'Keep it low-key'] },
+      { k: 'wpace', q: 'Work vs team time?', o: ['Mostly working', 'Half and half', 'Mostly team time'] },
+      { k: 'weve', q: 'Evenings are for…', o: ['Team dinner, early night', 'Dinner, then a drink', 'A proper night out'] },
+      SPEND_Q],
+    persona: w => `The ${{ 'Mostly working': 'Heads-Down', 'Half and half': 'Balanced', 'Mostly team time': 'All-Hands' }[w.wpace?.a] || 'Dream'} Team`, blendEg: '60% Food or cooking, 40% Something active',
+    group: 'work team', with: 'colleagues', people: 'colleagues', vibe: 'professional but fun',
+    spots: { who: 'a local guide finding places for a work team offsite', ask: 'Give 9 picks: group activities, good restaurants for a team dinner, and one or two relaxed spots for an evening drink. Nothing rowdy. Favor places that take group bookings for a team this size. Match the best time for each place to the trip days.', types: 'activity|restaurant|bar|cafe|venue|tour', heading: 'Things to do in', empty: 'Take the vibe quiz, then let AI pull team activities, dinner spots and a relaxed place for the evening that fit your team, budget and the days you’re there.', add: calmAdd },
+    checkins: ['At the hotel', 'In a session', 'Getting food', 'At dinner', 'Heading back', 'Asleep'],
+    hypes: ['Can’t wait!', 'Who’s packing already?', 'I just booked!', 'See you there'], hypesLive: ['Where is everyone?', 'Great session', 'Dinner plans?', 'Heading back soon'], hangover: false,
+    picks: 'Places the team already likes', mix: 'Mix work sessions, team meals, one group activity and relaxed evenings (use the picks at their best times).',
+    pack: 'laptop chargers, plug adapters, a speaker, snacks, first aid, etc.',
+  },
+};
+const KIND_OF = { family: 'family', work: 'work' };
+const planKind = () => PLAN_KINDS[KIND_OF[S.trip?.mode]] || PLAN_KINDS.social;
+const quiz = () => planKind().quiz;
+const vibeDefault = where => { const v = planKind().vibe; return typeof v === 'string' ? v : v[where]; };
 const modeLabel = (v, sz) => sz === 'weekend' ? v.label.replace(/ trip$/, ' weekend') : v.label;
 const honoreeMode = () => !!mode().honoree;
 const isHonoree = () => honoreeMode() && S.trip.honoree && S.trip.honoree === S.uid;
