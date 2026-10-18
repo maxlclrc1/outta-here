@@ -310,6 +310,7 @@ const DRAFT = {};
 app.addEventListener('input', e => {
   if (e.target.id && e.target.type !== 'file') DRAFT[e.target.id] = e.target.value;
   // the new plan's cover preview shows the name as it's typed
+  if (e.target.id === 'me-home' || e.target.id === 'me-budget') setupLive();
   if (e.target.id === 'nt-name') { const t = $('.nf-pv-title'), v = e.target.value.trim(); if (t) { t.textContent = v || e.target.placeholder; t.classList.toggle('is-ph', !v); } }
 });
 const clearDrafts = f => f.querySelectorAll('[id]').forEach(el => delete DRAFT[el.id]);

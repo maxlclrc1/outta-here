@@ -544,9 +544,32 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 /* your details first */
 .setup{max-width:560px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:14px;padding-bottom:120px}
 .setup-top{display:flex;justify-content:space-between;align-items:center;gap:10px}
-.setup-prog{display:flex;gap:6px}
-.setup-prog i{flex:1;height:4px;border-radius:9px;background:color-mix(in oklab,var(--muted) 22%,transparent);transition:background-color .35s var(--ease)}
-.setup-prog i.on{background:var(--accent)}
+/* one continuous, chunky progress bar that fills as you answer (full once the last answer is in) */
+.setup-bar{height:16px;border-radius:99px;background:color-mix(in oklab,var(--muted) 22%,transparent);overflow:hidden}
+.setup-bar i{display:block;position:relative;height:100%;min-width:16px;border-radius:inherit;background:var(--accent);box-shadow:inset 0 -4px 0 rgb(0 0 0/.16);transition:width .55s var(--spring),background-color .4s var(--ease)}
+.setup-bar i::after{content:"";position:absolute;left:8px;right:8px;top:3px;height:4px;border-radius:9px;background:rgb(255 255 255/.32)}
+.setup-bar.full i{background:var(--good);animation:barGlow 1s var(--ease)}
+@keyframes barGlow{0%{filter:brightness(1)}40%{filter:brightness(1.35)}100%{filter:brightness(1)}}
+.setup-step{display:flex;flex-direction:column;gap:14px;animation:stepIn .4s var(--ease) both}
+@keyframes stepIn{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:none}}
+.setup-ico{width:68px;height:68px;border-radius:22px;display:grid;place-items:center;font-size:36px;background:color-mix(in oklab,var(--accent) 16%,transparent);box-shadow:inset 0 -4px 0 color-mix(in oklab,var(--accent) 22%,transparent);animation:icoIn .6s var(--spring) .08s both}
+@keyframes icoIn{from{opacity:0;transform:scale(.4) rotate(-12deg)}to{opacity:1;transform:none}}
+.setup-hi{align-self:flex-start;font:700 14px var(--f-body);padding:8px 14px;border-radius:14px;background:color-mix(in oklab,var(--good) 18%,transparent);color:var(--good)}
+.setup .chip,.setup .btn.sm{border-radius:14px;box-shadow:0 3px 0 var(--line);transition:transform .12s var(--ease),box-shadow .12s var(--ease)}
+.setup .chip{padding:9px 14px;font-size:14px}
+.setup .chip:active,.setup .btn.sm:active{transform:translateY(3px);box-shadow:0 0 0 var(--line)}
+.setup .chip.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);box-shadow:0 3px 0 color-mix(in oklab,var(--accent) 55%,#000);animation:pop .3s var(--spring)}
+.setup .day.mine{animation:pop .28s var(--spring)}
+@keyframes pop{0%{transform:scale(1)}45%{transform:scale(1.14)}100%{transform:scale(1)}}
+html .setup-nav .btn.primary.setup-go{flex:1;justify-content:center;border-radius:16px;padding:15px 20px;font:800 16px var(--f-body);letter-spacing:.06em;text-transform:uppercase;box-shadow:0 5px 0 color-mix(in oklab,var(--accent) 55%,#000);transition:transform .1s var(--ease),box-shadow .1s var(--ease),background-color .25s var(--ease)}
+html .setup-nav .btn.primary.setup-go:active{transform:translateY(5px);box-shadow:0 0 0 transparent}
+html .setup-nav .btn.primary.setup-go.skip{background:var(--surface);color:var(--ink);border-color:var(--line);box-shadow:0 5px 0 var(--line)}
+.setup-nav .setup-back{border-radius:16px;padding:15px 18px;font-size:18px;box-shadow:0 5px 0 var(--line)}
+.setup-nav .setup-back:active{transform:translateY(5px);box-shadow:none}
+.setup-nav-in{position:relative}
+.setup-praise{position:absolute;left:50%;bottom:calc(100% + 14px);transform:translateX(-50%);font:900 20px var(--f-display);font-variation-settings:"wdth" 80;color:var(--good);white-space:nowrap;pointer-events:none;animation:praise 1.4s var(--spring) forwards}
+@keyframes praise{0%{opacity:0;transform:translate(-50%,12px) scale(.6)}20%{opacity:1;transform:translate(-50%,0) scale(1.08)}35%{transform:translate(-50%,0) scale(1)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-14px)}}
+@media (prefers-reduced-motion:reduce){.setup-step,.setup-ico,.setup .chip.on,.setup .day.mine,.setup-bar.full i{animation:none}.setup-bar i{transition:none}.setup-praise{animation:none;opacity:0}}
 .setup h1{font-size:clamp(32px,8.5vw,46px);line-height:1.02;margin-top:6px}
 .setup > p{margin:0}
 .setup-body{gap:12px}

@@ -32,18 +32,48 @@ function setupView() {
       p: 'A few taps. It shapes what the AI pitches and the crew’s vibe.',
       c: quiz().map(q => `<div class="q"><span class="small"><b>${esc(q.q)}</b></span><div class="row" style="gap:6px">${q.o.map(o => `<button class="chip ${mq[q.k] === o ? 'on' : ''}" data-quiz="${q.k}|${esc(o)}">${esc(o)}</button>`).join('')}</div></div>`).join('') },
   }[k];
+  const done = setupAnswered(k), pct = setupPct();
   return `${topBar()}
   <section class="setup">
     <div class="setup-top"><span class="label">${esc(S.trip.name)} · Step ${i + 1} of ${steps.length}</span><button class="linkbtn small muted" data-act="setupLater">Do this later</button></div>
-    <div class="setup-prog" aria-hidden="true">${steps.map((s, j) => `<i class="${j <= i ? 'on' : ''}"></i>`).join('')}</div>
-    <h1>${step.h}</h1>
-    <p class="muted">${step.p}</p>
-    <div class="stack setup-body">${step.c}</div>
+    <div class="setup-bar ${pct >= 100 ? 'full' : ''}" role="progressbar" aria-label="Your answers" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}"><i style="width:${pct}%"></i></div>
+    <div class="setup-step" data-key="setup-${k}">
+      ${S.setup.joined && i === 0 ? `<span class="setup-hi">🎉 You’re ${S.setup.joined === 'in' ? 'in' : 'on the list'}! ${steps.length} quick ${steps.length === 1 ? 'question' : 'questions'} and you’re done.</span>` : ''}
+      <span class="setup-ico" aria-hidden="true">${SETUP_ICONS[k]}</span>
+      <h1>${step.h}</h1>
+      <p class="muted">${step.p}</p>
+      <div class="stack setup-body">${step.c}</div>
+    </div>
   </section>
   <div class="setup-nav"><div class="setup-nav-in">
-    ${i ? '<button class="btn ghost big" data-act="setupBack">Back</button>' : ''}<span style="flex:1"></span>
-    <button class="btn primary big" data-act="setupNext">${last ? 'Done' : 'Next'}</button>
+    ${S.setup.praise ? `<span class="setup-praise" data-key="praise-${S.setup.n}" aria-live="polite">${esc(S.setup.praise)}</span>` : ''}
+    ${i ? '<button class="btn ghost big setup-back" data-act="setupBack" aria-label="Back">←</button>' : ''}
+    <button class="btn primary big setup-go ${done ? '' : 'skip'}" data-act="setupNext">${setupGoLabel(done, last)}</button>
   </div></div>`;
+}
+// The setup reads like a run of quick wins: the bar grows the moment a question is answered (and is full
+// once the last one is), "Continue" turns into "Skip" when nothing's picked, and each answer gets a cheer.
+const SETUP_ICONS = { days: '📅', home: '📍', budget: '💸', vibe: '✨' };
+const PRAISE = ['Nice!', 'Love it!', 'Great pick!', 'Got it!', 'Ooh, nice.'];
+const setupGoLabel = (done, last) => done ? (last ? 'Finish' : 'Continue') : (last ? 'Skip and finish' : 'Skip');
+function setupAnswered(k) {
+  const m = meDoc() || {}, typed = id => DRAFT[id] ?? $('#' + id)?.value;
+  if (k === 'days') return (m.days || []).length > 0;
+  if (k === 'home') return !!String(typed('me-home') ?? m.home ?? '').trim();
+  if (k === 'budget') return +(typed('me-budget') || m.budget || 0) > 0;
+  if (k === 'vibe') return Object.values(m.quiz || {}).some(Boolean);
+  return false;
+}
+function setupPct() {
+  const steps = setupSteps(), i = Math.min(S.setup.step, steps.length - 1);
+  return (i + (setupAnswered(steps[i]) ? 1 : 0)) / steps.length * 100;
+}
+// typing doesn't re-render, so the bar and the button catch up here
+function setupLive() {
+  if (!S.setup) return;
+  const steps = setupSteps(), i = Math.min(S.setup.step, steps.length - 1), pct = setupPct(), bar = $('.setup-bar'), go = $('.setup-go'), done = setupAnswered(steps[i]);
+  if (bar) { bar.querySelector('i').style.width = pct + '%'; bar.classList.toggle('full', pct >= 100); bar.setAttribute('aria-valuenow', Math.round(pct)); }
+  if (go) { go.textContent = setupGoLabel(done, i === steps.length - 1); go.classList.toggle('skip', !done); }
 }
 function setupSave() {
   const h = $('#me-home'), b = $('#me-budget');
@@ -52,10 +82,15 @@ function setupSave() {
   delete DRAFT['me-home']; delete DRAFT['me-budget'];
 }
 function setupGo(dir) {
+  const steps = setupSteps(), n = steps.length, k = steps[Math.min(S.setup.step, n - 1)], won = dir > 0 && setupAnswered(k);
   setupSave();
-  const n = setupSteps().length, next = S.setup.step + dir;
-  if (next >= n) { S.setup = null; S.tab = 'overview'; flash(`You’re all set. Here’s the ${planWord()}.`); }
-  else S.setup.step = Math.max(0, next);
+  const next = S.setup.step + dir, joined = S.setup.joined;
+  if (won && navigator.vibrate) try { navigator.vibrate(12); } catch {}
+  if (next >= n) {
+    S.setup = null; S.tab = 'overview';
+    celebrate('You’re all set!', planColor(S.trip), joined ? 'Welcome to the crew' : 'Nice work');
+    flash(`You’re all set. Here’s the ${planWord()}.`);
+  } else { S.setup.step = Math.max(0, next); S.setup.n = (S.setup.n || 0) + 1; S.setup.praise = won ? PRAISE[S.setup.n % PRAISE.length] : ''; }
   render(); window.scrollTo({ top: 0 });
 }
 function startSetup() {
@@ -102,10 +137,13 @@ function welcomeCard() {
   </section>
   ${S.peek ? '' : '<button class="linkbtn small peek" data-act="peek">Look around the plan first</button>'}`;
 }
+// Saying yes goes straight into the quick setup, which opens with the welcome itself; setup starts
+// before the answer is saved, so no "step done" banner or toast lands on top of it.
 function joinPlan(status) {
+  if (status !== 'out' && !S.demo && !S.readOnly) { document.querySelector('.milestone')?.remove(); S.setup = { step: 0, joined: status }; }
   saveMe({ status, seen: true }, true);
-  if (status !== 'out') { joinCrewQuiet(S.trip.crewId); startSetup(); }
-  flash(status === 'in' ? 'You’re in. A few quick questions first.' : status === 'maybe' ? 'Marked as maybe. A few quick questions so the plan fits you too.' : 'Got it. The crew will see you can’t make it.');
+  if (status !== 'out') { joinCrewQuiet(S.trip.crewId); window.scrollTo({ top: 0 }); }
+  if (!S.setup) flash(status === 'in' ? 'You’re in.' : status === 'maybe' ? 'Marked as maybe.' : 'Got it. The crew will see you can’t make it.');
 }
 
 /* ---------- plan match: learning and settling disagreements ---------- */
