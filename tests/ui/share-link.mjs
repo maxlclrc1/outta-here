@@ -1,7 +1,7 @@
 // Browser regression test, run with: npm run test:ui (needs Playwright, see README › Tests)
 // Shared plan links are /p/<plan>?k=<key>. A link preview (WhatsApp, iMessage) reading one gets the plan's
-// card: its name, what it is, where/when once locked, how many are going, and a small PNG image; never
-// anyone's name. A wrong or old key gets a plain card and no image. People opening the link land on the
+// card: its name, who invited you (the organizer's nickname), what it is, where/when once locked, how many
+// are going, and a small PNG image; never anyone else's name, and never the invite key in the preview. A wrong or old key gets a plain card and no image. People opening the link land on the
 // plan, as with the old /#plan.key links. "Send on WhatsApp" opens WhatsApp with the invite and the link.
 import { install, trackBrowser } from '../_identity.mjs'; install(); // act as the test's people (see the file)
 const { chromium } = await import(process.env.PLAYWRIGHT || 'playwright');
@@ -31,18 +31,23 @@ await A.click('.bottomnav [data-sec=home]'); await settle(A); await A.click('.su
 expect('…and it’s next to “Send the invite” while you’re alone in the plan', (await A.locator('.j-focus a.wa').count()) === 1);
 
 // —— what WhatsApp's link preview reads ——
+// someone else in the plan, whose name must never show in the preview
+const BEA = 'u_bea00' + Math.random().toString(36).slice(2, 7); await api(BEA, 'set', `trips/${tid}/members/${BEA}`, { nick: 'Bea', status: 'maybe', days: [], updatedAt: Date.now() });
 const html = await (await fetch(link, { headers: { 'user-agent': 'WhatsApp/2.23' } })).text();
 const meta = k => html.match(new RegExp(`property="${k}" content="([^"]*)"`))?.[1] || '';
-expect('the preview has the plan’s name and kind', meta('og:title') === 'Cabin weekend · Friends weekend', meta('og:title'));
-expect('…where, when and how many are going', /Catskills · Nov 20 – Nov 22 · 1 going/.test(meta('og:description')), meta('og:description'));
-expect('…and never anyone’s name', !/Mayasecret/.test(html));
+expect('the preview is titled with the plan’s name', meta('og:title') === 'Cabin weekend', meta('og:title'));
+expect('…says who invited you, what it is, where and when', meta('og:description') === 'Mayasecret invited you · Friends weekend · Catskills · Nov 20 – Nov 22. Tap to say if you’re in.', meta('og:description'));
+expect('…and never anyone else’s name', !/Bea/.test(html));
 const img = await fetch(meta('og:image').replace(/&amp;/g, '&')), buf = Buffer.from(await img.arrayBuffer());
+expect('the card image is fetched by a token, not the invite key', /\/card\?t=[0-9a-f]{24}$/.test(meta('og:image')) && !/k=/.test(meta('og:image')), meta('og:image'));
 expect('the card image is a PNG small enough for WhatsApp', img.status === 200 && img.headers.get('content-type') === 'image/png' && buf.length < 300_000 && buf.length > 5_000, `${img.status} ${img.headers.get('content-type')} ${buf.length} bytes`);
 await api(uid, 'update', 'trips/' + tid, { inviteKey: 'k7x9q2' }); await A.waitForTimeout(700);
-{ const good = await (await fetch(`${BASE}/p/${tid}?k=k7x9q2`)).text(); expect('a plan with a key shows its card with the right key', /Cabin weekend/.test(good) && /og:image/.test(good)); }
+{ const good = await (await fetch(`${BASE}/p/${tid}?k=k7x9q2`)).text(), im = good.match(/og:image" content="([^"]*)/)?.[1] || '';
+  expect('a plan with a key shows its card with the right key, and the key isn’t in the preview', /Cabin weekend/.test(good) && !!im && !/k7x9q2/.test(good.replace(/url=[^"]*|location\.replace\([^)]*\)|href="[^"]*"/g, '')));
+  expect('…its image works by token', (await fetch(im.replace(/&amp;/g, '&'))).status === 200); }
 { const bad = await (await fetch(`${BASE}/p/${tid}?k=wrongkey`)).text();
   expect('a wrong or old key gets a plain card, with no plan details or image', /You’re invited on Outta\/Here/.test(bad) && !/Cabin weekend/.test(bad) && !/og:image/.test(bad));
-  expect('…and its image isn’t served', (await fetch(`${BASE}/p/${tid}/card?k=wrongkey`)).status === 404); }
+  expect('…and a made-up image token isn’t served', (await fetch(`${BASE}/p/${tid}/card?t=0123456789abcdef01234567`)).status === 404 && (await fetch(`${BASE}/p/${tid}/card?k=k7x9q2`)).status === 404); }
 
 // —— a friend tapping it ——
 const keyed = `${BASE}/p/${tid}?k=k7x9q2`, J = await page('Jo', keyed); await J.waitForFunction(() => location.hash.length > 1); await J.fill('#join-name', 'Jo'); await J.click('.join-card [type=submit]'); await settle(J);
