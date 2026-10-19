@@ -1190,9 +1190,17 @@ async function sendInvite(text, url, title) {
   return copy(`${text}\n${url}`);
 }
 const noSignup = () => IN_CLAUDE ? '' : ' No app, no sign-up.';
-function inviteText(t) {
-  const w = SIZES[sizeOf(t)].label.toLowerCase(), when = t.lockedDates ? planWhen(t) : '';
-  return `Join our ${w}: ${t.name}${when ? ` (${when})` : ''}. Tap the link and say if you’re in.${noSignup()}`;
+// An invite that reads like a friend asking: the plan, what's decided (only what the plan says; anything
+// open is said as open), who's in so far, and what tapping the link lets you do. `wa`: WhatsApp's *bold*.
+const SIZE_EMOJI = { hangout: '🍻', day: '☀️', weekend: '🏡', trip: '✈️' };
+const MODE_EMOJI = { birthday: '🎂', bachelorette: '💍', bachelor: '🥃', family: '🏡', work: '💼', festival: '🎶', couples: '💞', sports: '🏟️', college: '🎓' };
+function inviteText(t, wa = false) {
+  const sz = sizeOf(t), small = isSmallSize(sz), here = t === S.trip;
+  const city = t.lockedDest ? (t.destinations || []).find(d => d.id === t.lockedDest)?.city || '' : '', place = city || (small ? t.city || '' : '');
+  const when = t.lockedDates ? planWhen(t) : '', ins = here ? S.members.filter(m => going(m) && !m.removed).length : 0;
+  const facts = [when, place].filter(Boolean).join(' · ') || (small ? 'Picking the day together' : 'Picking where and when together');
+  const ask = !t.lockedDates ? `Tap to say if you’re in and ${small ? 'which days work' : 'when you’re free'} 👇` : !city && !small ? 'Tap to say if you’re in and vote on where 👇' : 'Tap to say if you’re in 👇';
+  return [`${MODE_EMOJI[t.mode] || SIZE_EMOJI[sz] || '✨'} ${wa ? `*${t.name}*` : t.name}`, facts + (ins > 1 ? ` · ${ins} in so far` : ''), [noSignup().trim(), ask].filter(Boolean).join(' ')].join('\n');
 }
 const crewInviteText = c => `Join ${c?.name || 'our crew'} on Outta Here. It’s where we plan everything, from Friday dinners to trips.${noSignup()}`;
 async function joinCrewQuiet(cid) {
@@ -4587,7 +4595,7 @@ const SHARE_BASE = window.OUTTA_SHARE_BASE || (location.origin + '/');
 const IN_CLAUDE = !!window.OUTTA_SHARE_BASE;
 const inviteLink = () => linkFor({ id: S.tid, inviteKey: S.trip?.inviteKey });
 // WhatsApp opens with the invite written and the link in it, which it turns into the plan's card
-const waHref = () => 'https://wa.me/?text=' + encodeURIComponent(`${inviteText(S.trip)}\n${inviteLink()}`);
+const waHref = () => 'https://wa.me/?text=' + encodeURIComponent(`${inviteText(S.trip, true)}\n${inviteLink()}`);
 const waBtn = (label = 'WhatsApp') => IN_CLAUDE || S.demo ? '' : `<a class="btn chunky wa" href="${esc(waHref())}" target="_blank" rel="noopener"><span class="wa-ic" aria-hidden="true">💬</span>${label}</a>`;
 function inviteCard() {
   if (S.demo) return `<section class="card stack"><h2>Invite the crew</h2><p class="small muted">Invites work on real trips. Start one from the home screen.</p></section>`;

@@ -3,7 +3,7 @@ const SHARE_BASE = window.OUTTA_SHARE_BASE || (location.origin + '/');
 const IN_CLAUDE = !!window.OUTTA_SHARE_BASE;
 const inviteLink = () => linkFor({ id: S.tid, inviteKey: S.trip?.inviteKey });
 // WhatsApp opens with the invite written and the link in it, which it turns into the plan's card
-const waHref = () => 'https://wa.me/?text=' + encodeURIComponent(`${inviteText(S.trip)}\n${inviteLink()}`);
+const waHref = () => 'https://wa.me/?text=' + encodeURIComponent(`${inviteText(S.trip, true)}\n${inviteLink()}`);
 const waBtn = (label = 'WhatsApp') => IN_CLAUDE || S.demo ? '' : `<a class="btn chunky wa" href="${esc(waHref())}" target="_blank" rel="noopener"><span class="wa-ic" aria-hidden="true">💬</span>${label}</a>`;
 function inviteCard() {
   if (S.demo) return `<section class="card stack"><h2>Invite the crew</h2><p class="small muted">Invites work on real trips. Start one from the home screen.</p></section>`;
