@@ -160,7 +160,9 @@
     let res;
     try {
       const tid = (String(path).match(/^trips\/([^/]+)/) || [])[1], key = tid && inviteKeys[tid];
-      res = await fetch('/api/db', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-outta-user': uid, ...(key ? { 'x-outta-invite': key } : {}) }, body: JSON.stringify({ op, path, data }) });
+      // keepalive lets a small write sent as the page closes still arrive (browsers cap keepalive bodies near 64 KB)
+      const body = JSON.stringify({ op, path, data });
+      res = await fetch('/api/db', { method: 'POST', keepalive: body.length < 60000, headers: { 'Content-Type': 'application/json', 'x-outta-user': uid, ...(key ? { 'x-outta-invite': key } : {}) }, body });
     } catch { throw err('unavailable', 'Can’t reach the local server. Is it still running?'); }
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw err(body.code || 'unavailable', body.message);

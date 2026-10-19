@@ -13,7 +13,8 @@ const NUDGE_REST = 12 * 36e5;
 // - kids: on family plans, the kids each adult brings, counted at their adult's level;
 // - party: adults + kids, the size of the group that's actually coming, for attendance displays.
 function headcount() {
-  const at = k => S.members.filter(m => (m.status || 'maybe') === k), c = k => at(k).length, kc = k => kidsWith(at(k));
+  // someone an organizer removed isn't anyone's answer, so they're in no count (not even “Can’t go”)
+  const at = k => S.members.filter(m => !m.removed && (m.status || 'maybe') === k), c = k => at(k).length, kc = k => kidsWith(at(k));
   const h = { booked: c('booked'), confirmed: c('confirmed'), going: c('in'), interested: c('maybe'), out: c('out') };
   const firm = h.booked + h.confirmed, max = firm + h.going;
   const kids = { booked: kc('booked'), confirmed: kc('confirmed'), going: kc('in') }, kf = kids.booked + kids.confirmed, km = kf + kids.going;

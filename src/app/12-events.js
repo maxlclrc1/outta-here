@@ -139,7 +139,15 @@ app.addEventListener('click', e => {
   if (ds.act === 'card') return makeCard();
   if (ds.act === 'genPitches') return genPitches();
   if (ds.act === 'growPlan') return growPlan();
-  if (ds.setsize) { const k = ds.setsize, small = ['hangout', 'day'].includes(k), n = small ? 0 : (isSmall() ? SIZES[k].nights : nightsSet(S.trip)); return saveTrip({ size: k, nights: n, ...(n !== nightsSet(S.trip) ? { lockedDates: null } : {}), ...(S.trip.winEnd < add(TODAY, SIZES[k].win) ? { winEnd: add(TODAY, SIZES[k].win) } : {}) }); }
+  if (ds.setsize) {
+    const k = ds.setsize, small = ['hangout', 'day'].includes(k), n = small ? 0 : (isSmall() ? SIZES[k].nights : nightsSet(S.trip)), t = S.trip;
+    // a dinner and a trip don't share pitches: switching between the two kinds starts the choosing again
+    // (the server does the same, lib/decide.ts keepDecisionsValid); ideas and votes stay
+    const cross = small !== isSmall(), had = cross && ((t.pitches?.items || []).length || t.lockedDest || t.lockedDates);
+    const reset = cross ? { pitches: null, runoff: null, lockedDest: null, lockedDates: null, ...((t.pitches?.items || []).length ? { pitchHistory: nextHistory() } : {}), ...(!small && (t.time || t.venue) ? { time: '', venue: '' } : {}) } : {};
+    return saveTrip({ size: k, nights: n, ...(n !== nightsSet(t) ? { lockedDates: null } : {}), ...reset, ...(t.winEnd < add(TODAY, SIZES[k].win) ? { winEnd: add(TODAY, SIZES[k].win) } : {}) })
+      .then(ok => { if (ok && had) flash(`Now a ${SIZES[k].label.toLowerCase()}. The ${small ? 'trip' : 'plan'} pitches and what was locked were for the other kind of plan, so the crew picks again. Your ideas and votes are kept.`); });
+  }
   if (ds.act === 'copyInvite') return sendInvite(inviteText(S.trip), inviteLink(), S.trip.name);
   if (ds.setnights) return saveTrip({ nights: +ds.setnights, lockedDates: null });
   if (ds.act === 'ciJump') return jumpTo('#ci-text');
