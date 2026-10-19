@@ -1,7 +1,7 @@
 // Browser regression test, run with: npm run test:ui (needs Playwright, see README › Tests)
 // Shared plan links are /p/<plan>?k=<key>. A link preview (WhatsApp, iMessage) reading one gets the plan's
-// card: its name, who invited you (the organizer's nickname), what it is, where/when once locked, how many
-// are going, and a small PNG image; never anyone else's name, and never the invite key in the preview. A wrong or old key gets a plain card and no image. People opening the link land on the
+// card: its name, one line (what's confirmed, or the organizer's nickname before that), and a small PNG
+// image; never anyone else's name, and never the invite key in the preview. A wrong or old key gets a plain card and no image. People opening the link land on the
 // plan, as with the old /#plan.key links. "Send on WhatsApp" opens WhatsApp with the invite and the link.
 import { install, trackBrowser } from '../_identity.mjs'; install(); // act as the test's people (see the file)
 const { chromium } = await import(process.env.PLAYWRIGHT || 'playwright');
@@ -36,7 +36,7 @@ const BEA = 'u_bea00' + Math.random().toString(36).slice(2, 7); await api(BEA, '
 const html = await (await fetch(link, { headers: { 'user-agent': 'WhatsApp/2.23' } })).text();
 const meta = k => html.match(new RegExp(`property="${k}" content="([^"]*)"`))?.[1] || '';
 expect('the preview is titled with the plan’s name', meta('og:title') === 'Cabin weekend', meta('og:title'));
-expect('…says who invited you, what it is, where and when', meta('og:description') === 'Mayasecret invited you · Friends weekend · Catskills · Nov 20 – Nov 22. Tap to say if you’re in.', meta('og:description'));
+expect('…and one line: what’s confirmed', meta('og:description') === 'Nov 20 – Nov 22 · Catskills', meta('og:description'));
 expect('…and never anyone else’s name', !/Bea/.test(html));
 const img = await fetch(meta('og:image').replace(/&amp;/g, '&')), buf = Buffer.from(await img.arrayBuffer());
 expect('the card image is fetched by a token, not the invite key', /\/card\?t=[0-9a-f]{24}$/.test(meta('og:image')) && !/k=/.test(meta('og:image')), meta('og:image'));

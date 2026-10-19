@@ -110,17 +110,25 @@ async function sendInvite(text, url, title) {
   return copy(`${text}\n${url}`);
 }
 const noSignup = () => IN_CLAUDE ? '' : ' No app, no sign-up.';
-// An invite that reads like a friend asking: the plan, what's decided (only what the plan says; anything
-// open is said as open), who's in so far, and what tapping the link lets you do. `wa`: WhatsApp's *bold*.
+// An invite that sounds like a friend in the group chat, not an app: the plan, only what's actually
+// decided, and a short casual ask that fits where the plan is. The ask is picked per plan (same plan,
+// same words), so plans don't all read alike. The link goes on its own line after it, and the preview
+// card does the rest. (`wa` is kept for the WhatsApp button; the text is the same everywhere.)
 const SIZE_EMOJI = { hangout: '🍻', day: '☀️', weekend: '🏡', trip: '✈️' };
 const MODE_EMOJI = { birthday: '🎂', bachelorette: '💍', bachelor: '🥃', family: '🏡', work: '💼', festival: '🎶', couples: '💞', sports: '🏟️', college: '🎓' };
+const ASKS = {
+  open: ['we doing this? 👀', 'okay, who’s in? 🫶', 'be honest, you in? 👀'],
+  small: ['who’s in? 🫶', 'you coming? 👀', 'in or out? 👀'],
+  where: ['dates are set, now where? 👀', 'we doing this? 👀'],
+  set: ['it’s happening 🔥 you in?', 'locked in. you coming? 👀', 'okay this is real. who’s in? 🫶'],
+};
 function inviteText(t, wa = false) {
   const sz = sizeOf(t), small = isSmallSize(sz), here = t === S.trip;
   const city = t.lockedDest ? (t.destinations || []).find(d => d.id === t.lockedDest)?.city || '' : '', place = city || (small ? t.city || '' : '');
   const when = t.lockedDates ? planWhen(t) : '', ins = here ? S.members.filter(m => going(m) && !m.removed).length : 0;
-  const facts = [when, place].filter(Boolean).join(' · ') || (small ? 'Picking the day together' : 'Picking where and when together');
-  const ask = !t.lockedDates ? `Tap to say if you’re in and ${small ? 'which days work' : 'when you’re free'} 👇` : !city && !small ? 'Tap to say if you’re in and vote on where 👇' : 'Tap to say if you’re in 👇';
-  return [`${MODE_EMOJI[t.mode] || SIZE_EMOJI[sz] || '✨'} ${wa ? `*${t.name}*` : t.name}`, facts + (ins > 1 ? ` · ${ins} in so far` : ''), [noSignup().trim(), ask].filter(Boolean).join(' ')].join('\n');
+  const pool = when && (city || small) ? ASKS.set : when ? ASKS.where : small ? ASKS.small : ASKS.open;
+  const ask = ins >= 3 ? `${ins} of us are in already 👀 you?` : pool[hashStr(String(t.id || S.tid || t.name)) % pool.length];
+  return `${t.name}${[when, place].filter(Boolean).length ? ` — ${[when, place].filter(Boolean).join(', ')}` : ''} ${MODE_EMOJI[t.mode] || SIZE_EMOJI[sz] || '✨'}\n${ask}`;
 }
 const crewInviteText = c => `Join ${c?.name || 'our crew'} on Outta Here. It’s where we plan everything, from Friday dinners to trips.${noSignup()}`;
 async function joinCrewQuiet(cid) {
