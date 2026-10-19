@@ -86,17 +86,16 @@ app.addEventListener('click', e => {
   if (ds.act === 'endRunoff') return saveTrip({ runoff: null });
   if (ds.act === 'nudgeSwipe') return sendInvite(`Swipe on our ${planWord()} options for ${S.trip.name}. We’re waiting on you!`, inviteLink(), S.trip.name);
   // a tap is free / not free; in ★ Favorites mode it stars a day instead (and counts you free on it)
-  if (ds.day) {
-    const days = new Set(meDoc()?.days || []), pref = new Set(meDoc()?.pref || []), d = ds.day;
-    if (S.starMode) { if (pref.has(d)) pref.delete(d); else { pref.add(d); days.add(d); } }
-    else if (days.has(d)) { days.delete(d); pref.delete(d); } else days.add(d);
-    return saveMe({ days: [...days].sort(), pref: [...pref].filter(x => days.has(x)).sort() });
-  }
-  if (ds.act === 'starMode') { S.starMode = !S.starMode; return render(); }
+  if (ds.day) return pickDay(ds.day);
+  if (ds.rmrange) { const [a, z] = ds.rmrange.split('|'), gone = new Set(span(a, z)); return setDays((meDoc()?.days || []).filter(x => !gone.has(x)), `Removed ${dayRangeText({ start: a, end: z })}.`); }
+  if (ds.editrange) { const [a, z] = ds.editrange.split('|'); S.rPick = { edit: { start: a, end: z } }; return render(); }
+  if (ds.act === 'rangeAdd') { S.rPick = {}; render(); return document.querySelector('.cal .day')?.focus({ preventScroll: true }); }
+  if (ds.act === 'rangeCancel') { S.rPick = null; return render(); }
+  if (ds.act === 'starMode') { S.starMode = !S.starMode; S.rPick = null; return render(); }
   if (ds.addwin) {
-    const [a, z] = ds.addwin.split('|'), days = new Set([...(meDoc()?.days || []), ...span(a, z)]);
-    saveMe({ days: [...days].sort() }, true); votePop('Works for me ✓', 'y');
-    return flash(`You’re in for ${a === z ? fmt(a) : dayRange(a, z)}. The crew can see it.`);
+    const [a, z] = ds.addwin.split('|');
+    if (setDays([...(meDoc()?.days || []), ...span(a, z)], `You’re free ${a === z ? fmt(a) : dayRange(a, z)}. The crew can see it.`)) votePop('Works for me ✓', 'y');
+    return;
   }
   if (ds.taskdone) { const x = (S.trip.tasks || {})[ds.taskdone]; if (x) { patchTask(ds.taskdone, { done: !x.done, doneBy: x.done ? '' : S.uid }); if (!x.done) flash(`Done: ${x.title}`); } return; }
   if (ds.taketask) return patchTask(ds.taketask, { owner: S.uid });
@@ -123,9 +122,8 @@ app.addEventListener('click', e => {
   if (ds.act === 'costAI') return estimateCosts();
   if (ds.costkeep) { const h = costHints()[ds.costkeep]; if (h) saveTrip({ costs: { [ds.costkeep]: { low: h.low, high: h.high, src: h.src, note: h.note, by: S.uid, at: Date.now() } } }); return; }
   if (ds.flex) { const f = { ...(meDoc()?.flex || {}) }; f[ds.flex] = !f[ds.flex]; return saveMe({ flex: f }, true); }
-  if (ds.act === 'allDays') return saveMe({ days: span(S.trip.winStart, S.trip.winEnd) }, true);
-  if (ds.act === 'noDays') return saveMe({ days: [], pref: [] }, true);
-  if (ds.act === 'weekends') return saveMe({ days: span(S.trip.winStart, S.trip.winEnd).filter(x => [0, 5, 6].includes(D(x).getUTCDay())) }, true);
+  if (ds.act === 'allDays') { S.rPick = null; return saveMe({ days: span(S.trip.winStart, S.trip.winEnd) }, true); }
+  if (ds.act === 'noDays') { S.rPick = null; return saveMe({ days: [], pref: [] }, true); }
   if ((ds.lockdates || ds.lockdest || ds.lockpitch) && !canLock()) { flash('Only organizers can lock this one. Your vote still counts.'); return; }
   if (ds.lockdates || ds.lockdest || ds.lockpitch) { const g = lockGate(ds.lockpitch ? 'pitch' : ds.lockdest ? 'dest' : 'dates', ds.lockpitch || ds.lockdest || ds.lockdates); if (!g.ok) { flash(g.why); return; } }
   if (ds.consent) return toggleConsent(ds.consent);

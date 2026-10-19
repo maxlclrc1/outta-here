@@ -31,7 +31,7 @@ through, which decisions depend on which, and where screens used to overlap. The
 | Say if you're in (Interested / Going / Confirmed / Booked / Can't go) | Overview passport, Crew | Member `status` |
 | Swipe on pitches, final vote, lock a pitch | Trip Match | `swipes`, `runoff`, `lockedDest` + `lockedDates` |
 | Suggest and vote on your own picks, lock one | Trip Match › Your own picks | `destinations`, member `votes`, `lockedDest` |
-| Tap free days, lock dates | Dates | member `days`, `lockedDates` |
+| Pick free date ranges (up to 4), lock dates | Dates | member `days` (the ranges, as dates), `lockedDates` |
 | Book a flight, send a boarding pass | Flights, Boarding passes | `tickets` |
 | Find, vote on and lock a stay; mark it booked | Stays | `stay` |
 | Draft or add the itinerary, move a stop | Itinerary | `itinerary` |

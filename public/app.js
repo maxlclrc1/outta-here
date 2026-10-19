@@ -57,7 +57,7 @@ const S = {
   tid: null, trip: null, members: [], demo: false, tab: 'crew',
   busy: {}, unsub: [], meDirty: false, readOnly: false,
   expenses: [], packing: [], downloads: null,
-  cardUrl: null, cardBlob: null, feed: [], bucket: [], photos: [], crews: [], pot: [], mySpend: [], creating: null, newMode: null, lostOpen: false, hangPlan: null, wrapI: 0, secTab: {}, realId: null, img: null, show: null, newCrew: null, copyText: '', editDeposit: false, split: null,
+  cardUrl: null, cardBlob: null, feed: [], bucket: [], photos: [], crews: [], pot: [], mySpend: [], creating: null, newMode: null, lostOpen: false, rPick: null, hangPlan: null, wrapI: 0, secTab: {}, realId: null, img: null, show: null, newCrew: null, copyText: '', editDeposit: false, split: null,
 };
 const QUIZ = [
   { k: 'night', q: 'Perfect night out?', o: ['Big club', 'Bar hop', 'Rooftop cocktails', 'Dive bar', 'Low-key dinner'] },
@@ -754,19 +754,19 @@ function datesTab() {
   const d = S.trip.lockedDates, ms = active(), can = ms.filter(m => fitOf(m, span(d.start, d.end))), quiet = ms.filter(m => !(m.days || []).length), f = journey().focus;
   // the dates are done: say so plainly, and point at the next thing the plan needs instead of asking for days again
   return `<section class="card stack decided-sum"><div class="row" style="justify-content:space-between"><span class="on-pill">Decided</span>${S.readOnly ? '' : '<button class="btn sm ghost" data-act="unlockDates">Change it</button>'}</div>
-    <h2>${dayRange(d.start, d.end)}</h2><span class="small muted">${can.length === ms.length ? 'Everyone can make it.' : `${can.length} of ${ms.length} marked these days as free${quiet.length ? ` · ${esc(listNames(quiet))} never shared their days` : ''}.`}</span>
+    <h2>${dayRange(d.start, d.end)}</h2><span class="small muted">${can.length === ms.length ? 'Everyone marked these days as free.' : `${can.length} of ${ms.length} marked these days as free${quiet.length ? ` · ${esc(listNames(quiet))} never shared their days` : ''}.`}${(n => ` ${n} of ${ms.length} confirmed they’re coming.`)(ms.filter(m => ['confirmed', 'booked'].includes(m.status)).length)}</span>
     ${f && f.k !== 'dates' && !S.readOnly ? `<div><button class="btn sm chunky primary" data-jgo="${f.k}">Next: ${esc(f.mine && f.mineText ? f.mineText : f.title)}</button></div>` : ''}</section>
   <details class="card more-opts"><summary>See everyone’s days and other options</summary><div class="stack" style="margin-top:12px">${datesBody()}</div></details>`;
 }
 function datesBody() {
   const t = S.trip, days = span(t.winStart, t.winEnd), ms = active(), mine = new Set(meDoc()?.days || []), myPref = new Set(meDoc()?.pref || []), flex = meDoc()?.flex || {};
-  const best = bestWindows(), bestSet = new Set(best[0] ? span(best[0].start, best[0].end) : []);
+  const best = bestWindows(), bestSet = new Set(best[0] ? span(best[0].start, best[0].end) : []), rs = rangesOf(meDoc()?.days);
   const max = Math.max(1, ms.length);
   const cells = days.map((d, i) => {
     const head = i === 0 ? '<span></span>'.repeat((D(d).getUTCDay() + 6) % 7) : D(d).getUTCDate() === 1 ? `<span class="cal-month">${monthName(d)}</span>${'<span></span>'.repeat((D(d).getUTCDay() + 6) % 7)}` : '';
     const n = ms.filter(m => (m.days || []).includes(d)).length, np = ms.filter(m => (m.pref || []).includes(d)).length, others = n - (mine.has(d) ? 1 : 0);
     // your days are solid; everyone else's show as dots, so your own answer is what stands out
-    return `${head}<button class="day ${mine.has(d) ? 'mine' : ''} ${myPref.has(d) ? 'pref' : ''} ${bestSet.has(d) ? 'best' : ''}" data-day="${d}" aria-pressed="${mine.has(d)}" title="${fmt(d)} · ${n} free${np ? ` · ${np} prefer it` : ''}" aria-label="${fmt(d)}${mine.has(d) ? ', you’re free' : ''}${myPref.has(d) ? ', a favorite' : ''}${others ? `, ${others} more free` : ''}">${D(d).getUTCDate()}<small class="dots" aria-hidden="true">${others ? '•'.repeat(Math.min(others, 4)) + (others > 4 ? '+' : '') : ''}</small>${myPref.has(d) ? '<i class="star" aria-hidden="true">★</i>' : ''}</button>`;
+    return `${head}<button class="day ${mine.has(d) ? 'mine' : ''} ${rangeCls(d, rs)} ${myPref.has(d) ? 'pref' : ''} ${bestSet.has(d) ? 'best' : ''}" data-day="${d}" aria-pressed="${mine.has(d)}" title="${fmt(d)} · ${n} free${np ? ` · ${np} prefer it` : ''}" aria-label="${fmt(d)}${mine.has(d) ? ', you’re free' : ''}${myPref.has(d) ? ', a favorite' : ''}${others ? `, ${others} more free` : ''}">${D(d).getUTCDate()}<small class="dots" aria-hidden="true">${others ? '•'.repeat(Math.min(others, 4)) + (others > 4 ? '+' : '') : ''}</small>${myPref.has(d) ? '<i class="star" aria-hidden="true">★</i>' : ''}</button>`;
   });
   // a window the others can already do and you haven't answered for: one tap says it works for you
   const ask = !S.readOnly && meDoc() && best.find(w => w.miss.some(m => m.id === S.uid) && w.ok.length && span(w.start, w.end).some(d => !mine.has(d)));
@@ -774,13 +774,14 @@ function datesBody() {
   const answered = ms.filter(m => (m.days || []).length), quiet = ms.filter(m => !(m.days || []).length);
   return `<section class="grid2 ${mine.size ? 'answered' : ''}">
     <div class="card stack avail">
-      <div class="stack" style="gap:2px"><h2>${isSmall() ? 'Which days work for you?' : 'When are you free?'}</h2><span class="small muted">${S.starMode ? 'Tap your favorite days ★. Tap again to unstar.' : 'Tap the days you could do. Tap again to take one off.'}</span></div>
+      <div class="stack" style="gap:2px"><h2>${isSmall() ? 'Which days work for you?' : 'When are you free?'}</h2><span class="small muted r-hint" aria-live="polite">${esc(rangeHint())}</span></div>
       ${ask ? `<div class="avail-ask"><span class="avail-ask-t">🙌 <b>${esc(listNames(ask.ok))}</b> ${ask.ok.length === 1 ? 'can' : 'can'} do <b>${ask.start === ask.end ? fmt(ask.start) : dayRange(ask.start, ask.end)}</b>. Can you?</span>
         <div class="row" style="gap:8px"><button class="btn primary chunky" data-addwin="${ask.start}|${ask.end}">Works for me</button><span class="small muted">or tap your days below</span></div></div>` : ''}
-      <div class="row avail-quick" style="gap:6px"><button class="btn sm chunky" data-act="allDays">All of them</button><button class="btn sm chunky" data-act="weekends">Fri–Sun</button><button class="btn sm chunky ${S.starMode ? 'on' : ''}" data-act="starMode" aria-pressed="${!!S.starMode}">★ Favorites</button>${mine.size ? '<button class="btn sm ghost" data-act="noDays">Clear</button>' : ''}</div>
+      <div class="row avail-quick" style="gap:6px"><button class="btn sm chunky" data-act="allDays">All of them</button><button class="btn sm chunky ${S.starMode ? 'on' : ''}" data-act="starMode" aria-pressed="${!!S.starMode}">★ Favorites</button>${mine.size ? '<button class="btn sm ghost" data-act="noDays">Clear</button>' : ''}</div>
       <div class="cal">${days.length ? `<span class="cal-month first">${monthName(days[0])}</span>` : ''}${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x => `<span class="dow">${x}</span>`).join('')}${cells.join('')}</div>
-      <div class="legend"><span><i class="sw" style="background:var(--accent)"></i>Your days</span><span><b class="dots-k">•••</b> Friends free</span><span>★ Favorite</span><span><i class="sw" style="box-shadow:inset 0 -3px 0 var(--gold)"></i>${isSmall() ? 'Best day' : 'Best window'}</span></div>
-      <div class="avail-done ${mine.size ? 'on' : ''}" aria-live="polite">${mine.size ? `<span class="avail-n" data-key="avail-n-${mine.size}">✓ <b>${mine.size}</b> ${mine.size === 1 ? 'day' : 'days'} saved</span><span class="small muted">The crew sees them right away.</span><button class="btn sm chunky" data-tab="overview">Back to the plan</button>` : `<span class="small muted">Nothing picked yet. Your days save as you tap.</span>`}</div>
+      <div class="legend"><span><i class="sw" style="background:var(--accent)"></i>Your ranges</span><span><b class="dots-k">•••</b> Friends free</span><span>★ Favorite</span><span><i class="sw" style="box-shadow:inset 0 -3px 0 var(--gold)"></i>${isSmall() ? 'Best day' : 'Best window'}</span></div>
+      ${rangeList()}
+      <div class="avail-done ${mine.size ? 'on' : ''}" aria-live="polite">${mine.size ? `<span class="avail-n" data-key="avail-n-${mine.size}">✓ <b>${mine.size}</b> ${mine.size === 1 ? 'day' : 'days'} saved</span><span class="small muted">The crew sees them right away.</span><button class="btn sm chunky" data-tab="overview">Back to the plan</button>` : `<span class="small muted">Nothing picked yet. Each range saves when you tap its last day.</span>`}</div>
       <details class="dates-more" data-key="dates-more" ${settingsOpen ? 'open' : ''}><summary class="small">${isSmall() ? 'Flexibility and the days that could work' : 'Flexibility, trip window and length'}</summary><div class="stack" style="gap:12px;margin-top:10px">
       ${isSmall() ? '' : `<div class="stack" style="gap:6px"><span class="label">How flexible are you?</span>
         <div class="row" style="gap:6px"><button class="chip ${flex.late ? 'on' : ''}" data-flex="late" aria-pressed="${!!flex.late}">I can arrive a day late</button><button class="chip ${flex.early ? 'on' : ''}" data-flex="early" aria-pressed="${!!flex.early}">I can leave a day early</button></div>
@@ -801,12 +802,12 @@ function datesBody() {
       ${S.demo ? '' : ruleLine()}
       ${t.lockedDates ? `<div class="banner"><span><b>Locked:</b> ${dayRange(t.lockedDates.start, t.lockedDates.end)}</span><button class="btn sm" data-act="unlockDates">Unlock</button></div>` : ''}
       ${best.length ? best.map((w, i) => `<div class="stack bw ${i === 0 ? 'bw-top' : ''} ${w.ok.length === ms.length ? 'bw-all' : ''}" style="gap:6px">
-        <div class="row" style="justify-content:space-between"><b class="mono">${dayRange(w.start, w.end)}</b><span class="small bw-n"><b>${w.ok.length}/${ms.length}</b> can go</span></div>
+        <div class="row" style="justify-content:space-between"><b class="mono">${dayRange(w.start, w.end)}</b><span class="small bw-n"><b>${w.ok.length}/${ms.length}</b> are free</span></div>
         <div class="bar"><i style="width:${Math.round(w.ok.length / max * 100)}%"></i></div>
         <div class="bw-crew">${avStack([...w.ok, ...w.miss.map(m => (m.days || []).length ? { ...m, faded: true } : { ...m, wait: true })], 8)}</div>
         ${(() => { const cant = w.miss.filter(m => (m.days || []).length), wait = w.miss.filter(m => !(m.days || []).length);
-          return !w.miss.length ? '<span class="small" style="color:var(--good)">Everyone can make it</span>'
-            : [cant.length ? `<span class="small muted">Can’t make it: ${esc(listNames(cant))}</span>` : `<span class="small" style="color:var(--good)">Everyone who answered can make it</span>`, wait.length ? `<span class="small muted bw-wait">Waiting on ${esc(listNames(wait))}</span>` : ''].join(''); })()}
+          return !w.miss.length ? '<span class="small" style="color:var(--good)">Everyone’s free then</span>'
+            : [cant.length ? `<span class="small muted">Can’t make it: ${esc(listNames(cant))}</span>` : `<span class="small" style="color:var(--good)">Everyone who answered is free then</span>`, wait.length ? `<span class="small muted bw-wait">Waiting on ${esc(listNames(wait))}</span>` : ''].join(''); })()}
         ${w.late.length || w.early.length || w.pref.length ? `<span class="small muted">${[w.late.length && `${esc(listNames(w.late))} ${w.late.length === 1 ? 'arrives' : 'arrive'} a day late`, w.early.length && `${esc(listNames(w.early))} ${w.early.length === 1 ? 'leaves' : 'leave'} a day early`, w.pref.length && `★ ${w.pref.length === ms.length ? 'everyone prefers' : w.pref.length + ' prefer'} ${isSmall() ? 'this day' : 'these dates'}`].filter(Boolean).join(' · ')}</span>` : ''}
         ${t.lockedDates && t.lockedDates.start === w.start && t.lockedDates.end === w.end ? '' : ruleChip('dates', w.start + '|' + w.end)}
         <div>${t.lockedDates && t.lockedDates.start === w.start && t.lockedDates.end === w.end ? '<span class="pill in">Locked</span>' : `<button class="btn sm chunky ${i === 0 && !t.lockedDates ? 'primary' : ''}" data-lockdates="${w.start}|${w.end}">${t.lockedDates ? 'Switch to these' : isSmall() ? 'Lock this day' : 'Lock these dates'}</button>`}</div>
@@ -1092,20 +1093,75 @@ const showWelcome = () => S.membersIn && !S.demo && !S.readOnly && (!meDoc() || 
 // the dates are open (home, budget and the vibe can come later, from their details)
 const setupSteps = () => S.setup?.joined ? (S.trip.lockedDates ? [] : ['days']) : ['days', ...(isSmall() ? [] : ['home']), ...(hasBudget(S.uid) ? ['budget'] : []), ...(['family', 'work'].includes(planGroup()) ? [] : ['vibe'])];
 const BUDGETS = { hangout: [30, 60, 100], day: [50, 100, 200], weekend: [250, 450, 700], trip: [600, 1000, 1600] };
+/* ---------- free days as date ranges ----------
+   You pick a range by tapping its first day, then its last (in either order; the same day twice is one
+   day), and every day in between counts, inclusive. Up to four ranges per person. They're kept the way
+   free days always were, as a list of dates, so the group's best dates and everything else that reads
+   free days use every range, and older plans load as they are. Ranges that overlap or touch become one
+   range, so no free day is ever dropped. */
+const RANGE_MAX = 4;
+const rangesOf = days => { const out = []; for (const d of [...new Set(days || [])].sort()) { const r = out[out.length - 1]; if (r && add(r.end, 1) === d) r.end = d; else out.push({ start: d, end: d }); } return out; };
+const dayRangeText = r => r.start === r.end ? fmt(r.start) : `${short(r.start)} – ${short(r.end)}`;
+// the classes a calendar day gets for your ranges and the range you're picking right now
+function rangeCls(d, ranges) {
+  const r = ranges.find(x => x.start <= d && d <= x.end), p = S.rPick, ed = p?.edit;
+  return [r && (r.start === d && r.end === d ? 'r-one' : r.start === d ? 'r-start' : r.end === d ? 'r-end' : 'r-mid'), ed && ed.start <= d && d <= ed.end && 'r-editing', p?.start === d && 'r-pick'].filter(Boolean).join(' ');
+}
+// save a list of free days, unless it would make more than four ranges
+function setDays(next, okMsg) {
+  const m = meDoc(), before = rangesOf(m?.days).length, after = rangesOf(next);
+  if (after.length > RANGE_MAX && after.length > before) { S.rPick = null; render(); flash(`You can add up to ${RANGE_MAX} date ranges. Change or remove one first.`); return false; }
+  const days = [...new Set(next)].sort(), keep = new Set(days);
+  S.rPick = null; saveMe({ days, pref: (m?.pref || []).filter(x => keep.has(x)) }, true);
+  if (okMsg) flash(okMsg);
+  return true;
+}
+function pickDay(d) {
+  const m = meDoc(), days = new Set(m?.days || []);
+  if (S.starMode) {
+    if (!days.has(d)) return flash('Add it to one of your date ranges first, then star it.');
+    const pref = new Set(m?.pref || []); if (pref.has(d)) pref.delete(d); else pref.add(d);
+    return saveMe({ pref: [...pref].sort() });
+  }
+  const p = S.rPick || {};
+  if (!p.start) { S.rPick = { ...p, start: d }; return render(); }
+  const [a, z] = p.start <= d ? [p.start, d] : [d, p.start], gone = new Set(p.edit ? span(p.edit.start, p.edit.end) : []);
+  const r = { start: a, end: z };
+  return setDays([...[...days].filter(x => !gone.has(x)), ...span(a, z)], `${p.edit ? 'Changed to' : 'Added'} ${dayRangeText(r)}${a === z ? '' : `, ${span(a, z).length} days`}. The crew can see it.`);
+}
+// what to do next in the picker, said in one line
+function rangeHint() {
+  const p = S.rPick, n = rangesOf(meDoc()?.days).length;
+  if (S.starMode) return 'Tap your favorite days ★ inside your ranges. Tap again to unstar.';
+  if (p?.start) return `Starts ${fmt(p.start)}. Now tap the last day you could do (tap it again for just that day).`;
+  if (p?.edit) return `Changing ${dayRangeText(p.edit)}: tap the new first day.`;
+  return n ? `Tap the first day of another range, then its last. Up to ${RANGE_MAX} ranges.` : `Tap the first day you could do, then the last. Every day in between counts.`;
+}
+// your ranges, each one editable and removable, and the way to add another
+function rangeList() {
+  const rs = rangesOf(meDoc()?.days), p = S.rPick, busy = p && (p.start || p.edit);
+  if (!rs.length && !busy) return '';
+  return `<div class="ranges" data-key="ranges" aria-live="polite"><span class="label">Your date ranges · ${rs.length} of ${RANGE_MAX}</span>
+    ${rs.map(r => { const on = p?.edit && p.edit.start === r.start && p.edit.end === r.end;
+      return `<div class="rng ${on ? 'on' : ''}" data-key="rng-${r.start}"><b>${dayRangeText(r)}</b><span class="small muted">${span(r.start, r.end).length === 1 ? '1 day' : span(r.start, r.end).length + ' days'}</span>
+        ${S.readOnly ? '' : `<button class="btn sm ghost" data-editrange="${r.start}|${r.end}" aria-label="Change ${dayRangeText(r)}">${on ? 'Changing…' : 'Edit'}</button><button class="btn sm ghost rng-x" data-rmrange="${r.start}|${r.end}" aria-label="Remove ${dayRangeText(r)}">✕</button>`}</div>`; }).join('')}
+    ${S.readOnly ? '' : busy ? '<button class="linkbtn small" data-act="rangeCancel">Cancel</button>' : rs.length < RANGE_MAX ? '<button class="btn sm chunky r-add" data-act="rangeAdd">+ Add another date range</button>' : `<span class="small muted">That’s the most: ${RANGE_MAX} ranges. Edit or remove one to change it.</span>`}
+  </div>`;
+}
 function dayPicker() {
-  const t = S.trip, days = span(t.winStart, t.winEnd), mine = new Set(meDoc()?.days || []), pref = new Set(meDoc()?.pref || []);
+  const t = S.trip, days = span(t.winStart, t.winEnd), mine = new Set(meDoc()?.days || []), pref = new Set(meDoc()?.pref || []), rs = rangesOf(meDoc()?.days);
   const pad = d => '<span></span>'.repeat((D(d).getUTCDay() + 6) % 7);
-  const cells = days.map((d, i) => `${i === 0 ? pad(d) : D(d).getUTCDate() === 1 ? `<span class="cal-month">${monthName(d)}</span>${pad(d)}` : ''}<button class="day ${mine.has(d) ? 'mine' : ''} ${pref.has(d) ? 'pref' : ''} ${d === TODAY ? 'is-today' : ''}" data-day="${d}" aria-pressed="${mine.has(d)}" aria-label="${fmt(d)}${pref.has(d) ? ', best for you' : mine.has(d) ? ', works' : ''}">${D(d).getUTCDate()}${pref.has(d) ? '<i class="star" aria-hidden="true">★</i>' : ''}</button>`);
+  const cells = days.map((d, i) => `${i === 0 ? pad(d) : D(d).getUTCDate() === 1 ? `<span class="cal-month">${monthName(d)}</span>${pad(d)}` : ''}<button class="day ${mine.has(d) ? 'mine' : ''} ${rangeCls(d, rs)} ${pref.has(d) ? 'pref' : ''} ${d === TODAY ? 'is-today' : ''}" data-day="${d}" aria-pressed="${mine.has(d)}" aria-label="${fmt(d)}${pref.has(d) ? ', best for you' : mine.has(d) ? ', works' : ''}">${D(d).getUTCDate()}${pref.has(d) ? '<i class="star" aria-hidden="true">★</i>' : ''}</button>`);
   return `<div class="cal">${days.length ? `<span class="cal-month first">${monthName(days[0])}</span>` : ''}${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(x => `<span class="dow">${x}</span>`).join('')}${cells.join('')}</div>`;
 }
 function setupView() {
   const steps = setupSteps(), i = Math.min(S.setup.step, steps.length - 1), k = steps[i], m = meDoc(), last = i === steps.length - 1;
-  const nDays = (m.days || []).length, mq = m.quiz || {};
+  const mq = m.quiz || {};
   const step = {
     days: { h: isSmall() ? 'Which days work for you?' : 'When are you free?',
-      p: S.starMode ? 'Tap your favorite days ★. Tap again to unstar.' : `Tap every ${isSmall() ? 'day' : 'day you could be away'} between ${short(S.trip.winStart)} and ${short(S.trip.winEnd)}. Tap again to take one off.`,
-      c: `<div class="row" style="gap:6px"><button class="btn sm" data-act="allDays">All of them</button><button class="btn sm" data-act="weekends">Fri–Sun</button><button class="btn sm ${S.starMode ? 'on' : ''}" data-act="starMode" aria-pressed="${!!S.starMode}">★ Favorites</button><button class="btn sm ghost" data-act="noDays">Clear</button></div>
-        ${dayPicker()}<span class="small muted">${nDays ? `${nDays} day${nDays === 1 ? '' : 's'} picked` : 'Nothing picked yet'}</span>` },
+      p: `${rangeHint()} Anything from ${short(S.trip.winStart)} to ${short(S.trip.winEnd)}.`,
+      c: `<div class="row" style="gap:6px"><button class="btn sm" data-act="allDays">All of them</button><button class="btn sm ${S.starMode ? 'on' : ''}" data-act="starMode" aria-pressed="${!!S.starMode}">★ Favorites</button><button class="btn sm ghost" data-act="noDays">Clear</button></div>
+        ${dayPicker()}${rangeList() || '<span class="small muted">Nothing picked yet</span>'}` },
     home: { h: size() === 'trip' ? 'Where are you flying from?' : 'Where are you coming from?',
       p: size() === 'trip' ? 'Your home airport or city. It’s used for flight prices and to pitch places that are easy for everyone to reach.' : 'Your city or neighborhood, so pitches stay within reach for everyone.',
       c: `<input id="me-home" aria-label="${size() === 'trip' ? 'Home airport or city' : 'Your city or neighborhood'}" class="big-input" maxlength="40" value="${esc(m.home || '')}" placeholder="${size() === 'trip' ? 'JFK or New York' : 'Brooklyn'}" autocomplete="address-level2" enterkeyhint="next">` },
@@ -5460,17 +5516,16 @@ app.addEventListener('click', e => {
   if (ds.act === 'endRunoff') return saveTrip({ runoff: null });
   if (ds.act === 'nudgeSwipe') return sendInvite(`Swipe on our ${planWord()} options for ${S.trip.name}. We’re waiting on you!`, inviteLink(), S.trip.name);
   // a tap is free / not free; in ★ Favorites mode it stars a day instead (and counts you free on it)
-  if (ds.day) {
-    const days = new Set(meDoc()?.days || []), pref = new Set(meDoc()?.pref || []), d = ds.day;
-    if (S.starMode) { if (pref.has(d)) pref.delete(d); else { pref.add(d); days.add(d); } }
-    else if (days.has(d)) { days.delete(d); pref.delete(d); } else days.add(d);
-    return saveMe({ days: [...days].sort(), pref: [...pref].filter(x => days.has(x)).sort() });
-  }
-  if (ds.act === 'starMode') { S.starMode = !S.starMode; return render(); }
+  if (ds.day) return pickDay(ds.day);
+  if (ds.rmrange) { const [a, z] = ds.rmrange.split('|'), gone = new Set(span(a, z)); return setDays((meDoc()?.days || []).filter(x => !gone.has(x)), `Removed ${dayRangeText({ start: a, end: z })}.`); }
+  if (ds.editrange) { const [a, z] = ds.editrange.split('|'); S.rPick = { edit: { start: a, end: z } }; return render(); }
+  if (ds.act === 'rangeAdd') { S.rPick = {}; render(); return document.querySelector('.cal .day')?.focus({ preventScroll: true }); }
+  if (ds.act === 'rangeCancel') { S.rPick = null; return render(); }
+  if (ds.act === 'starMode') { S.starMode = !S.starMode; S.rPick = null; return render(); }
   if (ds.addwin) {
-    const [a, z] = ds.addwin.split('|'), days = new Set([...(meDoc()?.days || []), ...span(a, z)]);
-    saveMe({ days: [...days].sort() }, true); votePop('Works for me ✓', 'y');
-    return flash(`You’re in for ${a === z ? fmt(a) : dayRange(a, z)}. The crew can see it.`);
+    const [a, z] = ds.addwin.split('|');
+    if (setDays([...(meDoc()?.days || []), ...span(a, z)], `You’re free ${a === z ? fmt(a) : dayRange(a, z)}. The crew can see it.`)) votePop('Works for me ✓', 'y');
+    return;
   }
   if (ds.taskdone) { const x = (S.trip.tasks || {})[ds.taskdone]; if (x) { patchTask(ds.taskdone, { done: !x.done, doneBy: x.done ? '' : S.uid }); if (!x.done) flash(`Done: ${x.title}`); } return; }
   if (ds.taketask) return patchTask(ds.taketask, { owner: S.uid });
@@ -5497,9 +5552,8 @@ app.addEventListener('click', e => {
   if (ds.act === 'costAI') return estimateCosts();
   if (ds.costkeep) { const h = costHints()[ds.costkeep]; if (h) saveTrip({ costs: { [ds.costkeep]: { low: h.low, high: h.high, src: h.src, note: h.note, by: S.uid, at: Date.now() } } }); return; }
   if (ds.flex) { const f = { ...(meDoc()?.flex || {}) }; f[ds.flex] = !f[ds.flex]; return saveMe({ flex: f }, true); }
-  if (ds.act === 'allDays') return saveMe({ days: span(S.trip.winStart, S.trip.winEnd) }, true);
-  if (ds.act === 'noDays') return saveMe({ days: [], pref: [] }, true);
-  if (ds.act === 'weekends') return saveMe({ days: span(S.trip.winStart, S.trip.winEnd).filter(x => [0, 5, 6].includes(D(x).getUTCDay())) }, true);
+  if (ds.act === 'allDays') { S.rPick = null; return saveMe({ days: span(S.trip.winStart, S.trip.winEnd) }, true); }
+  if (ds.act === 'noDays') { S.rPick = null; return saveMe({ days: [], pref: [] }, true); }
   if ((ds.lockdates || ds.lockdest || ds.lockpitch) && !canLock()) { flash('Only organizers can lock this one. Your vote still counts.'); return; }
   if (ds.lockdates || ds.lockdest || ds.lockpitch) { const g = lockGate(ds.lockpitch ? 'pitch' : ds.lockdest ? 'dest' : 'dates', ds.lockpitch || ds.lockdest || ds.lockdates); if (!g.ok) { flash(g.why); return; } }
   if (ds.consent) return toggleConsent(ds.consent);
@@ -5765,7 +5819,7 @@ function stop() { if (S.meDirty && S.tid && !S.demo) flushMe(); S.unsub.forEach(
 function setHash(h) { try { history.replaceState(null, '', h ? '#' + h : location.pathname + location.search); } catch {} }
 function resetTrip() {
   S.trip = null; S.members = []; S.membersIn = false; S.busy = {}; meSaved = false; S.setup = null; S.addStay = false; S.whatif = null; S.repeat = null; S.recover = null; S.rc = null; S.editItem = null; S.alts = null; S.peek = false; S.expenses = []; S.packing = []; S.readOnly = false;
-  S.cardUrl = null; S.cardBlob = null; S.copyText = ''; S.split = null; S.confirm = null; S.tkFile = null; S.feed = []; S.bucket = []; S.photos = []; S.pot = []; S.mySpend = []; S.lostOpen = false; S.hangPlan = null; S.wrapI = 0; S.img = null; S.show = null; clearInterval(showTimer);
+  S.cardUrl = null; S.cardBlob = null; S.copyText = ''; S.split = null; S.confirm = null; S.tkFile = null; S.feed = []; S.bucket = []; S.photos = []; S.pot = []; S.mySpend = []; S.lostOpen = false; S.rPick = null; S.hangPlan = null; S.wrapI = 0; S.img = null; S.show = null; clearInterval(showTimer);
   for (const k of Object.keys(DRAFT)) delete DRAFT[k];
 }
 function goHome() { stop(); S.tid = null; S.creating = null; S.crewView = null; S.demo = false; resetTrip(); setHash(''); render(); }

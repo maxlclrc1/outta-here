@@ -26,7 +26,7 @@ await j.click('[data-open]'); await j.waitForSelector('.ov-hero, .pass, .passpor
 await a.click('.bottomnav [data-sec=plan]'); await settle(a); console.log('plan tabs:', await a.locator('.subtab').allInnerTexts());
 await a.click('.subtab[data-tab=match]'); await a.fill('#ad-city', 'Tacos at Los Tacos No.1'); await a.click('#addDest [type=submit]'); await a.waitForTimeout(400); await a.locator('[data-lockdest]').first().click();
 await a.click('.subtab[data-tab=dates]'); console.log('length select:', await a.locator('#nights option').allInnerTexts());
-await a.click('[data-act=allDays]'); await j.click('.bottomnav [data-sec=plan]'); await settle(j); await j.click('.subtab[data-tab=dates]'); await j.locator('.day').nth(2).click(); await a.waitForTimeout(1500);
+await a.click('[data-act=allDays]'); await j.click('.bottomnav [data-sec=plan]'); await settle(j); await j.click('.subtab[data-tab=dates]'); await j.locator('.day').nth(2).click(); await j.locator('.day').nth(2).click(); await a.waitForTimeout(1500);
 console.log('best day:', await a.locator('[data-lockdates]').count(), await a.locator('.card .mono').first().innerText().catch(()=>'-'));
 await a.locator('[data-lockdates]').first().click(); await a.waitForTimeout(500);
 await a.click('.bottomnav [data-sec=home]'); await settle(a); await a.click('.subtab[data-tab=overview]'); await settle(a);

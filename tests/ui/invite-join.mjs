@@ -33,7 +33,7 @@ expect('“I’m in” joins right away, with no second “are you in?” screen
 expect('…and the one thing the plan needs from them is next: their free days', /Step 1 of 1/i.test(await J.locator('.setup-top .label').innerText()) && /One quick question/.test(await J.locator('.setup-hi').innerText()) && (await J.locator('.setup .cal').count()) === 1);
 await A.goto(`${BASE}/#${P1.tid}`); await settle(A); await A.waitForSelector('.ov-hero');
 expect('the organizer sees them in, without chasing', /2 going/.test(await A.locator('.ovh-who').innerText()), await A.locator('.ovh-who').innerText());
-await J.click('[data-act=weekends]'); await J.click('[data-act=setupNext]'); await settle(J);
+await J.click('[data-act=allDays]'); await J.click('[data-act=setupNext]'); await settle(J);
 expect('after the days, they’re on the plan', (await J.locator('.ov-hero').count()) === 1 && !(await J.locator('.setup').count()));
 await J.goto(P1.link); await settle(J); await J.waitForSelector('.ov-hero', { timeout: 8000 });
 expect('coming back to the link after joining goes straight to the plan', !(await J.locator('.jp-card, .welcome').count()));
