@@ -22,6 +22,9 @@ const cleanDates = t => { for (const k of ['winStart', 'winEnd', 'rsvpBy']) if (
   if (Array.isArray(t.itinerary) && t.itinerary.some(i => i && ((i.date && !isDay(i.date)) || (i.time && !hhmm(i.time)) || typeof (i.time ?? '') !== 'string'))) t.itinerary = t.itinerary.map(i => !i ? i : { ...i, ...(i.date && !isDay(i.date) ? { date: '' } : {}), ...(i.time && (typeof i.time !== 'string' || !hhmm(i.time)) ? { time: '' } : {}) });
   if (Array.isArray(t.destinations) && t.destinations.some(d => d && ((d.code && !(typeof d.code === 'string' && isCode(d.code))) || (d.city != null && typeof d.city !== 'string')))) t.destinations = t.destinations.map(d => !d ? d : { ...d, code: typeof d.code === 'string' && isCode(d.code) ? d.code : '', city: d.city == null ? d.city : String(d.city) });
   if (t.nights != null && !(Number.isInteger(t.nights) && t.nights >= 0 && t.nights <= 90)) delete t.nights;
+  // a locked place that's no longer among the ideas (someone removed it, or older data) isn't locked: read it as
+  // open, not as whichever idea leads the vote
+  if (t.lockedDest && !(Array.isArray(t.destinations) && t.destinations.some(d => d && d.id === t.lockedDest))) delete t.lockedDest;
   if (t.tasks && typeof t.tasks === 'object' && Object.values(t.tasks).some(x => x && x.due && !isDay(x.due))) t.tasks = Object.fromEntries(Object.entries(t.tasks).map(([k, x]) => [k, x && x.due && !isDay(x.due) ? { ...x, due: '' } : x]));
   return t; };
 // A member's days: only real dates count (a bad stored list is read as no days picked).
@@ -345,13 +348,18 @@ function saveMe(patch, now, quiet) {
   if (S.demo) return;
   S.meDirty = true; meSeq++; clearTimeout(meT); meT = setTimeout(flushMe, now ? 0 : 600);
 }
-async function flushMe() {
+// leaving or hiding the page sends your last change now instead of after the short pause (it would be lost)
+// (without waiting for a write already on its way: the page may be gone by then, and each write only sends its own fields)
+const flushSoon = () => { if (meFields.size) flushMe(true); };
+window.addEventListener('pagehide', flushSoon);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushSoon(); });
+async function flushMe(now) {
   clearTimeout(meT);
   const m = meDoc(); if (!m || !S.db || S.demo || !S.tid) return;
   const fields = [...meFields].filter(k => k !== 'id'); meFields = new Set(); fields.forEach(k => meSending.add(k));
   const { id, ...full } = m, changed = Object.fromEntries(fields.map(k => [k, m[k] === undefined ? null : m[k]]));
   const job = { tid: S.tid, full, changed, fields, seq: meSeq, joined: !!(S.trip?.people || {})[S.uid] && !(S.trip?.left || {})[S.uid] };
-  while (meWriting) await new Promise(r => setTimeout(r, 120));
+  while (meWriting && !now) await new Promise(r => setTimeout(r, 120));
   meWriting = true;
   const ref = S.db.doc(`trips/${job.tid}/members/${S.uid}`);
   try {

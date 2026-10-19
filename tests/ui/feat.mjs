@@ -57,10 +57,16 @@ await step('P5 cost', async () => {
   await a.screenshot({ path: S + 'cost.png', fullPage: true });
 });
 await step('P6 group fit', async () => {
-  const mkp = (id, city, pp) => ({ id, city, code: '', start: '2026-10-23', end: '2026-10-25', tagline: 'x', why: 'y', perPerson: pp, vibeMatch: 80, highlights: [], weather: '' });
+  // the step before locked Catskills and the dates: Trip Match is decided, so there's nothing to swipe
+  const L = (await db(a, 'get', 'trips/' + tid)).data.lockedDates;
+  const mkp = (id, city, pp) => ({ id, city, code: '', start: L.start, end: L.end, tagline: 'x', why: 'y', perPerson: pp, vibeMatch: 80, highlights: [], weather: '' });
   await db(a, 'update', 'trips/' + tid, { pitches: { items: [mkp('p1', 'Hudson', '$300–450'), mkp('p2', 'Montauk', '$600–900')], at: Date.now() } });
-  await a.waitForTimeout(600); await go(a, 'plan', 'match'); await a.evaluate(() => document.querySelectorAll('details.more-opts').forEach(d => d.open = true)); console.log('P6 card chips:', await txt(a, '#pitch .fit'));
-  await a.click('.swipe-btn.meh'); await a.waitForTimeout(400); console.log('P6 scoreboard:', (await txt(a, '.linkrow')).slice(0, 200));
+  await a.waitForTimeout(600); await go(a, 'plan', 'match');
+  if (!(await a.locator('.decided-sum').count()) || await a.locator('.swipe-btn:visible').count()) throw new Error('waiting for a decided Trip Match with no swipe deck');
+  // reopening the choice brings the deck back, for the locked dates
+  await a.click('.decided-sum [data-act=unlockDest]'); await a.waitForTimeout(900); await settle(a);
+  console.log('P6 card chips:', await txt(a, '#pitch .fit'));
+  await a.click('.swipe-btn.meh'); await a.waitForTimeout(400); console.log('P6 scoreboard:', (await txt(a, '.sb-row')).slice(0, 200));
 });
 await step('P7 what if', async () => {
   await go(a, 'plan', 'whatif'); console.log('P7 now cost row:', await a.locator('.wi-row', { hasText: 'Each, all in' }).innerText().then(t => t.replace(/\n+/g, ' | ')));

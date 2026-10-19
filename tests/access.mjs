@@ -33,6 +33,11 @@ check('organizer removes Bob', (await call(A, 'update', `trips/${T}/members/${B}
 check('removed member cannot rejoin', (await call(B, 'update', `trips/${T}/members/${B}`, { status: 'in' })).status === 403 && (await call(B, 'update', 'trips/' + T, { people: { [B]: true } })).status === 403);
 check('removed member loses access to expenses', !(await call(B, 'list', `trips/${T}/expenses`)).docs.length);
 check('member cannot remove others', (await call(C, 'update', `trips/${T}/members/${A}`, { removed: true })).status === 403);
+// an SOS can be marked handled by anyone in the plan (“Found them”), but nobody can send one for someone else
+await call(A, 'update', `trips/${T}/members/${A}`, { lost: { where: 'Pier 3', at: Date.now() } });
+check('a member can clear someone else’s SOS', (await call(C, 'update', `trips/${T}/members/${A}`, { lost: null })).ok && !(await call(A, 'get', `trips/${T}/members/${A}`)).data.lost);
+check('…but not send one in their name', (await call(C, 'update', `trips/${T}/members/${A}`, { lost: { where: 'Fake', at: Date.now() } })).status === 403);
+check('…or change their free days along with it', (await call(C, 'update', `trips/${T}/members/${A}`, { lost: null, days: ['2026-11-20'] })).status === 403);
 check('organizer turns invites off', (await call(A, 'update', 'trips/' + T, { invitesOff: true })).ok);
 check('nobody new can join', (await call('u_dave' + r, 'set', `trips/${T}/members/u_dave${r}`, { nick: 'Dave' }, 'k7x9q')).status === 403);
 // crews

@@ -159,7 +159,8 @@ export function checkWrite(op: 'set' | 'update' | 'delete', p: string, data: Jso
       if (data && 'kids' in data) throw deny('Only they can change how many kids they’re bringing.');
       // someone else's record: only whether they're coming (drop-outs, counting people out,
       // removing). Their votes, free days and limits are theirs to change.
-      if (prev && Object.keys(data || {}).some(k => !OTHERS_MAY.includes(k))) throw deny('You can only change your own votes, days and limits.');
+      // and anyone can mark someone's SOS as handled ("Found them"): clearing it only, never sending one for them
+      if (prev && Object.keys(data || {}).some(k => !OTHERS_MAY.includes(k) && !(k === 'lost' && data?.lost === null))) throw deny('You can only change your own votes, days and limits.');
       return;
     }
     if (!inTrip(tid, u, t)) throw deny();
