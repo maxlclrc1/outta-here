@@ -44,9 +44,9 @@ expect('friends weekend: asked; picking “I’m treating everyone” saves it',
 // —— one person pays (Rae), Jo joins ——
 const T = fr.tid, key = (await api(uid, 'get', 'trips/' + T)).data.inviteKey;
 await api(uid, 'update', 'trips/' + T, { costs: { food: { low: 100, high: 100, src: 'estimate', by: uid, at: 1 } } });
-const J = await page('Jo', `#${T}.${key}`); await J.waitForSelector('.welcome'); await J.click('[data-join=in]'); await J.waitForSelector('.setup');
+const J = await page('Jo', `#${T}.${key}`); await J.waitForSelector('.setup');
 const jsteps = (await J.locator('.setup-top .label').textContent()).replace(/^.*Step /, 'Step ');
-expect('Jo isn’t asked for a budget (no budget step)', !(await J.locator('[data-budget]').count()) && jsteps === 'Step 1 of 3', jsteps);
+expect('Jo isn’t asked for a budget (only their free days)', !(await J.locator('[data-budget]').count()) && jsteps === 'Step 1 of 1', jsteps);
 await J.click('[data-act=setupLater]'); await settle(J);
 const jid = await J.evaluate(() => localStorage.outta_uid);
 await api(jid, 'set', `trips/${T}/expenses/e1`, { title: 'Gas', amount: 60, paidBy: jid, split: [uid, jid], by: jid, at: Date.now() });

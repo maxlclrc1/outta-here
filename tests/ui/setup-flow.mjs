@@ -46,8 +46,8 @@ expect('finishing lands on the plan', !(await A.locator('.setup').count()) && (a
 
 // —— an invited friend ——
 const key = (await api(uid, 'get', 'trips/' + tid)).data.inviteKey;
-const J = await page('Jo', `#${tid}.${key}`); await J.waitForSelector('.welcome'); await J.click('[data-join=in]'); await J.waitForSelector('.setup'); await settle(J); await J.waitForTimeout(600);
-expect('saying “I’m in” opens the setup with a welcome', /You’re in! 4 quick questions and you’re done/.test(await J.locator('.setup-hi').innerText()));
+const J = await page('Jo', `#${tid}.${key}`); await J.waitForSelector('.setup'); await settle(J); await J.waitForTimeout(600);
+expect('saying “I’m in” on the invitation opens a one-question setup with a welcome', /You’re in! One quick question and you’re done/.test(await J.locator('.setup-hi').innerText()));
 expect('…with no “step done” banner or toast on top', !(await J.locator('.milestone').count()) && !(await J.locator('#toast.show, #toast.on').count()) && !/A few quick questions first/.test(await J.locator('#toast').innerText().catch(() => '')));
 await J.click('[data-act=setupLater]'); await settle(J);
 expect('“Do this later” still goes to the plan', !(await J.locator('.setup').count()) && (await J.locator('.bottomnav').count()) === 1);

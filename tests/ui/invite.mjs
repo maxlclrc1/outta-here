@@ -29,11 +29,12 @@ const V = await open('Vic', `#${tid}.${oldKey}`);
 { const t = await V.p.innerText('body'); expect('the old link shows that it was turned off', /This invite link was turned off/.test(t), t.slice(0, 120)); }
 expect('…and the page never received the current key', !V.seen.some(x => x.includes(newKey)));
 // someone with the new link
-const W = await open('Wen', `#${tid}.${newKey}`);
-await W.p.waitForSelector('.welcome', { timeout: 8000 }).catch(() => {});
-expect('the new link opens the invite to join', (await W.p.locator('[data-join=in]').count()) === 1);
+// (opened by hand, so what arrives before answering can be checked)
+const W = await (async () => { const c = await b.newContext({ viewport: { width: 390, height: 844 } }); await c.route('**/api/ai/status', r => r.fulfill({ json: { enabled: false } })); const seen = []; c.on('response', async res => { if (res.url().endsWith('/api/db')) { try { seen.push(await res.text()); } catch {} } }); const p = await c.newPage(); p.on('pageerror', e => errs.push('Wen: ' + e.message)); await p.goto(`${BASE}/#${tid}.${newKey}`); return { p, seen }; })();
+await W.p.waitForSelector('.jp-cover', { timeout: 8000 });
+expect('the new link opens the invitation to join', /Porto/.test(await W.p.locator('.jp-card').innerText()) && (await W.p.locator('.jp-in').count()) === 1);
 expect('…and before joining, the page didn’t receive the key either', !W.seen.some(x => x.includes(`"inviteKey":"${newKey}"`)));
-await W.p.click('[data-join=in]'); await W.p.waitForTimeout(900);
+await W.p.fill('#join-name', 'Wen'); await W.p.click('.jp-in'); await W.p.waitForSelector('.setup, .ov-hero', { timeout: 8000 }); await W.p.waitForTimeout(900);
 { const wid = await W.p.evaluate(() => localStorage.outta_uid); expect('…and joining works', !!(await api(uid, 'get', 'trips/' + tid)).data.people?.[wid]); }
 await api(uid, 'delete', 'trips/' + tid);
 console.log('errors', errs); await b.close();

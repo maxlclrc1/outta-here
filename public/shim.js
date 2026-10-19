@@ -54,14 +54,24 @@
     document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', show) : show();
   });
 
-  // First visit on this browser: ask for a name before the app loads its data.
+  // First visit on this browser: ask for a name before the app loads its data. Opened from a plan's
+  // invite link, this screen is the invitation itself: the plan, your name and your answer in one go.
+  // The answer is handed to the app (sessionStorage outta_join), which joins you with its usual join
+  // (joinPlan) instead of asking again.
+  const tripLink = (location.hash || '').slice(1).match(/^([a-z0-9]{6,20})(?:\.([a-z0-9]{4,12}))?$/);
   const nameReady = new Promise(resolve => {
     const existing = store.get(LS_NAME);
     if (existing) return resolve(existing);
     const show = () => {
       const wrap = document.createElement('div');
       wrap.className = 'join-screen';
-      wrap.innerHTML = `<form class="join-card">
+      wrap.innerHTML = tripLink ? `<form class="join-card jp-card">
+          <div class="jp" aria-live="polite"><div class="jp-loading"><i></i><i></i><i></i><span class="sr-only">Opening the plan</span></div></div>
+          <label class="jp-name"><span>Your name</span><input id="join-name" maxlength="30" autocomplete="given-name" autocapitalize="words" enterkeyhint="go" placeholder="What your friends call you" required></label>
+          <button class="btn primary big jp-in" type="submit" data-ans="in">I’m in 🙌</button>
+          <div class="jp-alt"><button class="btn ghost" type="button" data-ans="maybe">Maybe</button><button class="btn ghost" type="button" data-ans="out">Can’t make it</button></div>
+          <p class="small muted jp-note">No app, no sign-up. Just your name.</p>
+        </form>` : `<form class="join-card">
           <span class="label">Outta Here</span>
           <h1>What do your friends call you?</h1>
           <p class="muted">That’s all we need. This browser remembers you next time.</p>
@@ -69,38 +79,58 @@
           <button class="btn primary big" type="submit">Let’s go</button>
         </form>`;
       document.body.appendChild(wrap);
-      showInvite(wrap);
-      const input = wrap.querySelector('#join-name');
+      const form = wrap.querySelector('form'), input = wrap.querySelector('#join-name');
+      let ans = 'in', invitable = !!tripLink;
+      if (tripLink) showPlan(wrap, tripLink[1]).then(ok => { invitable = ok; }); else showInvite(wrap);
       input.focus();
-      wrap.querySelector('form').addEventListener('submit', e => {
+      wrap.querySelectorAll('button[type=button][data-ans]').forEach(b => b.addEventListener('click', () => { ans = b.dataset.ans; form.requestSubmit(); }));
+      form.addEventListener('submit', e => {
         e.preventDefault();
         const name = input.value.trim().slice(0, 30);
-        if (!name) return;
+        if (!name) { input.focus(); return; }
         store.set(LS_NAME, name);
+        if (tripLink && invitable) try { sessionStorage.setItem('outta_join', JSON.stringify({ tid: tripLink[1], ans })); } catch {}
         wrap.remove();
         resolve(name);
       });
     };
     document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', show) : show();
   });
-
-  // Opened from an invite link: say who invited you to what, above the name box.
-  async function showInvite(wrap) {
-    const h = (location.hash || '').slice(1), crew = h.match(/^c-([a-z0-9]{6,20})$/);
-    if (!crew && !/^[a-z0-9]{6,20}$/.test(h)) return;
+  const escH = x => String(x).replace(/[&<>"']/g, ch => '&#' + ch.charCodeAt(0) + ';');
+  // The plan, as the invitation shows it: who invited you, its name, and only what's decided (or a small
+  // plan's city), with how many are in. A link that's been turned off or a plan that's gone says so.
+  async function showPlan(wrap, tid) {
+    const box = wrap.querySelector('.jp'), MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const day = d => { const [, m, x] = String(d).split('-').map(Number); return MON[m - 1] ? `${MON[m - 1]} ${x}` : ''; };
+    const COLOR = { hangout: '#14915F', day: '#1098AD', weekend: '#E8590C', trip: '#D41C78', bachelorette: '#E64980', bachelor: '#3B5BDB', birthday: '#F08C00', couples: '#C2255C', family: '#0E9F6E', college: '#1098AD', festival: '#7048E8', sports: '#E8590C', work: '#5C6A7A' };
+    const off = (h, p) => { box.innerHTML = `<div class="jp-off"><h1>${h}</h1><p class="muted">${p}</p></div>`; wrap.querySelector('.jp-in').textContent = 'Continue'; wrap.querySelector('.jp-alt')?.remove(); };
     try {
-      let what = '', host = '';
-      if (crew) {
-        const c = await call('get', 'crews/' + crew[1]); if (!c.exists) return;
-        what = c.data.name; host = c.data.profiles?.[c.data.by]?.nick || '';
-      } else {
-        const t = await call('get', 'trips/' + h); if (!t.exists) return;
-        what = t.data.name;
-        const m = await call('get', `trips/${h}/members/${t.data.createdBy}`).catch(() => ({}));
-        host = m.exists ? m.data.nick : '';
-      }
-      const label = wrap.querySelector('.label'), esc = x => String(x).replace(/[&<>"']/g, ch => '&#' + ch.charCodeAt(0) + ';');
-      if (label && what) label.outerHTML = `<p class="join-invite">${host ? `<b>${esc(host)}</b> invited you to` : 'You’re invited to'} <b>${esc(what)}</b></p>`;
+      const t = await call('get', 'trips/' + tid);
+      if (!t.exists) { off('This plan isn’t here anymore', 'It may have been deleted. Ask whoever sent the link what’s up.'); return false; }
+      if (t.data.inviteOk === false || t.data.invitesOff) { off('This invite link was turned off', 'Ask whoever sent it for a fresh link.'); return false; }
+      const d = t.data, small = d.size === 'hangout' || d.size === 'day';
+      const ms = await call('list', `trips/${tid}/members`).then(r => r.docs || []).catch(() => []);
+      const host = ms.find(m => m.id === d.createdBy)?.data?.nick || '', going = ms.filter(m => ['in', 'confirmed', 'booked'].includes(m.data?.status) && !m.data?.removed).length;
+      const city = (d.destinations || []).find(x => x && x.id === d.lockedDest)?.city || (small ? d.city || '' : '');
+      const L = d.lockedDates, when = L && L.start ? (L.start === L.end ? day(L.start) : `${day(L.start)} – ${day(L.end)}`) : '';
+      const facts = [when, city].filter(Boolean).join(' · ');
+      box.style.setProperty('--pc', (d.mode && d.mode !== 'friends' && COLOR[d.mode]) || COLOR[d.size] || '#D41C78');
+      box.innerHTML = `<div class="jp-cover"><span class="jp-from">${host ? `<b>${escH(host)}</b> invited you` : 'You’re invited'}</span>
+          <h1>${escH(d.name || 'A plan')}</h1>${facts ? `<span class="jp-facts">${escH(facts)}</span>` : `<span class="jp-facts soft">${small ? 'Picking the day together' : 'Picking where and when together'}</span>`}
+          ${going > 1 ? `<span class="jp-going">${going} already in</span>` : ''}</div>`;
+      return true;
+    } catch { box.innerHTML = '<p class="muted">Couldn’t open the plan right now. Add your name and we’ll try again.</p>'; return true; }
+  }
+
+  // Opened from a crew's invite link: say who invited you to what, above the name box.
+  async function showInvite(wrap) {
+    const crew = (location.hash || '').slice(1).match(/^c-([a-z0-9]{6,20})$/);
+    if (!crew) return;
+    try {
+      const c = await call('get', 'crews/' + crew[1]); if (!c.exists) return;
+      const what = c.data.name, host = c.data.profiles?.[c.data.by]?.nick || '';
+      const label = wrap.querySelector('.label');
+      if (label && what) label.outerHTML = `<p class="join-invite">${host ? `<b>${escH(host)}</b> invited you to` : 'You’re invited to'} <b>${escH(what)}</b></p>`;
     } catch {}
   }
 

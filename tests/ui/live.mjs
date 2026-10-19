@@ -19,7 +19,7 @@ await a.click('[data-act=newTrip]'); await settle(a); await a.click('[data-size=
 await a.fill('#nt-name', 'Birthday'); await a.click('#newTrip [type=submit]'); await a.waitForSelector('.setup'); await skipSetup(a); await settle(a);
 const hash = await a.evaluate(() => location.hash), tid = hash.slice(1);
 const j = await mk('Jay', hash), k = await mk('Kim', hash);
-for (const p of [j, k]) { await p.waitForSelector('.welcome'); await p.click('[data-join=in]'); await skipSetup(p); await p.waitForTimeout(500); }
+for (const p of [j, k]) { await p.waitForSelector('.welcome, .setup, .ov-hero'); await p.locator('[data-join=in]').click({ timeout: 2500 }).catch(() => {}); await skipSetup(p); await p.waitForTimeout(500); }
 await db(a, 'update', 'trips/' + tid, { destinations: [{ id: 'd1', city: 'Lisbon' }], lockedDest: 'd1', lockedDates: { start: '2026-11-20', end: '2026-11-22' },
   itinerary: [{ id: 'i1', date: '2026-11-21', time: '20:30', title: 'Birthday dinner', kind: 'food' }, { id: 'i2', date: '2026-11-22', time: '11:00', title: 'Brunch', kind: 'food' }] });
 await a.waitForTimeout(800);

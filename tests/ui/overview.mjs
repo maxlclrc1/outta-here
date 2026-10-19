@@ -35,16 +35,15 @@ expect('…so the cover doesn’t repeat an Invite button', !(await A.locator('.
 expect('no “TBD” placeholders on the plan home', !/\bTBD\b/.test(await A.locator('body').innerText()));
 expect('progress is shown once, compactly', (await A.locator('.j-strip').count()) === 1 && /1 of 6/.test(await A.locator('.ovp-head').innerText()));
 
-// —— an invitee, before answering ——
-const key = (await api(uid, 'get', 'trips/' + tid)).data.inviteKey, J = await page('Jo', `#${tid}.${key}`);
-await J.waitForSelector('.welcome', { timeout: 8000 });
-expect('an invitee sees the invitation with the plan’s name and who invited them', /Ana invited you/.test(await J.locator('.welcome').innerText()) && /Cabin weekend/.test(await J.locator('.welcome').innerText()));
+// —— an invitee, before answering: the invitation screen itself ——
+const key = (await api(uid, 'get', 'trips/' + tid)).data.inviteKey;
+const J = await (async () => { const c = await b.newContext({ viewport: { width: 390, height: 844 } }); await c.route('**/api/ai/status', r => r.fulfill({ json: { enabled: false } })); const p = await c.newPage(); p.on('pageerror', e => errs.push('Jo: ' + e.message)); await p.goto(`${BASE}/#${tid}.${key}`); return p; })();
+await J.waitForSelector('.jp-cover', { timeout: 8000 });
+expect('an invitee sees the invitation with the plan’s name and who invited them', /Ana invited you/.test(await J.locator('.jp-card').innerText()) && /Cabin weekend/.test(await J.locator('.jp-card').innerText()));
 expect('…and not the planning tabs or the menu yet', !(await J.locator('.bottomnav').count()) && !(await J.locator('.subtabs').count()) && !(await J.locator('.j-focus').count()));
-await J.locator('[data-act=peek]').click(); await settle(J);
-expect('“Look around the plan first” shows the menu, with the invitation still on top', (await J.locator('.bottomnav').count()) === 1 && (await J.locator('.welcome [data-join=in]').count()) === 1);
-await J.click('[data-join=in]'); await settle(J); if (await J.locator('[data-act=setupLater]').count()) { await J.click('[data-act=setupLater]'); await settle(J); }
+await J.fill('#join-name', 'Jo'); await J.click('.jp-in'); await J.waitForSelector('.setup, .ov-hero'); await settle(J); if (await J.locator('[data-act=setupLater]').count()) { await J.click('[data-act=setupLater]'); await settle(J); }
 await reopen(J, tid);
-expect('once they’re in, they get the plan home, not the invitation', !(await J.locator('.welcome').count()) && (await J.locator('.ov-hero .ovh-title').count()) === 1 && (await J.locator('.bottomnav').count()) === 1);
+expect('once they’re in, they get the plan home, not the invitation', !(await J.locator('.welcome, .jp-card').count()) && (await J.locator('.ov-hero .ovh-title').count()) === 1 && (await J.locator('.bottomnav').count()) === 1);
 
 // —— with the crew in, the next move moves on ——
 await reopen(A, tid);

@@ -50,8 +50,9 @@ function ovGlance() {
 }
 function overviewTab() {
   const t = S.trip, welcome = showWelcome();
-  // someone who hasn't answered yet sees the invitation first, not the whole planning screen
-  if (welcome && !S.peek) return welcomeCard();
+  // someone who hasn't answered yet sees the invitation first, not the whole planning screen; if they
+  // already answered on the invitation screen, that answer is used instead of asking twice
+  if (welcome && !S.peek) { const ans = pendingJoin(); if (ans) { setTimeout(() => joinPlan(ans), 0); return skel(); } return welcomeCard(); }
   const me = meDoc(), stage = STAGES.findIndex(([k]) => k === stageOf(t, S.members)), f = welcome ? null : journey().focus;
   // when the next move is your own answer, the big card already asks it; the ladder would ask twice
   const askedAbove = f && f.mine && (f.k === 'rsvp' || f.k === 'confirm');

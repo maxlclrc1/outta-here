@@ -13,8 +13,8 @@ const a = await mk('Ali');
 await a.click('[data-act=newTrip]'); await settle(a); await a.click('[data-size=weekend]'); await settle(a); await a.locator('[data-mode]').first().click(); await settle(a);
 await a.fill('#nt-name', 'Cabin weekend'); await a.click('#newTrip [type=submit]'); await a.waitForSelector('.setup'); await skipSetup(a);
 const tid = (await a.evaluate(() => location.hash)).slice(1);
-const j = await mk('Jay', '#' + tid); await j.waitForSelector('.welcome'); await j.click('[data-join=in]'); await skipSetup(j);
-const k = await mk('Kim', '#' + tid); await k.waitForSelector('.welcome'); await k.click('[data-join=maybe]'); await skipSetup(k);
+const j = await mk('Jay', '#' + tid); await j.waitForSelector('.welcome, .setup, .ov-hero'); await j.locator('[data-join=in]').click({ timeout: 2500 }).catch(() => {}); await skipSetup(j);
+const k = await mk('Kim', '#' + tid); await k.waitForSelector('.welcome, .setup, .ov-hero'); await skipSetup(k); await k.locator('.ov-me [data-status=maybe]').click().catch(() => {}); // joined from the invitation, then says maybe
 await a.waitForTimeout(800);
 await step('P2 commitment', async () => {
   await go(a, 'home', 'crew'); console.log('P2 headcount:', await txt(a, '.hc'));
