@@ -11,8 +11,8 @@ await a.fill('#nt-name', 'Vegas'); await a.click('#newTrip [type=submit]'); awai
 const step = async p => (await p.locator('.setup-top .label').innerText()) + ' | ' + await p.locator('.setup h1').innerText();
 console.log('creator:', await step(a), '| bottom nav:', await a.locator('.bottomnav').count());
 await a.screenshot({ path: S + '1-days.png', fullPage: true });
-await a.locator('.setup .day').nth(3).click(); await a.locator('.setup .day').nth(4).click(); await a.click('[data-act=weekends]'); await settle(a);
-console.log('days:', await a.locator('.setup-body > .small').innerText());
+await a.locator('.setup .day').nth(3).click(); await a.locator('.setup .day').nth(4).click(); await settle(a);
+console.log('days:', await a.locator('.setup-body .ranges').innerText());
 await a.click('[data-act=setupNext]'); await settle(a); console.log(await step(a));
 await a.fill('#me-home', 'JFK'); await a.click('[data-act=setupNext]'); await settle(a); console.log(await step(a));
 await a.screenshot({ path: S + '2-budget.png', fullPage: true });

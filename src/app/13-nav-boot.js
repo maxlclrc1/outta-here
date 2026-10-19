@@ -3,7 +3,7 @@ function stop() { if (S.meDirty && S.tid && !S.demo) flushMe(); S.unsub.forEach(
 function setHash(h) { try { history.replaceState(null, '', h ? '#' + h : location.pathname + location.search); } catch {} }
 function resetTrip() {
   S.trip = null; S.members = []; S.membersIn = false; S.busy = {}; meSaved = false; S.setup = null; S.addStay = false; S.whatif = null; S.repeat = null; S.recover = null; S.rc = null; S.editItem = null; S.alts = null; S.peek = false; S.expenses = []; S.packing = []; S.readOnly = false;
-  S.cardUrl = null; S.cardBlob = null; S.copyText = ''; S.split = null; S.confirm = null; S.tkFile = null; S.feed = []; S.bucket = []; S.photos = []; S.pot = []; S.mySpend = []; S.lostOpen = false; S.pinSel = null; S.hangPlan = null; S.wrapI = 0; S.img = null; S.show = null; clearInterval(showTimer);
+  S.cardUrl = null; S.cardBlob = null; S.copyText = ''; S.split = null; S.confirm = null; S.tkFile = null; S.feed = []; S.bucket = []; S.photos = []; S.pot = []; S.mySpend = []; S.lostOpen = false; S.rPick = null; S.hangPlan = null; S.wrapI = 0; S.img = null; S.show = null; clearInterval(showTimer);
   for (const k of Object.keys(DRAFT)) delete DRAFT[k];
 }
 function goHome() { stop(); S.tid = null; S.creating = null; S.crewView = null; S.demo = false; resetTrip(); setHash(''); render(); }
@@ -69,19 +69,19 @@ function openDemo() {
   m2.checkins = [{ text: 'Getting food', at: at(TODAY, '01:30') }, { text: 'Getting food', at: t0 - .3 * H }];
   m4.checkins = [{ text: 'Heading back', at: at(TODAY, '03:55') }];
   for (const m of S.members) if (m.checkins) m.checkin = m.checkins[m.checkins.length - 1];
-  S.trip.stay = { name: 'Our Airbnb · South Beach', kind: 'rental', area: 'South Beach', sleeps: '3 bedrooms, 6 beds', perNight: '$520–600 per night', perPerson: '$270–300 per person', why: 'Walk to the beach and Collins Ave, room for everyone.', pros: ['Pool', 'Walk to beach'], lat: 25.7840, lng: -80.1310 };
+  S.trip.stay = { name: 'Our Airbnb · South Beach', kind: 'rental', area: 'South Beach', sleeps: '3 bedrooms, 6 beds', perNight: '$520–600 per night', perPerson: '$270–300 per person', why: 'Walk to the beach and Collins Ave, room for everyone.', pros: ['Pool', 'Walk to beach'] };
   S.trip.stays = { city: 'Miami', at: t0, items: [
     S.trip.stay,
-    { id: 'st2', name: 'Freehand Miami', kind: 'hostel', area: 'Miami Beach', sleeps: '6-bed private room', perNight: '$280–340 per night', perPerson: '$140–170 per person', why: 'Cheapest good option with a legendary bar downstairs.', pros: ['Great bar', 'Cheap'], lat: 25.8016, lng: -80.1281 },
-    { id: 'st3', name: 'The Plymouth South Beach', kind: 'hotel', area: 'South Beach', sleeps: '3 rooms, 2 queens each', perNight: '$690–820 per night', perPerson: '$345–410 per person', why: 'Boutique hotel with a pool scene, a short walk to the beach.', pros: ['Pool', 'Quiet'], lat: 25.7946, lng: -80.1296 },
+    { id: 'st2', name: 'Freehand Miami', kind: 'hostel', area: 'Miami Beach', sleeps: '6-bed private room', perNight: '$280–340 per night', perPerson: '$140–170 per person', why: 'Cheapest good option with a legendary bar downstairs.', pros: ['Great bar', 'Cheap'] },
+    { id: 'st3', name: 'The Plymouth South Beach', kind: 'hotel', area: 'South Beach', sleeps: '3 rooms, 2 queens each', perNight: '$690–820 per night', perPerson: '$345–410 per person', why: 'Boutique hotel with a pool scene, a short walk to the beach.', pros: ['Pool', 'Quiet'] },
   ] };
   S.trip.stay.id = 'st1';
   S.trip.spots = { city: 'Miami', at: t0, items: [
-    { name: 'LIV', type: 'club', area: 'Mid-Beach', why: 'The big-name club night your quiz said you wanted.', price: '$$$$', cover: '$60–100', bestNight: 'Sat', dress: 'Dress to impress', tip: 'Book a table early if you want to skip the line.', lat: 25.8172, lng: -80.1223 },
-    { name: 'Sweet Liberty', type: 'bar', area: 'South Beach', why: 'Award-winning cocktails, lively, easy for a group.', price: '$$', cover: 'Free', bestNight: 'Fri', dress: 'Casual', tip: 'Happy hour runs till 7.', lat: 25.7949, lng: -80.1287 },
-    { name: 'Wynwood Walls', type: 'activity', area: 'Wynwood', why: 'Street art, photo heaven, great tacos nearby.', price: '$', cover: '$12 entry', bestNight: 'Day', dress: 'Anything', tip: 'Go late afternoon for good light.', lat: 25.8010, lng: -80.1994 },
-    { name: 'E11EVEN', type: 'club', area: 'Downtown', why: 'Open 24 hours. For the sunrise club crew.', price: '$$$$', cover: '$50–80', bestNight: 'Sat', dress: 'Upscale', tip: 'Best after 2am.', lat: 25.7853, lng: -80.1931 },
-    { name: 'La Sandwicherie', type: 'late-night food', area: 'South Beach', why: 'The 3am sandwich everyone talks about.', price: '$', cover: 'Free', bestNight: 'Any', dress: 'Anything', tip: 'Cash moves faster.', lat: 25.7818, lng: -80.1318 },
+    { name: 'LIV', type: 'club', area: 'Mid-Beach', why: 'The big-name club night your quiz said you wanted.', price: '$$$$', cover: '$60–100', bestNight: 'Sat', dress: 'Dress to impress', tip: 'Book a table early if you want to skip the line.' },
+    { name: 'Sweet Liberty', type: 'bar', area: 'South Beach', why: 'Award-winning cocktails, lively, easy for a group.', price: '$$', cover: 'Free', bestNight: 'Fri', dress: 'Casual', tip: 'Happy hour runs till 7.' },
+    { name: 'Wynwood Walls', type: 'activity', area: 'Wynwood', why: 'Street art, photo heaven, great tacos nearby.', price: '$', cover: '$12 entry', bestNight: 'Day', dress: 'Anything', tip: 'Go late afternoon for good light.' },
+    { name: 'E11EVEN', type: 'club', area: 'Downtown', why: 'Open 24 hours. For the sunrise club crew.', price: '$$$$', cover: '$50–80', bestNight: 'Sat', dress: 'Upscale', tip: 'Best after 2am.' },
+    { name: 'La Sandwicherie', type: 'late-night food', area: 'South Beach', why: 'The 3am sandwich everyone talks about.', price: '$', cover: 'Free', bestNight: 'Any', dress: 'Anything', tip: 'Cash moves faster.' },
   ] };
   S.trip.reactions = { [rkey('spLIV')]: { d1: 1, d4: 1, d3: 1 }, [rkey('spSweet Liberty')]: { d2: 1, d5: 1 }, [rkey('stOur Airbnb · South Beach')]: { d1: 1, d2: 1, d4: 1 } };
   S.trip.itinerary = [
@@ -94,7 +94,6 @@ function openDemo() {
     { id: 'i7', date: TODAY, time: '23:30', title: 'LIV', kind: 'nightlife', note: 'Table booked under Jay' },
     { id: 'i8', date: TODAY, time: '03:00', title: 'La Sandwicherie', kind: 'food', note: '' },
   ];
-  S.trip.geo = { [rkey('Wynwood Walls')]: { name: 'Wynwood Walls', lat: 25.8010, lng: -80.1994, kind: 'activity' } };
   S.trip.meet = { text: 'Our Airbnb · South Beach', time: '22:45', by: m2.id, at: t0 - .6 * H };
   S.trip.hangover = { [TODAY]: { d1: 4, d2: 2, d4: 5, d3: 3 } };
   S.trip.recaps = { [y]: { title: 'Day one', text: 'Everyone landed by noon. Tacos in Wynwood, a nap nobody admits to, then Sweet Liberty until close. Jay checked in “Still out” at 2:40am. Tasha called it at 4 and logged a 5 on the hangover index. There’s a receipt for 14 espresso martinis and no one is claiming it.', at: t0 - 3 * H } };

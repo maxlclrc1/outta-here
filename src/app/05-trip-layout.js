@@ -67,7 +67,7 @@ const mode = () => MODES[S.trip?.mode] || MODES.friends;
    Most types are social plans and keep the original quiz, nightlife picks and Live chips. Family
    trips and team offsites get their own. A missing or unknown mode is a friends trip, as before. */
 const SPEND_Q = QUIZ.find(q => q.k === 'spend');
-const CALM_SPOT = '"type":"%T","area":"neighborhood","why":"one sentence on why this group would like it","price":"$|$$|$$$|$$$$","cover":"entry price per person, e.g. Free or $15","bestNight":"best time, e.g. Sat morning","tip":"one practical insider tip","lat":0,"lng":0';
+const CALM_SPOT = '"type":"%T","area":"neighborhood","why":"one sentence on why this group would like it","price":"$|$$|$$$|$$$$","cover":"entry price per person, e.g. Free or $15","bestNight":"best time, e.g. Sat morning","tip":"one practical insider tip"';
 // adding a calm pick to the itinerary: cafés in the morning, meals at dinner time, a bar or lounge as a relaxed
 // evening, everything else as a daytime activity; never as nightlife
 const calmAdd = s => { const t = s.type || ''; return /cafe/.test(t) ? { time: '09:30', kind: 'food' } : /restaurant|food/.test(t) ? { time: '18:30', kind: 'food' } : /bar|lounge/.test(t) ? { time: '20:00', kind: 'chill' } : { time: '10:00', kind: 'activity' }; };
@@ -226,7 +226,7 @@ function sections() {
     { k: 'home', label: 'Home', tabs: [['overview', 'Overview'], ['crew', 'Crew'], ['tasks', 'To-dos'], ['log', 'Changes'], ['settings', 'Settings']] },
     { k: 'plan', label: 'Plan', tabs: [['match', isSmall() ? 'Plan Match' : 'Trip Match'], ['dates', isSmall() ? 'When' : 'Dates'], ['whatif', 'What if'], ['spots', isSmall() ? 'Spots' : (mode().nightlife || 'Nightlife')], ['plan', isSmall() ? 'The plan' : 'Itinerary']] },
     { k: 'book', label: 'Book', tabs: [['flights', 'Flights'], ['stays', 'Stays'], ['tickets', 'Boarding passes'], ['pack', 'Packing']] },
-    { k: 'live', label: 'Live', tabs: [['live', 'Today'], ['map', 'Map'], ['bucket', 'Bucket list'], ['hype', 'Hype']] },
+    { k: 'live', label: 'Live', tabs: [['live', 'Today'], ['bucket', 'Bucket list'], ['hype', 'Hype']] },
     { k: 'money', label: 'Money', tabs: [['cost', 'All-in cost'], ['meter', 'My spend'], ['pot', 'Group pot'], ['money', 'Expenses']] },
     { k: 'memories', label: 'Memories', tabs: [['wrapped', isSmall() ? 'Recap' : 'Wrapped'], ['recap', 'Photos'], ['awards', 'Awards']] },
   ].map(s => ({ ...s, tabs: s.tabs.filter(([k]) => tabOn(k)) })).filter(s => s.tabs.length);
@@ -234,7 +234,7 @@ function sections() {
 const TAB_ALIAS = { deals: 'flights', where: 'match' };
 const secOf = tab => sections().find(s => s.tabs.some(t => t[0] === tab)) || sections()[0];
 const TABFN = () => ({ log: logTab, overview: overviewTab, crew: crewTab, tasks: tasksTab, cost: costTab, whatif: whatifTab, settings: settingsTab, match: matchTab, dates: datesTab, where: whereTab, spots: spotsTab, plan: planTab,
-  flights: flightsTab, stays: staysTab, tickets: ticketsTab, pack: packTab, live: liveTab, map: mapTab, bucket: bucketSection, hype: hypeTab,
+  flights: flightsTab, stays: staysTab, tickets: ticketsTab, pack: packTab, live: liveTab, bucket: bucketSection, hype: hypeTab,
   meter: meterTab, pot: potTab, money: moneyTab, wrapped: wrappedTab, recap: photosTab, awards: awardsTab });
 function tripView() {
   if (S.membersIn && accessState() !== 'ok') return blockedView(accessState());
@@ -255,7 +255,7 @@ function tripView() {
   ${journeyPill()}
   ${sec.tabs.length > 1 && !inviteOnly ? `<nav class="subtabs" aria-label="${esc(sec.label)}">${sec.tabs.map(([k, l]) => `<button class="subtab ${S.tab === k ? 'on' : ''}" data-tab="${k}" aria-current="${S.tab === k}">${esc(l)}${crumbTab === k ? '<i class="crumb" aria-hidden="true"></i>' : ''}${k === 'log' && !S.demo && logList().some(x => needsMe(x)) ? ` <span class="count">${logList().filter(x => needsMe(x)).length}</span>` : ''}</button>`).join('')}</nav>` : ''}
   ${fns[S.tab]()}
-  ${isLive() && !S.lostOpen && !['live', 'map', 'overview'].includes(S.tab) ? '<button class="fab-lost" data-act="lostOpen" aria-label="I’m lost: send the crew my spot">SOS</button>' : ''}
+  ${isLive() && !S.lostOpen && !['live', 'overview'].includes(S.tab) ? '<button class="fab-lost" data-act="lostOpen" aria-label="I’m lost: send the crew my spot">SOS</button>' : ''}
   ${S.lostOpen ? lostSheet() : ''}
   ${inviteOnly ? '' : `<nav class="bottomnav" aria-label="Trip sections"><div class="bn-inner" style="grid-template-columns:repeat(${sections().length},1fr)">${sections().map(s => `<button class="bn ${s.k === sec.k ? 'on' : ''}" data-sec="${s.k}" aria-current="${s.k === sec.k}">${icon(s.k)}${crumbTab && secOf(crumbTab).k === s.k && s.k !== sec.k ? '<i class="crumb" aria-hidden="true"></i>' : ''}<span>${s.label}${s.k === 'live' && isLive() ? ' ●' : ''}</span></button>`).join('')}</div></nav>`}`;
 }

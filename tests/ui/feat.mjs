@@ -30,7 +30,7 @@ await step('P3 flexible dates', async () => {
   console.log('P3 Ali star on', d1, ':', await a.locator('.cal .day.pref').count());
   await go(k, 'plan', 'dates'); await k.click('[data-act=allDays]'); await k.waitForTimeout(300);
   await go(j, 'plan', 'dates'); const days = await j.locator('.cal .day').evaluateAll(els => els.map(e => e.dataset.day));
-  for (const d of days.slice(1)) { await j.locator(`.cal .day[data-day="${d}"]`).dispatchEvent('click'); await j.waitForTimeout(20); }
+  for (const d of [days[1], days[days.length - 1]]) { await j.locator(`.cal .day[data-day="${d}"]`).dispatchEvent('click'); await j.waitForTimeout(20); }
   await j.locator('[data-flex=late]').dispatchEvent('click'); await j.waitForTimeout(800); await a.waitForTimeout(800);
   console.log('P3 best (Ali):', (await txt(a, '.grid2 > .card:nth-child(2)')).slice(0, 300));
 });

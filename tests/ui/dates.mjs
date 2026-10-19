@@ -108,7 +108,7 @@ expect('home screen: a plan with odd stored values is listed', !(await broken())
 await p.goto(BASE + '/#' + t3); await settle(p); await p.waitForTimeout(600);
 { const sk = p.locator('[data-act=setupLater]'); if (await sk.count()) { await sk.click(); await settle(p); } }
 const tabs3 = [];
-for (const [sec, tab] of [['home', 'overview'], ['home', 'crew'], ['home', 'tasks'], ['plan', 'dates'], ['plan', 'whatif'], ['plan', 'plan'], ['book', 'flights'], ['book', 'stays'], ['live', 'live'], ['live', 'map'], ['money', 'cost'], ['memories', 'wrapped']]) {
+for (const [sec, tab] of [['home', 'overview'], ['home', 'crew'], ['home', 'tasks'], ['plan', 'dates'], ['plan', 'whatif'], ['plan', 'plan'], ['book', 'flights'], ['book', 'stays'], ['live', 'live'], ['money', 'cost'], ['memories', 'wrapped']]) {
   await p.locator(`.bottomnav [data-sec=${sec}]`).click(); await settle(p);
   await p.locator(`.subtab[data-tab=${tab}]`).click().catch(() => {}); await settle(p);
   tabs3.push(tab + (await broken() ? ' ✗' : ''));

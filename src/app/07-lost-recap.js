@@ -1,4 +1,5 @@
 /* ---------- I'm lost ---------- */
+function lostAt() { return active().filter(m => m.lost && !m.lost.found && Date.now() - m.lost.at < 6 * 36e5); }
 function lostBanner() {
   const ls = lostAt(); if (!ls.length) return '';
   return ls.map(m => `<div class="lost-banner" role="alert"><div style="min-width:0"><b>${m.id === S.uid ? 'You sent an SOS' : esc(m.nick || 'Someone') + ' is lost'}</b><div class="small">Near ${esc(m.lost.where)} · ${ago(m.lost.at)}</div></div>
@@ -19,7 +20,7 @@ function sendLost(where) {
   S.lostOpen = false;
   const me = meDoc();
   saveMe({ lost: { where, at: Date.now() }, checkin: { text: 'Lost near ' + where, at: Date.now() }, checkins: [...(me?.checkins || []), { text: 'Lost near ' + where, at: Date.now() }].slice(-40) }, true);
-  postFeed(`SOS: ${me?.nick || 'Someone'} is lost near ${where}. Check the map.`);
+  postFeed(`SOS: ${me?.nick || 'Someone'} is lost near ${where}.`);
   flash('SOS sent. The crew can see where you are.');
 }
 function foundLost(uid) {

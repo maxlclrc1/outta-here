@@ -7,20 +7,75 @@ const showWelcome = () => S.membersIn && !S.demo && !S.readOnly && (!meDoc() || 
 // the dates are open (home, budget and the vibe can come later, from their details)
 const setupSteps = () => S.setup?.joined ? (S.trip.lockedDates ? [] : ['days']) : ['days', ...(isSmall() ? [] : ['home']), ...(hasBudget(S.uid) ? ['budget'] : []), ...(['family', 'work'].includes(planGroup()) ? [] : ['vibe'])];
 const BUDGETS = { hangout: [30, 60, 100], day: [50, 100, 200], weekend: [250, 450, 700], trip: [600, 1000, 1600] };
+/* ---------- free days as date ranges ----------
+   You pick a range by tapping its first day, then its last (in either order; the same day twice is one
+   day), and every day in between counts, inclusive. Up to four ranges per person. They're kept the way
+   free days always were, as a list of dates, so the group's best dates and everything else that reads
+   free days use every range, and older plans load as they are. Ranges that overlap or touch become one
+   range, so no free day is ever dropped. */
+const RANGE_MAX = 4;
+const rangesOf = days => { const out = []; for (const d of [...new Set(days || [])].sort()) { const r = out[out.length - 1]; if (r && add(r.end, 1) === d) r.end = d; else out.push({ start: d, end: d }); } return out; };
+const dayRangeText = r => r.start === r.end ? fmt(r.start) : `${short(r.start)} – ${short(r.end)}`;
+// the classes a calendar day gets for your ranges and the range you're picking right now
+function rangeCls(d, ranges) {
+  const r = ranges.find(x => x.start <= d && d <= x.end), p = S.rPick, ed = p?.edit;
+  return [r && (r.start === d && r.end === d ? 'r-one' : r.start === d ? 'r-start' : r.end === d ? 'r-end' : 'r-mid'), ed && ed.start <= d && d <= ed.end && 'r-editing', p?.start === d && 'r-pick'].filter(Boolean).join(' ');
+}
+// save a list of free days, unless it would make more than four ranges
+function setDays(next, okMsg) {
+  const m = meDoc(), before = rangesOf(m?.days).length, after = rangesOf(next);
+  if (after.length > RANGE_MAX && after.length > before) { S.rPick = null; render(); flash(`You can add up to ${RANGE_MAX} date ranges. Change or remove one first.`); return false; }
+  const days = [...new Set(next)].sort(), keep = new Set(days);
+  S.rPick = null; saveMe({ days, pref: (m?.pref || []).filter(x => keep.has(x)) }, true);
+  if (okMsg) flash(okMsg);
+  return true;
+}
+function pickDay(d) {
+  const m = meDoc(), days = new Set(m?.days || []);
+  if (S.starMode) {
+    if (!days.has(d)) return flash('Add it to one of your date ranges first, then star it.');
+    const pref = new Set(m?.pref || []); if (pref.has(d)) pref.delete(d); else pref.add(d);
+    return saveMe({ pref: [...pref].sort() });
+  }
+  const p = S.rPick || {};
+  if (!p.start) { S.rPick = { ...p, start: d }; return render(); }
+  const [a, z] = p.start <= d ? [p.start, d] : [d, p.start], gone = new Set(p.edit ? span(p.edit.start, p.edit.end) : []);
+  const r = { start: a, end: z };
+  return setDays([...[...days].filter(x => !gone.has(x)), ...span(a, z)], `${p.edit ? 'Changed to' : 'Added'} ${dayRangeText(r)}${a === z ? '' : `, ${span(a, z).length} days`}. The crew can see it.`);
+}
+// what to do next in the picker, said in one line
+function rangeHint() {
+  const p = S.rPick, n = rangesOf(meDoc()?.days).length;
+  if (S.starMode) return 'Tap your favorite days ★ inside your ranges. Tap again to unstar.';
+  if (p?.start) return `Starts ${fmt(p.start)}. Now tap the last day you could do (tap it again for just that day).`;
+  if (p?.edit) return `Changing ${dayRangeText(p.edit)}: tap the new first day.`;
+  return n ? `Tap the first day of another range, then its last. Up to ${RANGE_MAX} ranges.` : `Tap the first day you could do, then the last. Every day in between counts.`;
+}
+// your ranges, each one editable and removable, and the way to add another
+function rangeList() {
+  const rs = rangesOf(meDoc()?.days), p = S.rPick, busy = p && (p.start || p.edit);
+  if (!rs.length && !busy) return '';
+  return `<div class="ranges" data-key="ranges" aria-live="polite"><span class="label">Your date ranges · ${rs.length} of ${RANGE_MAX}</span>
+    ${rs.map(r => { const on = p?.edit && p.edit.start === r.start && p.edit.end === r.end;
+      return `<div class="rng ${on ? 'on' : ''}" data-key="rng-${r.start}"><b>${dayRangeText(r)}</b><span class="small muted">${span(r.start, r.end).length === 1 ? '1 day' : span(r.start, r.end).length + ' days'}</span>
+        ${S.readOnly ? '' : `<button class="btn sm ghost" data-editrange="${r.start}|${r.end}" aria-label="Change ${dayRangeText(r)}">${on ? 'Changing…' : 'Edit'}</button><button class="btn sm ghost rng-x" data-rmrange="${r.start}|${r.end}" aria-label="Remove ${dayRangeText(r)}">✕</button>`}</div>`; }).join('')}
+    ${S.readOnly ? '' : busy ? '<button class="linkbtn small" data-act="rangeCancel">Cancel</button>' : rs.length < RANGE_MAX ? '<button class="btn sm chunky r-add" data-act="rangeAdd">+ Add another date range</button>' : `<span class="small muted">That’s the most: ${RANGE_MAX} ranges. Edit or remove one to change it.</span>`}
+  </div>`;
+}
 function dayPicker() {
-  const t = S.trip, days = span(t.winStart, t.winEnd), mine = new Set(meDoc()?.days || []), pref = new Set(meDoc()?.pref || []);
+  const t = S.trip, days = span(t.winStart, t.winEnd), mine = new Set(meDoc()?.days || []), pref = new Set(meDoc()?.pref || []), rs = rangesOf(meDoc()?.days);
   const pad = d => '<span></span>'.repeat((D(d).getUTCDay() + 6) % 7);
-  const cells = days.map((d, i) => `${i === 0 ? pad(d) : D(d).getUTCDate() === 1 ? `<span class="cal-month">${monthName(d)}</span>${pad(d)}` : ''}<button class="day ${mine.has(d) ? 'mine' : ''} ${pref.has(d) ? 'pref' : ''} ${d === TODAY ? 'is-today' : ''}" data-day="${d}" aria-pressed="${mine.has(d)}" aria-label="${fmt(d)}${pref.has(d) ? ', best for you' : mine.has(d) ? ', works' : ''}">${D(d).getUTCDate()}${pref.has(d) ? '<i class="star" aria-hidden="true">★</i>' : ''}</button>`);
+  const cells = days.map((d, i) => `${i === 0 ? pad(d) : D(d).getUTCDate() === 1 ? `<span class="cal-month">${monthName(d)}</span>${pad(d)}` : ''}<button class="day ${mine.has(d) ? 'mine' : ''} ${rangeCls(d, rs)} ${pref.has(d) ? 'pref' : ''} ${d === TODAY ? 'is-today' : ''}" data-day="${d}" aria-pressed="${mine.has(d)}" aria-label="${fmt(d)}${pref.has(d) ? ', best for you' : mine.has(d) ? ', works' : ''}">${D(d).getUTCDate()}${pref.has(d) ? '<i class="star" aria-hidden="true">★</i>' : ''}</button>`);
   return `<div class="cal">${days.length ? `<span class="cal-month first">${monthName(days[0])}</span>` : ''}${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(x => `<span class="dow">${x}</span>`).join('')}${cells.join('')}</div>`;
 }
 function setupView() {
   const steps = setupSteps(), i = Math.min(S.setup.step, steps.length - 1), k = steps[i], m = meDoc(), last = i === steps.length - 1;
-  const nDays = (m.days || []).length, mq = m.quiz || {};
+  const mq = m.quiz || {};
   const step = {
     days: { h: isSmall() ? 'Which days work for you?' : 'When are you free?',
-      p: S.starMode ? 'Tap your favorite days ★. Tap again to unstar.' : `Tap every ${isSmall() ? 'day' : 'day you could be away'} between ${short(S.trip.winStart)} and ${short(S.trip.winEnd)}. Tap again to take one off.`,
-      c: `<div class="row" style="gap:6px"><button class="btn sm" data-act="allDays">All of them</button><button class="btn sm" data-act="weekends">Fri–Sun</button><button class="btn sm ${S.starMode ? 'on' : ''}" data-act="starMode" aria-pressed="${!!S.starMode}">★ Favorites</button><button class="btn sm ghost" data-act="noDays">Clear</button></div>
-        ${dayPicker()}<span class="small muted">${nDays ? `${nDays} day${nDays === 1 ? '' : 's'} picked` : 'Nothing picked yet'}</span>` },
+      p: `${rangeHint()} Anything from ${short(S.trip.winStart)} to ${short(S.trip.winEnd)}.`,
+      c: `<div class="row" style="gap:6px"><button class="btn sm" data-act="allDays">All of them</button><button class="btn sm ${S.starMode ? 'on' : ''}" data-act="starMode" aria-pressed="${!!S.starMode}">★ Favorites</button><button class="btn sm ghost" data-act="noDays">Clear</button></div>
+        ${dayPicker()}${rangeList() || '<span class="small muted">Nothing picked yet</span>'}` },
     home: { h: size() === 'trip' ? 'Where are you flying from?' : 'Where are you coming from?',
       p: size() === 'trip' ? 'Your home airport or city. It’s used for flight prices and to pitch places that are easy for everyone to reach.' : 'Your city or neighborhood, so pitches stay within reach for everyone.',
       c: `<input id="me-home" aria-label="${size() === 'trip' ? 'Home airport or city' : 'Your city or neighborhood'}" class="big-input" maxlength="40" value="${esc(m.home || '')}" placeholder="${size() === 'trip' ? 'JFK or New York' : 'Brooklyn'}" autocomplete="address-level2" enterkeyhint="next">` },

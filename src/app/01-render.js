@@ -208,19 +208,19 @@ function datesTab() {
   const d = S.trip.lockedDates, ms = active(), can = ms.filter(m => fitOf(m, span(d.start, d.end))), quiet = ms.filter(m => !(m.days || []).length), f = journey().focus;
   // the dates are done: say so plainly, and point at the next thing the plan needs instead of asking for days again
   return `<section class="card stack decided-sum"><div class="row" style="justify-content:space-between"><span class="on-pill">Decided</span>${S.readOnly ? '' : '<button class="btn sm ghost" data-act="unlockDates">Change it</button>'}</div>
-    <h2>${dayRange(d.start, d.end)}</h2><span class="small muted">${can.length === ms.length ? 'Everyone can make it.' : `${can.length} of ${ms.length} marked these days as free${quiet.length ? ` · ${esc(listNames(quiet))} never shared their days` : ''}.`}</span>
+    <h2>${dayRange(d.start, d.end)}</h2><span class="small muted">${can.length === ms.length ? 'Everyone marked these days as free.' : `${can.length} of ${ms.length} marked these days as free${quiet.length ? ` · ${esc(listNames(quiet))} never shared their days` : ''}.`}${(n => ` ${n} of ${ms.length} confirmed they’re coming.`)(ms.filter(m => ['confirmed', 'booked'].includes(m.status)).length)}</span>
     ${f && f.k !== 'dates' && !S.readOnly ? `<div><button class="btn sm chunky primary" data-jgo="${f.k}">Next: ${esc(f.mine && f.mineText ? f.mineText : f.title)}</button></div>` : ''}</section>
   <details class="card more-opts"><summary>See everyone’s days and other options</summary><div class="stack" style="margin-top:12px">${datesBody()}</div></details>`;
 }
 function datesBody() {
   const t = S.trip, days = span(t.winStart, t.winEnd), ms = active(), mine = new Set(meDoc()?.days || []), myPref = new Set(meDoc()?.pref || []), flex = meDoc()?.flex || {};
-  const best = bestWindows(), bestSet = new Set(best[0] ? span(best[0].start, best[0].end) : []);
+  const best = bestWindows(), bestSet = new Set(best[0] ? span(best[0].start, best[0].end) : []), rs = rangesOf(meDoc()?.days);
   const max = Math.max(1, ms.length);
   const cells = days.map((d, i) => {
     const head = i === 0 ? '<span></span>'.repeat((D(d).getUTCDay() + 6) % 7) : D(d).getUTCDate() === 1 ? `<span class="cal-month">${monthName(d)}</span>${'<span></span>'.repeat((D(d).getUTCDay() + 6) % 7)}` : '';
     const n = ms.filter(m => (m.days || []).includes(d)).length, np = ms.filter(m => (m.pref || []).includes(d)).length, others = n - (mine.has(d) ? 1 : 0);
     // your days are solid; everyone else's show as dots, so your own answer is what stands out
-    return `${head}<button class="day ${mine.has(d) ? 'mine' : ''} ${myPref.has(d) ? 'pref' : ''} ${bestSet.has(d) ? 'best' : ''}" data-day="${d}" aria-pressed="${mine.has(d)}" title="${fmt(d)} · ${n} free${np ? ` · ${np} prefer it` : ''}" aria-label="${fmt(d)}${mine.has(d) ? ', you’re free' : ''}${myPref.has(d) ? ', a favorite' : ''}${others ? `, ${others} more free` : ''}">${D(d).getUTCDate()}<small class="dots" aria-hidden="true">${others ? '•'.repeat(Math.min(others, 4)) + (others > 4 ? '+' : '') : ''}</small>${myPref.has(d) ? '<i class="star" aria-hidden="true">★</i>' : ''}</button>`;
+    return `${head}<button class="day ${mine.has(d) ? 'mine' : ''} ${rangeCls(d, rs)} ${myPref.has(d) ? 'pref' : ''} ${bestSet.has(d) ? 'best' : ''}" data-day="${d}" aria-pressed="${mine.has(d)}" title="${fmt(d)} · ${n} free${np ? ` · ${np} prefer it` : ''}" aria-label="${fmt(d)}${mine.has(d) ? ', you’re free' : ''}${myPref.has(d) ? ', a favorite' : ''}${others ? `, ${others} more free` : ''}">${D(d).getUTCDate()}<small class="dots" aria-hidden="true">${others ? '•'.repeat(Math.min(others, 4)) + (others > 4 ? '+' : '') : ''}</small>${myPref.has(d) ? '<i class="star" aria-hidden="true">★</i>' : ''}</button>`;
   });
   // a window the others can already do and you haven't answered for: one tap says it works for you
   const ask = !S.readOnly && meDoc() && best.find(w => w.miss.some(m => m.id === S.uid) && w.ok.length && span(w.start, w.end).some(d => !mine.has(d)));
@@ -228,13 +228,14 @@ function datesBody() {
   const answered = ms.filter(m => (m.days || []).length), quiet = ms.filter(m => !(m.days || []).length);
   return `<section class="grid2 ${mine.size ? 'answered' : ''}">
     <div class="card stack avail">
-      <div class="stack" style="gap:2px"><h2>${isSmall() ? 'Which days work for you?' : 'When are you free?'}</h2><span class="small muted">${S.starMode ? 'Tap your favorite days ★. Tap again to unstar.' : 'Tap the days you could do. Tap again to take one off.'}</span></div>
+      <div class="stack" style="gap:2px"><h2>${isSmall() ? 'Which days work for you?' : 'When are you free?'}</h2><span class="small muted r-hint" aria-live="polite">${esc(rangeHint())}</span></div>
       ${ask ? `<div class="avail-ask"><span class="avail-ask-t">🙌 <b>${esc(listNames(ask.ok))}</b> ${ask.ok.length === 1 ? 'can' : 'can'} do <b>${ask.start === ask.end ? fmt(ask.start) : dayRange(ask.start, ask.end)}</b>. Can you?</span>
         <div class="row" style="gap:8px"><button class="btn primary chunky" data-addwin="${ask.start}|${ask.end}">Works for me</button><span class="small muted">or tap your days below</span></div></div>` : ''}
-      <div class="row avail-quick" style="gap:6px"><button class="btn sm chunky" data-act="allDays">All of them</button><button class="btn sm chunky" data-act="weekends">Fri–Sun</button><button class="btn sm chunky ${S.starMode ? 'on' : ''}" data-act="starMode" aria-pressed="${!!S.starMode}">★ Favorites</button>${mine.size ? '<button class="btn sm ghost" data-act="noDays">Clear</button>' : ''}</div>
+      <div class="row avail-quick" style="gap:6px"><button class="btn sm chunky" data-act="allDays">All of them</button><button class="btn sm chunky ${S.starMode ? 'on' : ''}" data-act="starMode" aria-pressed="${!!S.starMode}">★ Favorites</button>${mine.size ? '<button class="btn sm ghost" data-act="noDays">Clear</button>' : ''}</div>
       <div class="cal">${days.length ? `<span class="cal-month first">${monthName(days[0])}</span>` : ''}${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x => `<span class="dow">${x}</span>`).join('')}${cells.join('')}</div>
-      <div class="legend"><span><i class="sw" style="background:var(--accent)"></i>Your days</span><span><b class="dots-k">•••</b> Friends free</span><span>★ Favorite</span><span><i class="sw" style="box-shadow:inset 0 -3px 0 var(--gold)"></i>${isSmall() ? 'Best day' : 'Best window'}</span></div>
-      <div class="avail-done ${mine.size ? 'on' : ''}" aria-live="polite">${mine.size ? `<span class="avail-n" data-key="avail-n-${mine.size}">✓ <b>${mine.size}</b> ${mine.size === 1 ? 'day' : 'days'} saved</span><span class="small muted">The crew sees them right away.</span><button class="btn sm chunky" data-tab="overview">Back to the plan</button>` : `<span class="small muted">Nothing picked yet. Your days save as you tap.</span>`}</div>
+      <div class="legend"><span><i class="sw" style="background:var(--accent)"></i>Your ranges</span><span><b class="dots-k">•••</b> Friends free</span><span>★ Favorite</span><span><i class="sw" style="box-shadow:inset 0 -3px 0 var(--gold)"></i>${isSmall() ? 'Best day' : 'Best window'}</span></div>
+      ${rangeList()}
+      <div class="avail-done ${mine.size ? 'on' : ''}" aria-live="polite">${mine.size ? `<span class="avail-n" data-key="avail-n-${mine.size}">✓ <b>${mine.size}</b> ${mine.size === 1 ? 'day' : 'days'} saved</span><span class="small muted">The crew sees them right away.</span><button class="btn sm chunky" data-tab="overview">Back to the plan</button>` : `<span class="small muted">Nothing picked yet. Each range saves when you tap its last day.</span>`}</div>
       <details class="dates-more" data-key="dates-more" ${settingsOpen ? 'open' : ''}><summary class="small">${isSmall() ? 'Flexibility and the days that could work' : 'Flexibility, trip window and length'}</summary><div class="stack" style="gap:12px;margin-top:10px">
       ${isSmall() ? '' : `<div class="stack" style="gap:6px"><span class="label">How flexible are you?</span>
         <div class="row" style="gap:6px"><button class="chip ${flex.late ? 'on' : ''}" data-flex="late" aria-pressed="${!!flex.late}">I can arrive a day late</button><button class="chip ${flex.early ? 'on' : ''}" data-flex="early" aria-pressed="${!!flex.early}">I can leave a day early</button></div>
@@ -255,12 +256,12 @@ function datesBody() {
       ${S.demo ? '' : ruleLine()}
       ${t.lockedDates ? `<div class="banner"><span><b>Locked:</b> ${dayRange(t.lockedDates.start, t.lockedDates.end)}</span><button class="btn sm" data-act="unlockDates">Unlock</button></div>` : ''}
       ${best.length ? best.map((w, i) => `<div class="stack bw ${i === 0 ? 'bw-top' : ''} ${w.ok.length === ms.length ? 'bw-all' : ''}" style="gap:6px">
-        <div class="row" style="justify-content:space-between"><b class="mono">${dayRange(w.start, w.end)}</b><span class="small bw-n"><b>${w.ok.length}/${ms.length}</b> can go</span></div>
+        <div class="row" style="justify-content:space-between"><b class="mono">${dayRange(w.start, w.end)}</b><span class="small bw-n"><b>${w.ok.length}/${ms.length}</b> are free</span></div>
         <div class="bar"><i style="width:${Math.round(w.ok.length / max * 100)}%"></i></div>
         <div class="bw-crew">${avStack([...w.ok, ...w.miss.map(m => (m.days || []).length ? { ...m, faded: true } : { ...m, wait: true })], 8)}</div>
         ${(() => { const cant = w.miss.filter(m => (m.days || []).length), wait = w.miss.filter(m => !(m.days || []).length);
-          return !w.miss.length ? '<span class="small" style="color:var(--good)">Everyone can make it</span>'
-            : [cant.length ? `<span class="small muted">Can’t make it: ${esc(listNames(cant))}</span>` : `<span class="small" style="color:var(--good)">Everyone who answered can make it</span>`, wait.length ? `<span class="small muted bw-wait">Waiting on ${esc(listNames(wait))}</span>` : ''].join(''); })()}
+          return !w.miss.length ? '<span class="small" style="color:var(--good)">Everyone’s free then</span>'
+            : [cant.length ? `<span class="small muted">Can’t make it: ${esc(listNames(cant))}</span>` : `<span class="small" style="color:var(--good)">Everyone who answered is free then</span>`, wait.length ? `<span class="small muted bw-wait">Waiting on ${esc(listNames(wait))}</span>` : ''].join(''); })()}
         ${w.late.length || w.early.length || w.pref.length ? `<span class="small muted">${[w.late.length && `${esc(listNames(w.late))} ${w.late.length === 1 ? 'arrives' : 'arrive'} a day late`, w.early.length && `${esc(listNames(w.early))} ${w.early.length === 1 ? 'leaves' : 'leave'} a day early`, w.pref.length && `★ ${w.pref.length === ms.length ? 'everyone prefers' : w.pref.length + ' prefer'} ${isSmall() ? 'this day' : 'these dates'}`].filter(Boolean).join(' · ')}</span>` : ''}
         ${t.lockedDates && t.lockedDates.start === w.start && t.lockedDates.end === w.end ? '' : ruleChip('dates', w.start + '|' + w.end)}
         <div>${t.lockedDates && t.lockedDates.start === w.start && t.lockedDates.end === w.end ? '<span class="pill in">Locked</span>' : `<button class="btn sm chunky ${i === 0 && !t.lockedDates ? 'primary' : ''}" data-lockdates="${w.start}|${w.end}">${t.lockedDates ? 'Switch to these' : isSmall() ? 'Lock this day' : 'Lock these dates'}</button>`}</div>
@@ -369,7 +370,7 @@ function spotsTab() {
       <p class="small">${esc(s.why)}</p>
       <div class="meta">${s.cover ? `<span>${pk.spots ? 'Entry' : 'Cover'} <b>${esc(s.cover)}</b></span>` : ''}${s.bestNight ? `<span>Best <b>${esc(s.bestNight)}</b></span>` : ''}${s.dress ? `<span>Dress <b>${esc(s.dress)}</b></span>` : ''}</div>
       ${s.tip ? `<p class="small muted">Tip: ${esc(s.tip)}</p>` : ''}
-      <div class="row" style="gap:6px;margin-top:auto">${voteBtns(rkey('sp' + s.name))}<a class="btn sm" href="${maps(s.name, ds.city)}" target="_blank" rel="noopener">Map</a>${d ? `<button class="btn sm" data-addspot="${i}">Add to itinerary</button>` : ''}</div>
+      <div class="row" style="gap:6px;margin-top:auto">${voteBtns(rkey('sp' + s.name))}<a class="btn sm" href="${maps(s.name, ds.city)}" target="_blank" rel="noopener">Open in Maps</a>${d ? `<button class="btn sm" data-addspot="${i}">Add to itinerary</button>` : ''}</div>
     </article>`).join('')}</section>
     <p class="small muted">AI picks. Check hours, covers and age rules before you go.</p>`
   : `<div class="empty"><span>${isSmall() ? 'Take the vibe quiz, then let AI pull spots that fit your crew, budget and the day.' : pk.spots ? pk.spots.empty : 'Take the vibe quiz, then let AI pull clubs, bars, rooftops and a late-night food spot that fit your crew, budget and the nights you’re there.'}</span></div>`}`;

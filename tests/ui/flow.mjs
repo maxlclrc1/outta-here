@@ -15,8 +15,8 @@ await bp.locator('[data-join=in]').click({ timeout: 2500 }).catch(() => {}); awa
 // budgets + homes
 await go(a,'home','crew'); await a.fill('#me-home','JFK'); await a.fill('#me-budget','900'); await a.locator('#me-budget').blur(); await a.fill('#me-venmo','ali-v'); await a.locator('#me-venmo').blur();
 await go(bp,'home','crew'); await bp.fill('#me-home','LAX'); await bp.fill('#me-budget','700'); await bp.locator('#me-budget').blur();
-// dates: both pick weekends
-await go(a,'plan','dates'); await a.click('[data-act=allDays]'); await go(bp,'plan','dates'); await bp.click('[data-act=weekends]'); await bp.locator('.day').nth(6).click();
+// dates: one picks every day, the other a range
+await go(a,'plan','dates'); await a.click('[data-act=allDays]'); await go(bp,'plan','dates'); await bp.locator('.day').nth(4).click(); await bp.locator('.day').nth(6).click();
 await a.waitForTimeout(1500);
 log('best windows A:', await a.locator('[data-lockdates]').count(), await a.locator('.card .mono').first().innerText().catch(()=>'-'));
 await a.locator('[data-lockdates]').first().click();

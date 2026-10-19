@@ -1,6 +1,6 @@
 // Browser regression test, run with: npm run test:ui (needs Playwright, see README › Tests)
 // Adding free days takes a tap, not a form. When someone else can already do a window you haven't
-// answered for, one "Works for me" adds those days. A tap marks a day free and another takes it off
+// answered for, one "Works for me" adds those days. Days are picked as ranges (see date-ranges.mjs)
 // (★ Favorites mode stars days instead, keeping the saved `pref` list). Your days are solid, friends'
 // show as dots. A saved count and "Back to the plan" confirm it; the trip window and flexibility settings
 // are folded away (open when the window needs fixing). Days already saved, stars included, are kept.
@@ -33,10 +33,10 @@ await p.click('[data-addwin]'); await settle(p); await p.waitForTimeout(500);
 { const m = await mine(); expect('“Works for me” saves those three days, keeping the old ones', wk.every(d => m.days.includes(d)) && m.days.includes('2026-11-05') && m.pref.includes('2026-11-05'), m.days.join()); }
 expect('…the offer goes away and the window works for everyone', !(await p.locator('.avail-ask').count()) && /2\/2/.test(await p.locator('.bw').first().innerText()));
 expect('…and a saved count confirms it', /4 days saved/.test(await p.locator('.avail-done').innerText()));
-await day('2026-11-10').click(); await p.waitForTimeout(1300);
-expect('a tap marks a day free', (await mine()).days.includes('2026-11-10') && /5 days saved/.test(await p.locator('.avail-done').innerText()));
-await day('2026-11-10').click(); await p.waitForTimeout(1300);
-{ const m = await mine(); expect('a second tap takes it off (no hidden ★ step)', !m.days.includes('2026-11-10') && !(m.pref || []).includes('2026-11-10')); }
+await day('2026-11-10').click(); await day('2026-11-10').click(); await p.waitForTimeout(1300);
+expect('tapping a day as both start and end marks just that day free', (await mine()).days.includes('2026-11-10') && /5 days saved/.test(await p.locator('.avail-done').innerText()));
+await p.click('[data-rmrange="2026-11-10|2026-11-10"]'); await p.waitForTimeout(1300);
+{ const m = await mine(); expect('removing that range takes it off (no hidden ★ step)', !m.days.includes('2026-11-10') && !(m.pref || []).includes('2026-11-10')); }
 await p.click('[data-act=starMode]'); await settle(p);
 expect('★ Favorites switches what a tap does', (await p.locator('[data-act=starMode][aria-pressed=true]').count()) === 1 && /favorite days/.test(await p.locator('.avail').innerText()));
 await day('2026-11-21').click(); await p.waitForTimeout(1300);

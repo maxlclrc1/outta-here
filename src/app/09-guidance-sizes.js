@@ -83,10 +83,10 @@ const HIDE_TABS = { hangout: ['flights', 'stays', 'tickets', 'pack', 'bucket', '
 // small or away). Hiding is display only: nothing is deleted, and a feature a plan already uses (it has
 // to-dos, bucket items, pot entries or award votes) stays visible, so older plans keep everything they had.
 const GROUP_HIDE = {
-  friends: { small: ['tasks', 'map', 'bucket'], away: [] },
-  celebration: { small: ['map', 'bucket'], away: [] },
-  family: { small: ['tasks', 'map', 'bucket', 'awards'], away: ['pot', 'bucket', 'awards'] },
-  work: { small: ['map', 'bucket', 'awards', 'wrapped'], away: ['pot', 'bucket', 'awards', 'wrapped'] },
+  friends: { small: ['tasks', 'bucket'], away: [] },
+  celebration: { small: ['bucket'], away: [] },
+  family: { small: ['tasks', 'bucket', 'awards'], away: ['pot', 'bucket', 'awards'] },
+  work: { small: ['bucket', 'awards', 'wrapped'], away: ['pot', 'bucket', 'awards', 'wrapped'] },
 };
 const IN_USE = { tasks: () => taskList().length > 0, bucket: () => S.bucket.length > 0, pot: () => S.pot.length > 0, awards: () => Object.keys(S.trip.superVotes || {}).length > 0 };
 // the group pot is for splitting; a plan where one person or a company pays doesn't show it (unless it's in use)

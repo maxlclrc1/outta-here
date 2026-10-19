@@ -57,7 +57,7 @@ const S = {
   tid: null, trip: null, members: [], demo: false, tab: 'crew',
   busy: {}, unsub: [], meDirty: false, readOnly: false,
   expenses: [], packing: [], downloads: null,
-  cardUrl: null, cardBlob: null, feed: [], bucket: [], photos: [], crews: [], pot: [], mySpend: [], creating: null, newMode: null, lostOpen: false, pinSel: null, hangPlan: null, wrapI: 0, secTab: {}, realId: null, img: null, show: null, newCrew: null, copyText: '', editDeposit: false, split: null,
+  cardUrl: null, cardBlob: null, feed: [], bucket: [], photos: [], crews: [], pot: [], mySpend: [], creating: null, newMode: null, lostOpen: false, rPick: null, hangPlan: null, wrapI: 0, secTab: {}, realId: null, img: null, show: null, newCrew: null, copyText: '', editDeposit: false, split: null,
 };
 const QUIZ = [
   { k: 'night', q: 'Perfect night out?', o: ['Big club', 'Bar hop', 'Rooftop cocktails', 'Dive bar', 'Low-key dinner'] },
@@ -437,13 +437,11 @@ function findSpots() {
 ${context()}
 
 ${isSmall() && sp.askSmall || sp.ask}
-Reply with only JSON: {"items":[{"name":"",${CALM_SPOT.replace('%T', sp.types)}}]}
-lat/lng: your best estimate of the place's coordinates.` : `You're a nightlife scout planning ${isSmall() ? 'a night out for a friend group' : 'a group trip'}. Recommend real, well-known venues that are open as of your latest knowledge.
+Reply with only JSON: {"items":[{"name":"",${CALM_SPOT.replace('%T', sp.types)}}]}` : `You're a nightlife scout planning ${isSmall() ? 'a night out for a friend group' : 'a group trip'}. Recommend real, well-known venues that are open as of your latest knowledge.
 ${context()}
 
 Give 9 picks that fit the trip type and vibe. For nightlife trips: mostly clubs and bars, plus at least one rooftop or lounge and one late-night food spot. For family or work trips: activities, good restaurants and relaxed evening spots instead of clubs. Favor places that work for a group this size (table or guestlist options for clubs). Match the night each place is best to the trip days.
-Reply with only JSON: {"items":[{"name":"","type":"club|bar|rooftop|lounge|live music|late-night food","area":"neighborhood","why":"one sentence on why this group would like it","price":"$|$$|$$$|$$$$","cover":"e.g. $20–40, Free, or Table min ~$500","bestNight":"e.g. Fri","dress":"short dress code","tip":"one practical insider tip","lat":0,"lng":0}]}
-lat/lng: your best estimate of the venue's coordinates.`;
+Reply with only JSON: {"items":[{"name":"","type":"club|bar|rooftop|lounge|live music|late-night food","area":"neighborhood","why":"one sentence on why this group would like it","price":"$|$$|$$$|$$$$","cover":"e.g. $20–40, Free, or Table min ~$500","bestNight":"e.g. Fri","dress":"short dress code","tip":"one practical insider tip"}]}`;
   askAI('spots', prompt, data => {
     const items = Array.isArray(data?.items) ? data.items.slice(0, 12) : [];
     if (!items.length) { flash('No picks came back. Try again.'); return; }
@@ -756,19 +754,19 @@ function datesTab() {
   const d = S.trip.lockedDates, ms = active(), can = ms.filter(m => fitOf(m, span(d.start, d.end))), quiet = ms.filter(m => !(m.days || []).length), f = journey().focus;
   // the dates are done: say so plainly, and point at the next thing the plan needs instead of asking for days again
   return `<section class="card stack decided-sum"><div class="row" style="justify-content:space-between"><span class="on-pill">Decided</span>${S.readOnly ? '' : '<button class="btn sm ghost" data-act="unlockDates">Change it</button>'}</div>
-    <h2>${dayRange(d.start, d.end)}</h2><span class="small muted">${can.length === ms.length ? 'Everyone can make it.' : `${can.length} of ${ms.length} marked these days as free${quiet.length ? ` · ${esc(listNames(quiet))} never shared their days` : ''}.`}</span>
+    <h2>${dayRange(d.start, d.end)}</h2><span class="small muted">${can.length === ms.length ? 'Everyone marked these days as free.' : `${can.length} of ${ms.length} marked these days as free${quiet.length ? ` · ${esc(listNames(quiet))} never shared their days` : ''}.`}${(n => ` ${n} of ${ms.length} confirmed they’re coming.`)(ms.filter(m => ['confirmed', 'booked'].includes(m.status)).length)}</span>
     ${f && f.k !== 'dates' && !S.readOnly ? `<div><button class="btn sm chunky primary" data-jgo="${f.k}">Next: ${esc(f.mine && f.mineText ? f.mineText : f.title)}</button></div>` : ''}</section>
   <details class="card more-opts"><summary>See everyone’s days and other options</summary><div class="stack" style="margin-top:12px">${datesBody()}</div></details>`;
 }
 function datesBody() {
   const t = S.trip, days = span(t.winStart, t.winEnd), ms = active(), mine = new Set(meDoc()?.days || []), myPref = new Set(meDoc()?.pref || []), flex = meDoc()?.flex || {};
-  const best = bestWindows(), bestSet = new Set(best[0] ? span(best[0].start, best[0].end) : []);
+  const best = bestWindows(), bestSet = new Set(best[0] ? span(best[0].start, best[0].end) : []), rs = rangesOf(meDoc()?.days);
   const max = Math.max(1, ms.length);
   const cells = days.map((d, i) => {
     const head = i === 0 ? '<span></span>'.repeat((D(d).getUTCDay() + 6) % 7) : D(d).getUTCDate() === 1 ? `<span class="cal-month">${monthName(d)}</span>${'<span></span>'.repeat((D(d).getUTCDay() + 6) % 7)}` : '';
     const n = ms.filter(m => (m.days || []).includes(d)).length, np = ms.filter(m => (m.pref || []).includes(d)).length, others = n - (mine.has(d) ? 1 : 0);
     // your days are solid; everyone else's show as dots, so your own answer is what stands out
-    return `${head}<button class="day ${mine.has(d) ? 'mine' : ''} ${myPref.has(d) ? 'pref' : ''} ${bestSet.has(d) ? 'best' : ''}" data-day="${d}" aria-pressed="${mine.has(d)}" title="${fmt(d)} · ${n} free${np ? ` · ${np} prefer it` : ''}" aria-label="${fmt(d)}${mine.has(d) ? ', you’re free' : ''}${myPref.has(d) ? ', a favorite' : ''}${others ? `, ${others} more free` : ''}">${D(d).getUTCDate()}<small class="dots" aria-hidden="true">${others ? '•'.repeat(Math.min(others, 4)) + (others > 4 ? '+' : '') : ''}</small>${myPref.has(d) ? '<i class="star" aria-hidden="true">★</i>' : ''}</button>`;
+    return `${head}<button class="day ${mine.has(d) ? 'mine' : ''} ${rangeCls(d, rs)} ${myPref.has(d) ? 'pref' : ''} ${bestSet.has(d) ? 'best' : ''}" data-day="${d}" aria-pressed="${mine.has(d)}" title="${fmt(d)} · ${n} free${np ? ` · ${np} prefer it` : ''}" aria-label="${fmt(d)}${mine.has(d) ? ', you’re free' : ''}${myPref.has(d) ? ', a favorite' : ''}${others ? `, ${others} more free` : ''}">${D(d).getUTCDate()}<small class="dots" aria-hidden="true">${others ? '•'.repeat(Math.min(others, 4)) + (others > 4 ? '+' : '') : ''}</small>${myPref.has(d) ? '<i class="star" aria-hidden="true">★</i>' : ''}</button>`;
   });
   // a window the others can already do and you haven't answered for: one tap says it works for you
   const ask = !S.readOnly && meDoc() && best.find(w => w.miss.some(m => m.id === S.uid) && w.ok.length && span(w.start, w.end).some(d => !mine.has(d)));
@@ -776,13 +774,14 @@ function datesBody() {
   const answered = ms.filter(m => (m.days || []).length), quiet = ms.filter(m => !(m.days || []).length);
   return `<section class="grid2 ${mine.size ? 'answered' : ''}">
     <div class="card stack avail">
-      <div class="stack" style="gap:2px"><h2>${isSmall() ? 'Which days work for you?' : 'When are you free?'}</h2><span class="small muted">${S.starMode ? 'Tap your favorite days ★. Tap again to unstar.' : 'Tap the days you could do. Tap again to take one off.'}</span></div>
+      <div class="stack" style="gap:2px"><h2>${isSmall() ? 'Which days work for you?' : 'When are you free?'}</h2><span class="small muted r-hint" aria-live="polite">${esc(rangeHint())}</span></div>
       ${ask ? `<div class="avail-ask"><span class="avail-ask-t">🙌 <b>${esc(listNames(ask.ok))}</b> ${ask.ok.length === 1 ? 'can' : 'can'} do <b>${ask.start === ask.end ? fmt(ask.start) : dayRange(ask.start, ask.end)}</b>. Can you?</span>
         <div class="row" style="gap:8px"><button class="btn primary chunky" data-addwin="${ask.start}|${ask.end}">Works for me</button><span class="small muted">or tap your days below</span></div></div>` : ''}
-      <div class="row avail-quick" style="gap:6px"><button class="btn sm chunky" data-act="allDays">All of them</button><button class="btn sm chunky" data-act="weekends">Fri–Sun</button><button class="btn sm chunky ${S.starMode ? 'on' : ''}" data-act="starMode" aria-pressed="${!!S.starMode}">★ Favorites</button>${mine.size ? '<button class="btn sm ghost" data-act="noDays">Clear</button>' : ''}</div>
+      <div class="row avail-quick" style="gap:6px"><button class="btn sm chunky" data-act="allDays">All of them</button><button class="btn sm chunky ${S.starMode ? 'on' : ''}" data-act="starMode" aria-pressed="${!!S.starMode}">★ Favorites</button>${mine.size ? '<button class="btn sm ghost" data-act="noDays">Clear</button>' : ''}</div>
       <div class="cal">${days.length ? `<span class="cal-month first">${monthName(days[0])}</span>` : ''}${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x => `<span class="dow">${x}</span>`).join('')}${cells.join('')}</div>
-      <div class="legend"><span><i class="sw" style="background:var(--accent)"></i>Your days</span><span><b class="dots-k">•••</b> Friends free</span><span>★ Favorite</span><span><i class="sw" style="box-shadow:inset 0 -3px 0 var(--gold)"></i>${isSmall() ? 'Best day' : 'Best window'}</span></div>
-      <div class="avail-done ${mine.size ? 'on' : ''}" aria-live="polite">${mine.size ? `<span class="avail-n" data-key="avail-n-${mine.size}">✓ <b>${mine.size}</b> ${mine.size === 1 ? 'day' : 'days'} saved</span><span class="small muted">The crew sees them right away.</span><button class="btn sm chunky" data-tab="overview">Back to the plan</button>` : `<span class="small muted">Nothing picked yet. Your days save as you tap.</span>`}</div>
+      <div class="legend"><span><i class="sw" style="background:var(--accent)"></i>Your ranges</span><span><b class="dots-k">•••</b> Friends free</span><span>★ Favorite</span><span><i class="sw" style="box-shadow:inset 0 -3px 0 var(--gold)"></i>${isSmall() ? 'Best day' : 'Best window'}</span></div>
+      ${rangeList()}
+      <div class="avail-done ${mine.size ? 'on' : ''}" aria-live="polite">${mine.size ? `<span class="avail-n" data-key="avail-n-${mine.size}">✓ <b>${mine.size}</b> ${mine.size === 1 ? 'day' : 'days'} saved</span><span class="small muted">The crew sees them right away.</span><button class="btn sm chunky" data-tab="overview">Back to the plan</button>` : `<span class="small muted">Nothing picked yet. Each range saves when you tap its last day.</span>`}</div>
       <details class="dates-more" data-key="dates-more" ${settingsOpen ? 'open' : ''}><summary class="small">${isSmall() ? 'Flexibility and the days that could work' : 'Flexibility, trip window and length'}</summary><div class="stack" style="gap:12px;margin-top:10px">
       ${isSmall() ? '' : `<div class="stack" style="gap:6px"><span class="label">How flexible are you?</span>
         <div class="row" style="gap:6px"><button class="chip ${flex.late ? 'on' : ''}" data-flex="late" aria-pressed="${!!flex.late}">I can arrive a day late</button><button class="chip ${flex.early ? 'on' : ''}" data-flex="early" aria-pressed="${!!flex.early}">I can leave a day early</button></div>
@@ -803,12 +802,12 @@ function datesBody() {
       ${S.demo ? '' : ruleLine()}
       ${t.lockedDates ? `<div class="banner"><span><b>Locked:</b> ${dayRange(t.lockedDates.start, t.lockedDates.end)}</span><button class="btn sm" data-act="unlockDates">Unlock</button></div>` : ''}
       ${best.length ? best.map((w, i) => `<div class="stack bw ${i === 0 ? 'bw-top' : ''} ${w.ok.length === ms.length ? 'bw-all' : ''}" style="gap:6px">
-        <div class="row" style="justify-content:space-between"><b class="mono">${dayRange(w.start, w.end)}</b><span class="small bw-n"><b>${w.ok.length}/${ms.length}</b> can go</span></div>
+        <div class="row" style="justify-content:space-between"><b class="mono">${dayRange(w.start, w.end)}</b><span class="small bw-n"><b>${w.ok.length}/${ms.length}</b> are free</span></div>
         <div class="bar"><i style="width:${Math.round(w.ok.length / max * 100)}%"></i></div>
         <div class="bw-crew">${avStack([...w.ok, ...w.miss.map(m => (m.days || []).length ? { ...m, faded: true } : { ...m, wait: true })], 8)}</div>
         ${(() => { const cant = w.miss.filter(m => (m.days || []).length), wait = w.miss.filter(m => !(m.days || []).length);
-          return !w.miss.length ? '<span class="small" style="color:var(--good)">Everyone can make it</span>'
-            : [cant.length ? `<span class="small muted">Can’t make it: ${esc(listNames(cant))}</span>` : `<span class="small" style="color:var(--good)">Everyone who answered can make it</span>`, wait.length ? `<span class="small muted bw-wait">Waiting on ${esc(listNames(wait))}</span>` : ''].join(''); })()}
+          return !w.miss.length ? '<span class="small" style="color:var(--good)">Everyone’s free then</span>'
+            : [cant.length ? `<span class="small muted">Can’t make it: ${esc(listNames(cant))}</span>` : `<span class="small" style="color:var(--good)">Everyone who answered is free then</span>`, wait.length ? `<span class="small muted bw-wait">Waiting on ${esc(listNames(wait))}</span>` : ''].join(''); })()}
         ${w.late.length || w.early.length || w.pref.length ? `<span class="small muted">${[w.late.length && `${esc(listNames(w.late))} ${w.late.length === 1 ? 'arrives' : 'arrive'} a day late`, w.early.length && `${esc(listNames(w.early))} ${w.early.length === 1 ? 'leaves' : 'leave'} a day early`, w.pref.length && `★ ${w.pref.length === ms.length ? 'everyone prefers' : w.pref.length + ' prefer'} ${isSmall() ? 'this day' : 'these dates'}`].filter(Boolean).join(' · ')}</span>` : ''}
         ${t.lockedDates && t.lockedDates.start === w.start && t.lockedDates.end === w.end ? '' : ruleChip('dates', w.start + '|' + w.end)}
         <div>${t.lockedDates && t.lockedDates.start === w.start && t.lockedDates.end === w.end ? '<span class="pill in">Locked</span>' : `<button class="btn sm chunky ${i === 0 && !t.lockedDates ? 'primary' : ''}" data-lockdates="${w.start}|${w.end}">${t.lockedDates ? 'Switch to these' : isSmall() ? 'Lock this day' : 'Lock these dates'}</button>`}</div>
@@ -917,7 +916,7 @@ function spotsTab() {
       <p class="small">${esc(s.why)}</p>
       <div class="meta">${s.cover ? `<span>${pk.spots ? 'Entry' : 'Cover'} <b>${esc(s.cover)}</b></span>` : ''}${s.bestNight ? `<span>Best <b>${esc(s.bestNight)}</b></span>` : ''}${s.dress ? `<span>Dress <b>${esc(s.dress)}</b></span>` : ''}</div>
       ${s.tip ? `<p class="small muted">Tip: ${esc(s.tip)}</p>` : ''}
-      <div class="row" style="gap:6px;margin-top:auto">${voteBtns(rkey('sp' + s.name))}<a class="btn sm" href="${maps(s.name, ds.city)}" target="_blank" rel="noopener">Map</a>${d ? `<button class="btn sm" data-addspot="${i}">Add to itinerary</button>` : ''}</div>
+      <div class="row" style="gap:6px;margin-top:auto">${voteBtns(rkey('sp' + s.name))}<a class="btn sm" href="${maps(s.name, ds.city)}" target="_blank" rel="noopener">Open in Maps</a>${d ? `<button class="btn sm" data-addspot="${i}">Add to itinerary</button>` : ''}</div>
     </article>`).join('')}</section>
     <p class="small muted">AI picks. Check hours, covers and age rules before you go.</p>`
   : `<div class="empty"><span>${isSmall() ? 'Take the vibe quiz, then let AI pull spots that fit your crew, budget and the day.' : pk.spots ? pk.spots.empty : 'Take the vibe quiz, then let AI pull clubs, bars, rooftops and a late-night food spot that fit your crew, budget and the nights you’re there.'}</span></div>`}`;
@@ -1094,20 +1093,75 @@ const showWelcome = () => S.membersIn && !S.demo && !S.readOnly && (!meDoc() || 
 // the dates are open (home, budget and the vibe can come later, from their details)
 const setupSteps = () => S.setup?.joined ? (S.trip.lockedDates ? [] : ['days']) : ['days', ...(isSmall() ? [] : ['home']), ...(hasBudget(S.uid) ? ['budget'] : []), ...(['family', 'work'].includes(planGroup()) ? [] : ['vibe'])];
 const BUDGETS = { hangout: [30, 60, 100], day: [50, 100, 200], weekend: [250, 450, 700], trip: [600, 1000, 1600] };
+/* ---------- free days as date ranges ----------
+   You pick a range by tapping its first day, then its last (in either order; the same day twice is one
+   day), and every day in between counts, inclusive. Up to four ranges per person. They're kept the way
+   free days always were, as a list of dates, so the group's best dates and everything else that reads
+   free days use every range, and older plans load as they are. Ranges that overlap or touch become one
+   range, so no free day is ever dropped. */
+const RANGE_MAX = 4;
+const rangesOf = days => { const out = []; for (const d of [...new Set(days || [])].sort()) { const r = out[out.length - 1]; if (r && add(r.end, 1) === d) r.end = d; else out.push({ start: d, end: d }); } return out; };
+const dayRangeText = r => r.start === r.end ? fmt(r.start) : `${short(r.start)} – ${short(r.end)}`;
+// the classes a calendar day gets for your ranges and the range you're picking right now
+function rangeCls(d, ranges) {
+  const r = ranges.find(x => x.start <= d && d <= x.end), p = S.rPick, ed = p?.edit;
+  return [r && (r.start === d && r.end === d ? 'r-one' : r.start === d ? 'r-start' : r.end === d ? 'r-end' : 'r-mid'), ed && ed.start <= d && d <= ed.end && 'r-editing', p?.start === d && 'r-pick'].filter(Boolean).join(' ');
+}
+// save a list of free days, unless it would make more than four ranges
+function setDays(next, okMsg) {
+  const m = meDoc(), before = rangesOf(m?.days).length, after = rangesOf(next);
+  if (after.length > RANGE_MAX && after.length > before) { S.rPick = null; render(); flash(`You can add up to ${RANGE_MAX} date ranges. Change or remove one first.`); return false; }
+  const days = [...new Set(next)].sort(), keep = new Set(days);
+  S.rPick = null; saveMe({ days, pref: (m?.pref || []).filter(x => keep.has(x)) }, true);
+  if (okMsg) flash(okMsg);
+  return true;
+}
+function pickDay(d) {
+  const m = meDoc(), days = new Set(m?.days || []);
+  if (S.starMode) {
+    if (!days.has(d)) return flash('Add it to one of your date ranges first, then star it.');
+    const pref = new Set(m?.pref || []); if (pref.has(d)) pref.delete(d); else pref.add(d);
+    return saveMe({ pref: [...pref].sort() });
+  }
+  const p = S.rPick || {};
+  if (!p.start) { S.rPick = { ...p, start: d }; return render(); }
+  const [a, z] = p.start <= d ? [p.start, d] : [d, p.start], gone = new Set(p.edit ? span(p.edit.start, p.edit.end) : []);
+  const r = { start: a, end: z };
+  return setDays([...[...days].filter(x => !gone.has(x)), ...span(a, z)], `${p.edit ? 'Changed to' : 'Added'} ${dayRangeText(r)}${a === z ? '' : `, ${span(a, z).length} days`}. The crew can see it.`);
+}
+// what to do next in the picker, said in one line
+function rangeHint() {
+  const p = S.rPick, n = rangesOf(meDoc()?.days).length;
+  if (S.starMode) return 'Tap your favorite days ★ inside your ranges. Tap again to unstar.';
+  if (p?.start) return `Starts ${fmt(p.start)}. Now tap the last day you could do (tap it again for just that day).`;
+  if (p?.edit) return `Changing ${dayRangeText(p.edit)}: tap the new first day.`;
+  return n ? `Tap the first day of another range, then its last. Up to ${RANGE_MAX} ranges.` : `Tap the first day you could do, then the last. Every day in between counts.`;
+}
+// your ranges, each one editable and removable, and the way to add another
+function rangeList() {
+  const rs = rangesOf(meDoc()?.days), p = S.rPick, busy = p && (p.start || p.edit);
+  if (!rs.length && !busy) return '';
+  return `<div class="ranges" data-key="ranges" aria-live="polite"><span class="label">Your date ranges · ${rs.length} of ${RANGE_MAX}</span>
+    ${rs.map(r => { const on = p?.edit && p.edit.start === r.start && p.edit.end === r.end;
+      return `<div class="rng ${on ? 'on' : ''}" data-key="rng-${r.start}"><b>${dayRangeText(r)}</b><span class="small muted">${span(r.start, r.end).length === 1 ? '1 day' : span(r.start, r.end).length + ' days'}</span>
+        ${S.readOnly ? '' : `<button class="btn sm ghost" data-editrange="${r.start}|${r.end}" aria-label="Change ${dayRangeText(r)}">${on ? 'Changing…' : 'Edit'}</button><button class="btn sm ghost rng-x" data-rmrange="${r.start}|${r.end}" aria-label="Remove ${dayRangeText(r)}">✕</button>`}</div>`; }).join('')}
+    ${S.readOnly ? '' : busy ? '<button class="linkbtn small" data-act="rangeCancel">Cancel</button>' : rs.length < RANGE_MAX ? '<button class="btn sm chunky r-add" data-act="rangeAdd">+ Add another date range</button>' : `<span class="small muted">That’s the most: ${RANGE_MAX} ranges. Edit or remove one to change it.</span>`}
+  </div>`;
+}
 function dayPicker() {
-  const t = S.trip, days = span(t.winStart, t.winEnd), mine = new Set(meDoc()?.days || []), pref = new Set(meDoc()?.pref || []);
+  const t = S.trip, days = span(t.winStart, t.winEnd), mine = new Set(meDoc()?.days || []), pref = new Set(meDoc()?.pref || []), rs = rangesOf(meDoc()?.days);
   const pad = d => '<span></span>'.repeat((D(d).getUTCDay() + 6) % 7);
-  const cells = days.map((d, i) => `${i === 0 ? pad(d) : D(d).getUTCDate() === 1 ? `<span class="cal-month">${monthName(d)}</span>${pad(d)}` : ''}<button class="day ${mine.has(d) ? 'mine' : ''} ${pref.has(d) ? 'pref' : ''} ${d === TODAY ? 'is-today' : ''}" data-day="${d}" aria-pressed="${mine.has(d)}" aria-label="${fmt(d)}${pref.has(d) ? ', best for you' : mine.has(d) ? ', works' : ''}">${D(d).getUTCDate()}${pref.has(d) ? '<i class="star" aria-hidden="true">★</i>' : ''}</button>`);
+  const cells = days.map((d, i) => `${i === 0 ? pad(d) : D(d).getUTCDate() === 1 ? `<span class="cal-month">${monthName(d)}</span>${pad(d)}` : ''}<button class="day ${mine.has(d) ? 'mine' : ''} ${rangeCls(d, rs)} ${pref.has(d) ? 'pref' : ''} ${d === TODAY ? 'is-today' : ''}" data-day="${d}" aria-pressed="${mine.has(d)}" aria-label="${fmt(d)}${pref.has(d) ? ', best for you' : mine.has(d) ? ', works' : ''}">${D(d).getUTCDate()}${pref.has(d) ? '<i class="star" aria-hidden="true">★</i>' : ''}</button>`);
   return `<div class="cal">${days.length ? `<span class="cal-month first">${monthName(days[0])}</span>` : ''}${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(x => `<span class="dow">${x}</span>`).join('')}${cells.join('')}</div>`;
 }
 function setupView() {
   const steps = setupSteps(), i = Math.min(S.setup.step, steps.length - 1), k = steps[i], m = meDoc(), last = i === steps.length - 1;
-  const nDays = (m.days || []).length, mq = m.quiz || {};
+  const mq = m.quiz || {};
   const step = {
     days: { h: isSmall() ? 'Which days work for you?' : 'When are you free?',
-      p: S.starMode ? 'Tap your favorite days ★. Tap again to unstar.' : `Tap every ${isSmall() ? 'day' : 'day you could be away'} between ${short(S.trip.winStart)} and ${short(S.trip.winEnd)}. Tap again to take one off.`,
-      c: `<div class="row" style="gap:6px"><button class="btn sm" data-act="allDays">All of them</button><button class="btn sm" data-act="weekends">Fri–Sun</button><button class="btn sm ${S.starMode ? 'on' : ''}" data-act="starMode" aria-pressed="${!!S.starMode}">★ Favorites</button><button class="btn sm ghost" data-act="noDays">Clear</button></div>
-        ${dayPicker()}<span class="small muted">${nDays ? `${nDays} day${nDays === 1 ? '' : 's'} picked` : 'Nothing picked yet'}</span>` },
+      p: `${rangeHint()} Anything from ${short(S.trip.winStart)} to ${short(S.trip.winEnd)}.`,
+      c: `<div class="row" style="gap:6px"><button class="btn sm" data-act="allDays">All of them</button><button class="btn sm ${S.starMode ? 'on' : ''}" data-act="starMode" aria-pressed="${!!S.starMode}">★ Favorites</button><button class="btn sm ghost" data-act="noDays">Clear</button></div>
+        ${dayPicker()}${rangeList() || '<span class="small muted">Nothing picked yet</span>'}` },
     home: { h: size() === 'trip' ? 'Where are you flying from?' : 'Where are you coming from?',
       p: size() === 'trip' ? 'Your home airport or city. It’s used for flight prices and to pitch places that are easy for everyone to reach.' : 'Your city or neighborhood, so pitches stay within reach for everyone.',
       c: `<input id="me-home" aria-label="${size() === 'trip' ? 'Home airport or city' : 'Your city or neighborhood'}" class="big-input" maxlength="40" value="${esc(m.home || '')}" placeholder="${size() === 'trip' ? 'JFK or New York' : 'Brooklyn'}" autocomplete="address-level2" enterkeyhint="next">` },
@@ -1637,7 +1691,7 @@ function liveTab() {
     </div>
     <div class="card stack"><h3>Meet-up</h3>
       ${meet && meet.text ? `<div class="stack" style="gap:2px"><b style="font-size:18px">${esc(meet.text)}</b><span class="small muted">${meet.time ? 'at ' + esc(tShow(meet.time)) + ' · ' : ''}set by ${esc(nameOf(meet.by))} ${ago(meet.at)}</span>
-        <div class="row" style="gap:6px"><a class="btn sm" href="${maps(meet.text, dest()?.city || '')}" target="_blank" rel="noopener">Map</a><button class="btn sm ghost" data-act="clearMeet">Clear</button></div></div>` : `<p class="small muted">No meet-up set.</p>`}
+        <div class="row" style="gap:6px"><a class="btn sm" href="${maps(meet.text, dest()?.city || '')}" target="_blank" rel="noopener">Open in Maps</a><button class="btn sm ghost" data-act="clearMeet">Clear</button></div></div>` : `<p class="small muted">No meet-up set.</p>`}
       <form id="meetForm" class="row" style="gap:6px;align-items:flex-end">
         <label class="field" style="flex:2 1 150px"><span class="label">Where</span><input id="meet-where" maxlength="80" placeholder="Hotel lobby"></label>
         <label class="field" style="flex:0 1 110px"><span class="label">When</span><input id="meet-time" type="time"></label>
@@ -1649,7 +1703,6 @@ function liveTab() {
     <form id="ciForm" class="row" style="gap:6px"><input aria-label="Where you are" id="ci-text" maxlength="60" placeholder="Or type it: “at the bar by the pool”" style="flex:1 1 200px"><button class="btn sm" type="submit">Check in</button></form>
     <div>${active().map(m => `<div class="nudge"><b>${esc(m.nick || 'Someone')}</b><span class="small ${m.checkin ? '' : 'muted'}">${m.checkin ? (m.hideLoc && m.id !== S.uid ? 'Checked in' : esc(m.checkin.text)) + ' · ' + ago(m.checkin.at) : 'No check-in yet'}</span></div>`).join('')}</div>
   </section>
-  ${tabOn('map') && mapPoints().length ? `<section class="card stack"><div class="row" style="justify-content:space-between"><h3>Map</h3><button class="btn sm ghost" data-tab="map">Full map</button></div>${mapView(300)}</section>` : ''}
   ${idx === 0 && size() === 'trip' ? arrivalsSection(true) : ''}`;
 }
 
@@ -1848,7 +1901,7 @@ const mode = () => MODES[S.trip?.mode] || MODES.friends;
    Most types are social plans and keep the original quiz, nightlife picks and Live chips. Family
    trips and team offsites get their own. A missing or unknown mode is a friends trip, as before. */
 const SPEND_Q = QUIZ.find(q => q.k === 'spend');
-const CALM_SPOT = '"type":"%T","area":"neighborhood","why":"one sentence on why this group would like it","price":"$|$$|$$$|$$$$","cover":"entry price per person, e.g. Free or $15","bestNight":"best time, e.g. Sat morning","tip":"one practical insider tip","lat":0,"lng":0';
+const CALM_SPOT = '"type":"%T","area":"neighborhood","why":"one sentence on why this group would like it","price":"$|$$|$$$|$$$$","cover":"entry price per person, e.g. Free or $15","bestNight":"best time, e.g. Sat morning","tip":"one practical insider tip"';
 // adding a calm pick to the itinerary: cafés in the morning, meals at dinner time, a bar or lounge as a relaxed
 // evening, everything else as a daytime activity; never as nightlife
 const calmAdd = s => { const t = s.type || ''; return /cafe/.test(t) ? { time: '09:30', kind: 'food' } : /restaurant|food/.test(t) ? { time: '18:30', kind: 'food' } : /bar|lounge/.test(t) ? { time: '20:00', kind: 'chill' } : { time: '10:00', kind: 'activity' }; };
@@ -2007,7 +2060,7 @@ function sections() {
     { k: 'home', label: 'Home', tabs: [['overview', 'Overview'], ['crew', 'Crew'], ['tasks', 'To-dos'], ['log', 'Changes'], ['settings', 'Settings']] },
     { k: 'plan', label: 'Plan', tabs: [['match', isSmall() ? 'Plan Match' : 'Trip Match'], ['dates', isSmall() ? 'When' : 'Dates'], ['whatif', 'What if'], ['spots', isSmall() ? 'Spots' : (mode().nightlife || 'Nightlife')], ['plan', isSmall() ? 'The plan' : 'Itinerary']] },
     { k: 'book', label: 'Book', tabs: [['flights', 'Flights'], ['stays', 'Stays'], ['tickets', 'Boarding passes'], ['pack', 'Packing']] },
-    { k: 'live', label: 'Live', tabs: [['live', 'Today'], ['map', 'Map'], ['bucket', 'Bucket list'], ['hype', 'Hype']] },
+    { k: 'live', label: 'Live', tabs: [['live', 'Today'], ['bucket', 'Bucket list'], ['hype', 'Hype']] },
     { k: 'money', label: 'Money', tabs: [['cost', 'All-in cost'], ['meter', 'My spend'], ['pot', 'Group pot'], ['money', 'Expenses']] },
     { k: 'memories', label: 'Memories', tabs: [['wrapped', isSmall() ? 'Recap' : 'Wrapped'], ['recap', 'Photos'], ['awards', 'Awards']] },
   ].map(s => ({ ...s, tabs: s.tabs.filter(([k]) => tabOn(k)) })).filter(s => s.tabs.length);
@@ -2015,7 +2068,7 @@ function sections() {
 const TAB_ALIAS = { deals: 'flights', where: 'match' };
 const secOf = tab => sections().find(s => s.tabs.some(t => t[0] === tab)) || sections()[0];
 const TABFN = () => ({ log: logTab, overview: overviewTab, crew: crewTab, tasks: tasksTab, cost: costTab, whatif: whatifTab, settings: settingsTab, match: matchTab, dates: datesTab, where: whereTab, spots: spotsTab, plan: planTab,
-  flights: flightsTab, stays: staysTab, tickets: ticketsTab, pack: packTab, live: liveTab, map: mapTab, bucket: bucketSection, hype: hypeTab,
+  flights: flightsTab, stays: staysTab, tickets: ticketsTab, pack: packTab, live: liveTab, bucket: bucketSection, hype: hypeTab,
   meter: meterTab, pot: potTab, money: moneyTab, wrapped: wrappedTab, recap: photosTab, awards: awardsTab });
 function tripView() {
   if (S.membersIn && accessState() !== 'ok') return blockedView(accessState());
@@ -2036,7 +2089,7 @@ function tripView() {
   ${journeyPill()}
   ${sec.tabs.length > 1 && !inviteOnly ? `<nav class="subtabs" aria-label="${esc(sec.label)}">${sec.tabs.map(([k, l]) => `<button class="subtab ${S.tab === k ? 'on' : ''}" data-tab="${k}" aria-current="${S.tab === k}">${esc(l)}${crumbTab === k ? '<i class="crumb" aria-hidden="true"></i>' : ''}${k === 'log' && !S.demo && logList().some(x => needsMe(x)) ? ` <span class="count">${logList().filter(x => needsMe(x)).length}</span>` : ''}</button>`).join('')}</nav>` : ''}
   ${fns[S.tab]()}
-  ${isLive() && !S.lostOpen && !['live', 'map', 'overview'].includes(S.tab) ? '<button class="fab-lost" data-act="lostOpen" aria-label="I’m lost: send the crew my spot">SOS</button>' : ''}
+  ${isLive() && !S.lostOpen && !['live', 'overview'].includes(S.tab) ? '<button class="fab-lost" data-act="lostOpen" aria-label="I’m lost: send the crew my spot">SOS</button>' : ''}
   ${S.lostOpen ? lostSheet() : ''}
   ${inviteOnly ? '' : `<nav class="bottomnav" aria-label="Trip sections"><div class="bn-inner" style="grid-template-columns:repeat(${sections().length},1fr)">${sections().map(s => `<button class="bn ${s.k === sec.k ? 'on' : ''}" data-sec="${s.k}" aria-current="${s.k === sec.k}">${icon(s.k)}${crumbTab && secOf(crumbTab).k === s.k && s.k !== sec.k ? '<i class="crumb" aria-hidden="true"></i>' : ''}<span>${s.label}${s.k === 'live' && isLive() ? ' ●' : ''}</span></button>`).join('')}</div></nav>`}`;
 }
@@ -3720,7 +3773,7 @@ function jSteps() {
       goal: small ? 'Plan how the day goes' : 'Sketch what you’ll do each day',
       why: have ? `${word(have, 'stop', 'stops')} so far.` : 'Nothing planned yet. Good spots book up.',
       todo: S.sample ? 'Let the AI draft it around the crew’s picks, then change anything.' : 'Add the stops you know: dinners, activities, nights out.',
-      after: 'The plan shows up in Live on the day, with the map.',
+      after: 'The plan shows up in Live on the day.',
       act: () => goBtn('plan', S.sample ? 'Draft it with AI' : 'Add stops'), help: S.sample ? { tab: 'plan', sel: '[data-act="plan"]', click: true } : { tab: 'plan', sel: '.addItem input[id^="ai-title"]' },
     });
   }
@@ -3760,7 +3813,7 @@ function jSteps() {
   add('meet', 'final', {
     title: 'Set the meeting point', done: !!t.meet?.text, blockedBy: needsDecided, group: 'No meeting point yet', notBefore: !soon,
     goal: 'Make sure nobody’s left wandering', why: d ? `${daysUntil(d.start) <= 0 ? 'It’s today' : `It’s ${daysUntil(d.start) === 1 ? 'tomorrow' : 'in ' + daysUntil(d.start) + ' days'}`} and there’s no meeting point.` : '',
-    todo: 'Say where and when everyone meets.', after: 'Everyone sees it in Live, with a map link.',
+    todo: 'Say where and when everyone meets.', after: 'Everyone sees it in Live, with a directions link.',
     act: () => `<form id="meetForm" class="row j-inline" style="gap:6px;align-items:flex-end"><label class="field" style="flex:2 1 150px"><span class="label">Where</span><input id="meet-where" maxlength="80" placeholder="${small ? 'Outside the restaurant' : 'Hotel lobby'}"></label><label class="field" style="flex:0 1 120px"><span class="label">When</span><input id="meet-time" type="time" value="${esc(t.time || '')}"></label><button class="btn primary" type="submit">Set it</button></form>`,
     help: { tab: 'live', sel: '#meetForm' },
   });
@@ -3770,7 +3823,7 @@ function jSteps() {
     title: small ? 'Enjoy it' : 'Follow today’s plan', done: false, live: true,
     goal: 'It’s happening', why: (() => { const nowT = new Date().toTimeString().slice(0, 5), up = visItems().filter(i => i.date === TODAY).sort(byTime).find(i => timeKey(i.time) >= timeKey(nowT)); return up ? `Up next: ${up.title}${up.time ? ' at ' + t12(up.time) : ''}.` : 'Nothing else planned today.'; })(),
     todo: 'Open today’s plan. Check in when you get somewhere, and use SOS if you get separated.', after: 'Check-ins and photos feed the recap.',
-    act: () => `${btn('data-tab="live"', 'Open today')}${tabOn('map') ? btn('data-tab="map"', 'Map', 'ghost') : ''}`, help: { tab: 'live', sel: '.live' },
+    act: () => btn('data-tab="live"', 'Open today'), help: { tab: 'live', sel: '.live' },
   });
 
   /* ----- afterward ----- */
@@ -4023,13 +4076,12 @@ ${context()}
 Stay budget: about ${b ? money(b.cap * .35) + ' per person for the whole stay (' + money(b.cap * .35 / nights) + ' per person per night)' : 'moderate'}.
 
 Give 6 options for ${n} people: 3–4 specific real hotels that are well known and currently operating, and 2–3 vacation rental options described generically (for example "4-bedroom Airbnb-style house in Wynwood", not a specific listing). Work out how many rooms or beds the group needs. Prices are typical ranges, not live quotes.
-Reply with only JSON: {"items":[{"name":"","kind":"hotel|rental|hostel","area":"neighborhood","sleeps":"e.g. 3 rooms, 2 queens each","perNight":"$X–Y per night for the group","perPerson":"$X–Y per person total","why":"one sentence on why it fits this group","pros":["2-3 short pros"],"lat":0,"lng":0}]}
-lat/lng: your best estimate of the location.`;
+Reply with only JSON: {"items":[{"name":"","kind":"hotel|rental|hostel","area":"neighborhood","sleeps":"e.g. 3 rooms, 2 queens each","perNight":"$X–Y per night for the group","perPerson":"$X–Y per person total","why":"one sentence on why it fits this group","pros":["2-3 short pros"]}]}`;
   askAI('stays', prompt, data => {
     const items = (Array.isArray(data?.items) ? data.items : []).filter(x => x && x.name).slice(0, 8).map(x => ({
       id: rid(6), name: String(x.name).slice(0, 80), kind: ['hotel', 'rental', 'hostel'].includes(x.kind) ? x.kind : 'hotel', area: String(x.area || '').slice(0, 60),
       sleeps: String(x.sleeps || '').slice(0, 60), perNight: String(x.perNight || '').slice(0, 40), perPerson: String(x.perPerson || '').slice(0, 40),
-      why: String(x.why || '').slice(0, 240), pros: arr(x.pros).slice(0, 3).map(p => String(p).slice(0, 50)), lat: +x.lat || null, lng: +x.lng || null }));
+      why: String(x.why || '').slice(0, 240), pros: arr(x.pros).slice(0, 3).map(p => String(p).slice(0, 50)) }));
     if (!items.length) { flash('No stays came back. Try again.'); return; }
     return saveTrip({ stays: { city: dest()?.city || '', items, at: Date.now() } });
   });
@@ -4052,7 +4104,7 @@ function staysTab() {
   ${st ? `<section class="card stack locked-stay"><div class="row" style="justify-content:space-between"><span class="on-pill">Our stay</span><button class="btn sm ghost" data-act="unlockStay">Change</button></div>
       <h2>${esc(st.name)}</h2><span class="small muted">${esc([st.area, st.sleeps, st.perNight].filter(Boolean).join(' · '))}</span>
       ${+st.total ? `<b class="mono">${esc(stayPriceText(st))}</b>` : ''}
-      <div class="row" style="gap:6px">${safeUrl(st.url) ? `<a class="btn sm primary" href="${esc(safeUrl(st.url))}" target="_blank" rel="noopener noreferrer">Open listing</a>` : stayLinks(st, ds, d, n)}<a class="btn sm" href="${maps(st.name, ds.city)}" target="_blank" rel="noopener">Map</a><button class="btn sm ghost" data-tab="map">Crew map</button></div>
+      <div class="row" style="gap:6px">${safeUrl(st.url) ? `<a class="btn sm primary" href="${esc(safeUrl(st.url))}" target="_blank" rel="noopener noreferrer">Open listing</a>` : stayLinks(st, ds, d, n)}<a class="btn sm" href="${maps(st.name, ds.city)}" target="_blank" rel="noopener">Open in Maps</a></div>
       ${stayBookedBox(st)}</section>` : ''}
   ${ownStays().length ? `<section class="stack"><h3>Found by the crew</h3><div class="grid2">${ownStays().map(s => ownStayCard(s, ds, d, n)).join('')}</div></section>` : ''}
   ${ownStayForm()}
@@ -4075,111 +4127,6 @@ function staysTab() {
   </section>`;
 }
 function ticketsTab() { return booking_time() || tickets().have.length ? ticketsSection() + arrivalsSection() : ticketsSection(); }
-
-/* ---------- maps ---------- */
-const kmBetween = (a, b) => { const R = 6371, dLa = (b.lat - a.lat) * Math.PI / 180, dLo = (b.lng - a.lng) * Math.PI / 180; const h = Math.sin(dLa / 2) ** 2 + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * Math.sin(dLo / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); };
-const KCOL = { stay: '#E9A514', nightlife: '#D41C78', food: '#0E9F6E', activity: '#3B5BDB', meet: '#151A33', lost: '#E5484D', plan: '#7048E8' };
-function mapPoints() {
-  const pts = [], seen = new Set(), push = p => { if (!p || !isFinite(p.lat) || !isFinite(p.lng) || !p.lat) return; const k = p.name.toLowerCase(); if (seen.has(k)) return; seen.add(k); pts.push(p); };
-  const st = S.trip.stay; if (st && st.lat) push({ key: 'stay', name: st.name, lat: st.lat, lng: st.lng, kind: 'stay' });
-  const geo = S.trip.geo || {};
-  if (S.trip.meet?.text) { const g = geo[rkey(S.trip.meet.text)]; if (g) push({ key: 'meet', name: S.trip.meet.text, lat: g.lat, lng: g.lng, kind: 'meet' }); }
-  // a family trip's or offsite's picks: meals as food, a bar or lounge as an evening (shown as “Evenings”), the rest as plans
-  const calm = planKind().spots, calmPin = s => ({ food: 'food', chill: 'nightlife' })[calm.add(s).kind] || 'activity';
-  for (const s of S.trip.spots?.items || []) push({ key: rkey('sp' + s.name), name: s.name, lat: s.lat, lng: s.lng, kind: calm ? calmPin(s) : /food/.test(s.type || '') ? 'food' : /activity|museum|park|tour|beach/.test(s.type || '') ? 'activity' : 'nightlife' });
-  for (const i of visItems()) { if (i.hidden) continue; const g = geo[rkey(i.title)]; if (g) push({ key: rkey('it' + i.id), name: i.title, lat: g.lat, lng: g.lng, kind: i.kind === 'food' ? 'food' : i.kind === 'nightlife' ? 'nightlife' : 'activity' }); }
-  for (const [k, g] of Object.entries(geo)) push({ key: k, name: g.name, lat: g.lat, lng: g.lng, kind: g.kind || 'plan' });
-  return pts;
-}
-let mapW = 0;
-window.addEventListener('resize', () => { clearTimeout(mapW); mapW = setTimeout(() => { if (document.querySelector('.map')) render(); }, 150); });
-function lostAt() { return active().filter(m => m.lost && !m.lost.found && Date.now() - m.lost.at < 6 * 36e5); }
-function mapView(height) {
-  const pts = mapPoints(); if (!pts.length) return '';
-  const lost = lostAt();
-  // draw in roughly real pixels so labels stay the same size on a phone and a laptop
-  const W = Math.round(Math.max(300, Math.min(840, (app.clientWidth || 600) - 34))), H = Math.round(Math.min(W * .72, height || 440)), P = 40;
-  const lats = pts.map(p => p.lat), lngs = pts.map(p => p.lng);
-  let minLa = Math.min(...lats), maxLa = Math.max(...lats), minLo = Math.min(...lngs), maxLo = Math.max(...lngs);
-  const mid = (minLa + maxLa) / 2, kx = Math.cos(mid * Math.PI / 180);
-  let spanX = (maxLo - minLo) * kx || .01, spanY = (maxLa - minLa) || .01;
-  const sc = Math.min((W - 2 * P) / spanX, (H - 2 * P) / spanY);
-  const ox = (W - spanX * sc) / 2, oy = (H - spanY * sc) / 2;
-  const X = lng => ox + (lng - minLo) * kx * sc, Y = lat => oy + (maxLa - lat) * sc;
-  const kmPerPx = 111.32 / sc, barKm = [0.25, 0.5, 1, 2, 5, 10, 20, 50].find(v => v / kmPerPx > 70) || 50, barPx = barKm / kmPerPx;
-  const sel = pts.find(p => p.key === S.pinSel), stay = pts.find(p => p.kind === 'stay');
-  const lostPts = new Map(); for (const m of lost) { const p = pts.find(q => q.name.toLowerCase() === (m.lost.where || '').toLowerCase()); if (p) lostPts.set(p.key, m); }
-  return `<div class="map-wrap"><svg viewBox="0 0 ${W} ${H}" class="map" role="img" aria-label="Crew map with ${pts.length} places">
-    <defs><pattern id="mgrid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="var(--map-line)" stroke-width="1"/></pattern></defs>
-    <rect width="${W}" height="${H}" fill="var(--map-bg)"/><rect width="${W}" height="${H}" fill="url(#mgrid)"/>
-    ${stay ? pts.filter(p => p !== stay).map(p => `<line x1="${X(stay.lng)}" y1="${Y(stay.lat)}" x2="${X(p.lng)}" y2="${Y(p.lat)}" stroke="var(--map-route)" stroke-width="1.5" stroke-dasharray="4 5"/>`).join('') : ''}
-    ${(() => {
-      // place labels above, then below, each pin; skip a label that would collide (it shows when the pin is tapped)
-      const placed = [], order = [...pts].sort((p, q) => (q === sel) - (p === sel) || (q.kind === 'stay') - (p.kind === 'stay') || lostPts.has(q.key) - lostPts.has(p.key));
-      const hit = r => placed.some(o => r.x < o.x + o.w && r.x + r.w > o.x && r.y < o.y + o.h && r.y + r.h > o.y);
-      const lab = new Map();
-      for (const p of pts) placed.push({ x: X(p.lng) - 12, y: Y(p.lat) - 12, w: 24, h: 24 });
-      placed.push({ x: 8, y: H - 40, w: barPx + 74, h: 34 }, { x: W - 54, y: 10, w: 44, h: 44 }); // scale bar, compass
-      for (const p of order) {
-        const lm = lostPts.get(p.key), cut = W < 500 ? 20 : 30, txt = lm ? (lm.nick || 'Someone') + ' is here' : p.name.length > cut ? p.name.slice(0, cut - 1) + '…' : p.name;
-        const w = txt.length * 7.4 + 10, x = Math.max(w / 2 + 4, Math.min(W - w / 2 - 4, X(p.lng))), y = Y(p.lat);
-        for (const dy of [-17, 28]) { const r = { x: x - w / 2, y: y + dy - 13, w, h: 17 }; if (!hit(r)) { placed.push(r); lab.set(p, { txt, y: y + dy, x }); break; } }
-      }
-      return pts.map(p => { const x = X(p.lng), y = Y(p.lat), on = sel === p, lm = lostPts.get(p.key), l = lab.get(p);
-        return `<g class="pin" data-pin="${esc(p.key)}" tabindex="0" role="button" aria-label="${esc(p.name)}">
-          <circle cx="${x}" cy="${y}" r="18" fill="transparent"/>
-          ${lm ? `<circle cx="${x}" cy="${y}" r="20" fill="none" stroke="${KCOL.lost}" stroke-width="3" class="pulse-ring"/>` : ''}
-          <circle cx="${x}" cy="${y}" r="${on ? 14 : 10}" fill="${KCOL[p.kind] || KCOL.plan}" stroke="var(--surface)" stroke-width="3"/>
-          ${l ? `<text x="${l.x}" y="${l.y}" text-anchor="middle" class="pin-label">${esc(l.txt)}</text>` : ''}</g>`; }).join(''); })()}
-    <g transform="translate(${W - 34},34)"><circle r="16" fill="var(--surface)" stroke="var(--map-line)"/><path d="M0 -10 L5 4 L0 1 L-5 4Z" fill="var(--ink)"/><text y="-19" text-anchor="middle" class="pin-label" style="font-size:10px">N</text></g>
-    <g transform="translate(18,${H - 20})"><rect x="-6" y="-16" width="${barPx + 70}" height="26" rx="6" fill="var(--surface)" opacity=".85"/><line x1="0" y1="0" x2="${barPx}" y2="0" stroke="var(--ink)" stroke-width="3"/><text x="${barPx + 8}" y="4" class="pin-label" style="text-anchor:start;font-size:11px">${barKm < 1 ? barKm * 1000 + ' m' : barKm + ' km'}</text></g>
-  </svg>
-  <div class="legend" style="margin-top:8px">${[['stay', 'Stay'], ['nightlife', planKind().evening || 'Nightlife'], ['food', 'Food'], ['activity', 'Plans'], ['meet', 'Meet-up']].filter(([k]) => pts.some(p => p.kind === k)).map(([k, l]) => `<span><i class="sw" style="background:${KCOL[k]}"></i>${l}</span>`).join('')}</div>
-  ${sel ? (() => { const ds = dest(), km = stay && sel !== stay ? kmBetween(stay, sel) : null;
-    return `<div class="card stack pin-card"><div class="row" style="justify-content:space-between"><b>${esc(sel.name)}</b><span class="kind">${esc(sel.kind)}</span></div>
-      ${km !== null ? `<span class="small muted">${(km * 0.621).toFixed(1)} mi from ${esc(stay.name)} · about ${Math.max(1, Math.round(km / 5 * 60))} min walk</span>` : ''}
-      <div class="row" style="gap:6px"><a class="btn sm primary" href="https://www.google.com/maps/dir/?api=1${stay && sel !== stay ? `&origin=${stay.lat},${stay.lng}` : ''}&destination=${sel.lat},${sel.lng}&travelmode=walking" target="_blank" rel="noopener">Directions</a><a class="btn sm" href="${maps(sel.name, ds?.city || '')}" target="_blank" rel="noopener">Open in Maps</a></div></div>`; })() : ''}
-  </div>`;
-}
-function pinPlaces() {
-  const ds = dest(); if (!ds) return;
-  const geo = S.trip.geo || {}, names = [];
-  for (const i of visItems()) if (!i.hidden && !geo[rkey(i.title)] && i.kind !== 'travel') names.push(i.title);
-  if (S.trip.meet?.text && !geo[rkey(S.trip.meet.text)]) names.push(S.trip.meet.text);
-  const st = S.trip.stay; const needStay = st && !st.lat;
-  if (needStay) names.push(st.name);
-  for (const s of S.trip.spots?.items || []) if (!s.lat) names.push(s.name);
-  const uniq = [...new Set(names)].slice(0, 30);
-  if (!uniq.length) { flash('Everything with a real place is already on the map.'); return; }
-  const prompt = `Estimate map coordinates for these places in or near ${ds.city}. Some are itinerary titles: find the actual place they name. If a title is not a specific place (like "Pool day" or "Sleep in"), skip it.
-Places:
-${uniq.map((n, i) => `${i + 1}. ${n}`).join('\n')}
-Reply with only JSON: {"places":[{"name":"exactly as given","lat":0,"lng":0,"kind":"nightlife|food|activity|stay"}]}`;
-  askAI('pin', prompt, data => {
-    const out = {}; let stayFix = null; const spotFix = {};
-    for (const p of data?.places || []) {
-      if (!p || !p.name || !isFinite(+p.lat) || !isFinite(+p.lng) || !+p.lat) continue;
-      const g = { name: String(p.name).slice(0, 80), lat: +p.lat, lng: +p.lng, kind: ['nightlife', 'food', 'activity', 'stay'].includes(p.kind) ? p.kind : 'plan' };
-      if (st && p.name === st.name) stayFix = g; else if ((S.trip.spots?.items || []).some(s => s.name === p.name)) spotFix[p.name] = g; else out[rkey(p.name)] = g;
-    }
-    const patch = { geo: out };
-    if (stayFix) patch.stay = { lat: stayFix.lat, lng: stayFix.lng };
-    if (Object.keys(spotFix).length) patch.spots = { ...S.trip.spots, items: S.trip.spots.items.map(s => spotFix[s.name] ? { ...s, lat: spotFix[s.name].lat, lng: spotFix[s.name].lng } : s) };
-    return saveTrip(patch);
-  });
-}
-function mapTab() {
-  const ds = dest(); if (!ds) return needDestDates('The crew map', 'dest');
-  const pts = mapPoints();
-  return `<section class="card stack">
-    <div class="row" style="justify-content:space-between"><div class="stack" style="gap:2px"><h2>Crew map</h2><span class="small muted">${isSmall() ? 'Your spots and plans' + (S.trip.city ? ' in ' + esc(S.trip.city) : '') : 'Your stay, spots and plans in ' + esc(ds.city)}. Tap a pin for walking time and directions.</span></div>
-      <div class="row" style="gap:6px"><button class="btn sm lost-btn" data-act="lostOpen">I’m lost</button>${S.sample !== null ? `<button class="btn sm" data-act="pinPlaces" ${S.busy.pin ? 'disabled' : ''}>${S.busy.pin ? '<i class="spin"></i>Pinning…' : 'Pin everything'}</button>` : ''}</div></div>
-    ${pts.length ? mapView() : `<div class="empty"><b>Nothing on the map yet.</b><span>${isSmall() ? 'Get spot picks or build the plan' : `Lock a stay, get ${planKind().spots ? 'picks' : 'nightlife picks'} or build the itinerary`}, then tap “Pin everything”.</span></div>`}
-    <p class="small muted">Pins are approximate. Use Directions for turn-by-turn.</p>
-  </section>
-  ${lostAt().length ? `<section class="card stack"><h3>Lost right now</h3>${lostAt().map(m => `<div class="nudge"><b>${esc(m.nick || 'Someone')}</b><span class="small">near ${esc(m.lost.where)} · ${ago(m.lost.at)}</span></div>`).join('')}</section>` : ''}`;
-}
-
 /* ---------- stays the crew found themselves ---------- */
 // Anyone can add a place they found (Airbnb, Booking, VRBO, a friend's cabin) with a
 // link and the real price. It sits next to the AI ideas, gets votes, and can be locked
@@ -4264,6 +4211,7 @@ function stayBookedBox(st) {
 }
 
 /* ---------- I'm lost ---------- */
+function lostAt() { return active().filter(m => m.lost && !m.lost.found && Date.now() - m.lost.at < 6 * 36e5); }
 function lostBanner() {
   const ls = lostAt(); if (!ls.length) return '';
   return ls.map(m => `<div class="lost-banner" role="alert"><div style="min-width:0"><b>${m.id === S.uid ? 'You sent an SOS' : esc(m.nick || 'Someone') + ' is lost'}</b><div class="small">Near ${esc(m.lost.where)} · ${ago(m.lost.at)}</div></div>
@@ -4284,7 +4232,7 @@ function sendLost(where) {
   S.lostOpen = false;
   const me = meDoc();
   saveMe({ lost: { where, at: Date.now() }, checkin: { text: 'Lost near ' + where, at: Date.now() }, checkins: [...(me?.checkins || []), { text: 'Lost near ' + where, at: Date.now() }].slice(-40) }, true);
-  postFeed(`SOS: ${me?.nick || 'Someone'} is lost near ${where}. Check the map.`);
+  postFeed(`SOS: ${me?.nick || 'Someone'} is lost near ${where}.`);
   flash('SOS sent. The crew can see where you are.');
 }
 function foundLost(uid) {
@@ -4561,7 +4509,6 @@ function liveQuick() {
     <button class="qa qa-lost" data-act="lostOpen"><b>I’m lost</b><span>Send the crew my spot</span></button>
     <button class="qa" data-act="ciJump"><b>Check in</b><span>${myCi ? 'You: ' + esc(myCi.text) : 'Where are you?'}</span></button>
     <button class="qa" data-act="meetJump"><b>Meet-up</b><span>${meet?.text ? esc(meet.text) + (meet.time ? ' · ' + esc(tShow(meet.time)) : '') : 'Not set yet'}</span></button>
-    ${tabOn('map') ? `<button class="qa" data-tab="map"><b>Map</b><span>${mapPoints().length} places pinned</span></button>` : ''}
   </section>`;
 }
 function jumpTo(sel) { const el = $(sel); if (!el) return; el.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); setTimeout(() => el.focus({ preventScroll: true }), 300); }
@@ -4762,10 +4709,10 @@ const HIDE_TABS = { hangout: ['flights', 'stays', 'tickets', 'pack', 'bucket', '
 // small or away). Hiding is display only: nothing is deleted, and a feature a plan already uses (it has
 // to-dos, bucket items, pot entries or award votes) stays visible, so older plans keep everything they had.
 const GROUP_HIDE = {
-  friends: { small: ['tasks', 'map', 'bucket'], away: [] },
-  celebration: { small: ['map', 'bucket'], away: [] },
-  family: { small: ['tasks', 'map', 'bucket', 'awards'], away: ['pot', 'bucket', 'awards'] },
-  work: { small: ['map', 'bucket', 'awards', 'wrapped'], away: ['pot', 'bucket', 'awards', 'wrapped'] },
+  friends: { small: ['tasks', 'bucket'], away: [] },
+  celebration: { small: ['bucket'], away: [] },
+  family: { small: ['tasks', 'bucket', 'awards'], away: ['pot', 'bucket', 'awards'] },
+  work: { small: ['bucket', 'awards', 'wrapped'], away: ['pot', 'bucket', 'awards', 'wrapped'] },
 };
 const IN_USE = { tasks: () => taskList().length > 0, bucket: () => S.bucket.length > 0, pot: () => S.pot.length > 0, awards: () => Object.keys(S.trip.superVotes || {}).length > 0 };
 // the group pot is for splitting; a plan where one person or a company pays doesn't show it (unless it's in use)
@@ -5483,7 +5430,7 @@ async function saveCard() {
 
 /* ---------- events ---------- */
 app.addEventListener('click', e => {
-  const t = e.target.closest('button,[data-open],[data-pin],[data-act]'); if (!t) return;
+  const t = e.target.closest('button,[data-open],[data-act]'); if (!t) return;
   const ds = t.dataset;
   if (ds.act === 'home') return goHome();
   if (ds.act === 'reloadView') { lastView = null; S.tab = 'overview'; return render(); }
@@ -5569,17 +5516,16 @@ app.addEventListener('click', e => {
   if (ds.act === 'endRunoff') return saveTrip({ runoff: null });
   if (ds.act === 'nudgeSwipe') return sendInvite(`Swipe on our ${planWord()} options for ${S.trip.name}. We’re waiting on you!`, inviteLink(), S.trip.name);
   // a tap is free / not free; in ★ Favorites mode it stars a day instead (and counts you free on it)
-  if (ds.day) {
-    const days = new Set(meDoc()?.days || []), pref = new Set(meDoc()?.pref || []), d = ds.day;
-    if (S.starMode) { if (pref.has(d)) pref.delete(d); else { pref.add(d); days.add(d); } }
-    else if (days.has(d)) { days.delete(d); pref.delete(d); } else days.add(d);
-    return saveMe({ days: [...days].sort(), pref: [...pref].filter(x => days.has(x)).sort() });
-  }
-  if (ds.act === 'starMode') { S.starMode = !S.starMode; return render(); }
+  if (ds.day) return pickDay(ds.day);
+  if (ds.rmrange) { const [a, z] = ds.rmrange.split('|'), gone = new Set(span(a, z)); return setDays((meDoc()?.days || []).filter(x => !gone.has(x)), `Removed ${dayRangeText({ start: a, end: z })}.`); }
+  if (ds.editrange) { const [a, z] = ds.editrange.split('|'); S.rPick = { edit: { start: a, end: z } }; return render(); }
+  if (ds.act === 'rangeAdd') { S.rPick = {}; render(); return document.querySelector('.cal .day')?.focus({ preventScroll: true }); }
+  if (ds.act === 'rangeCancel') { S.rPick = null; return render(); }
+  if (ds.act === 'starMode') { S.starMode = !S.starMode; S.rPick = null; return render(); }
   if (ds.addwin) {
-    const [a, z] = ds.addwin.split('|'), days = new Set([...(meDoc()?.days || []), ...span(a, z)]);
-    saveMe({ days: [...days].sort() }, true); votePop('Works for me ✓', 'y');
-    return flash(`You’re in for ${a === z ? fmt(a) : dayRange(a, z)}. The crew can see it.`);
+    const [a, z] = ds.addwin.split('|');
+    if (setDays([...(meDoc()?.days || []), ...span(a, z)], `You’re free ${a === z ? fmt(a) : dayRange(a, z)}. The crew can see it.`)) votePop('Works for me ✓', 'y');
+    return;
   }
   if (ds.taskdone) { const x = (S.trip.tasks || {})[ds.taskdone]; if (x) { patchTask(ds.taskdone, { done: !x.done, doneBy: x.done ? '' : S.uid }); if (!x.done) flash(`Done: ${x.title}`); } return; }
   if (ds.taketask) return patchTask(ds.taketask, { owner: S.uid });
@@ -5606,9 +5552,8 @@ app.addEventListener('click', e => {
   if (ds.act === 'costAI') return estimateCosts();
   if (ds.costkeep) { const h = costHints()[ds.costkeep]; if (h) saveTrip({ costs: { [ds.costkeep]: { low: h.low, high: h.high, src: h.src, note: h.note, by: S.uid, at: Date.now() } } }); return; }
   if (ds.flex) { const f = { ...(meDoc()?.flex || {}) }; f[ds.flex] = !f[ds.flex]; return saveMe({ flex: f }, true); }
-  if (ds.act === 'allDays') return saveMe({ days: span(S.trip.winStart, S.trip.winEnd) }, true);
-  if (ds.act === 'noDays') return saveMe({ days: [], pref: [] }, true);
-  if (ds.act === 'weekends') return saveMe({ days: span(S.trip.winStart, S.trip.winEnd).filter(x => [0, 5, 6].includes(D(x).getUTCDay())) }, true);
+  if (ds.act === 'allDays') { S.rPick = null; return saveMe({ days: span(S.trip.winStart, S.trip.winEnd) }, true); }
+  if (ds.act === 'noDays') { S.rPick = null; return saveMe({ days: [], pref: [] }, true); }
   if ((ds.lockdates || ds.lockdest || ds.lockpitch) && !canLock()) { flash('Only organizers can lock this one. Your vote still counts.'); return; }
   if (ds.lockdates || ds.lockdest || ds.lockpitch) { const g = lockGate(ds.lockpitch ? 'pitch' : ds.lockdest ? 'dest' : 'dates', ds.lockpitch || ds.lockdest || ds.lockdates); if (!g.ok) { flash(g.why); return; } }
   if (ds.consent) return toggleConsent(ds.consent);
@@ -5629,8 +5574,6 @@ app.addEventListener('click', e => {
   if (ds.setnights) return saveTrip({ nights: +ds.setnights, lockedDates: null });
   if (ds.act === 'ciJump') return jumpTo('#ci-text');
   if (ds.act === 'meetJump') return jumpTo('#meet-where');
-  if (ds.pin) { S.pinSel = S.pinSel === ds.pin ? null : ds.pin; return render(); }
-  if (ds.act === 'pinPlaces') return pinPlaces();
   if (ds.act === 'lostOpen') { S.lostOpen = true; return render(); }
   if (ds.act === 'lostClose') { S.lostOpen = false; return render(); }
   if (ds.lostat) return sendLost(ds.lostat);
@@ -5783,7 +5726,6 @@ document.addEventListener('keydown', e => {
 });
 // Enter in the describe box plans it (Shift+Enter for a new line); Enter in a chip's editor saves it
 app.addEventListener('keydown', e => { if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return; if (e.target.id === 'nd-text') { e.preventDefault(); shapeRead(e.target.value); } else if (e.target.closest?.('.sh-edit')) { e.preventDefault(); shapeSave(); } });
-app.addEventListener('keydown', e => { const p = e.target.closest && e.target.closest('[data-pin]'); if (p && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); p.dispatchEvent(new MouseEvent('click', { bubbles: true })); } });
 // swipe left/right on a phone to move between the tabs of a menu
 let swipe0 = null;
 app.addEventListener('touchstart', e => {
@@ -5877,7 +5819,7 @@ function stop() { if (S.meDirty && S.tid && !S.demo) flushMe(); S.unsub.forEach(
 function setHash(h) { try { history.replaceState(null, '', h ? '#' + h : location.pathname + location.search); } catch {} }
 function resetTrip() {
   S.trip = null; S.members = []; S.membersIn = false; S.busy = {}; meSaved = false; S.setup = null; S.addStay = false; S.whatif = null; S.repeat = null; S.recover = null; S.rc = null; S.editItem = null; S.alts = null; S.peek = false; S.expenses = []; S.packing = []; S.readOnly = false;
-  S.cardUrl = null; S.cardBlob = null; S.copyText = ''; S.split = null; S.confirm = null; S.tkFile = null; S.feed = []; S.bucket = []; S.photos = []; S.pot = []; S.mySpend = []; S.lostOpen = false; S.pinSel = null; S.hangPlan = null; S.wrapI = 0; S.img = null; S.show = null; clearInterval(showTimer);
+  S.cardUrl = null; S.cardBlob = null; S.copyText = ''; S.split = null; S.confirm = null; S.tkFile = null; S.feed = []; S.bucket = []; S.photos = []; S.pot = []; S.mySpend = []; S.lostOpen = false; S.rPick = null; S.hangPlan = null; S.wrapI = 0; S.img = null; S.show = null; clearInterval(showTimer);
   for (const k of Object.keys(DRAFT)) delete DRAFT[k];
 }
 function goHome() { stop(); S.tid = null; S.creating = null; S.crewView = null; S.demo = false; resetTrip(); setHash(''); render(); }
@@ -5943,19 +5885,19 @@ function openDemo() {
   m2.checkins = [{ text: 'Getting food', at: at(TODAY, '01:30') }, { text: 'Getting food', at: t0 - .3 * H }];
   m4.checkins = [{ text: 'Heading back', at: at(TODAY, '03:55') }];
   for (const m of S.members) if (m.checkins) m.checkin = m.checkins[m.checkins.length - 1];
-  S.trip.stay = { name: 'Our Airbnb · South Beach', kind: 'rental', area: 'South Beach', sleeps: '3 bedrooms, 6 beds', perNight: '$520–600 per night', perPerson: '$270–300 per person', why: 'Walk to the beach and Collins Ave, room for everyone.', pros: ['Pool', 'Walk to beach'], lat: 25.7840, lng: -80.1310 };
+  S.trip.stay = { name: 'Our Airbnb · South Beach', kind: 'rental', area: 'South Beach', sleeps: '3 bedrooms, 6 beds', perNight: '$520–600 per night', perPerson: '$270–300 per person', why: 'Walk to the beach and Collins Ave, room for everyone.', pros: ['Pool', 'Walk to beach'] };
   S.trip.stays = { city: 'Miami', at: t0, items: [
     S.trip.stay,
-    { id: 'st2', name: 'Freehand Miami', kind: 'hostel', area: 'Miami Beach', sleeps: '6-bed private room', perNight: '$280–340 per night', perPerson: '$140–170 per person', why: 'Cheapest good option with a legendary bar downstairs.', pros: ['Great bar', 'Cheap'], lat: 25.8016, lng: -80.1281 },
-    { id: 'st3', name: 'The Plymouth South Beach', kind: 'hotel', area: 'South Beach', sleeps: '3 rooms, 2 queens each', perNight: '$690–820 per night', perPerson: '$345–410 per person', why: 'Boutique hotel with a pool scene, a short walk to the beach.', pros: ['Pool', 'Quiet'], lat: 25.7946, lng: -80.1296 },
+    { id: 'st2', name: 'Freehand Miami', kind: 'hostel', area: 'Miami Beach', sleeps: '6-bed private room', perNight: '$280–340 per night', perPerson: '$140–170 per person', why: 'Cheapest good option with a legendary bar downstairs.', pros: ['Great bar', 'Cheap'] },
+    { id: 'st3', name: 'The Plymouth South Beach', kind: 'hotel', area: 'South Beach', sleeps: '3 rooms, 2 queens each', perNight: '$690–820 per night', perPerson: '$345–410 per person', why: 'Boutique hotel with a pool scene, a short walk to the beach.', pros: ['Pool', 'Quiet'] },
   ] };
   S.trip.stay.id = 'st1';
   S.trip.spots = { city: 'Miami', at: t0, items: [
-    { name: 'LIV', type: 'club', area: 'Mid-Beach', why: 'The big-name club night your quiz said you wanted.', price: '$$$$', cover: '$60–100', bestNight: 'Sat', dress: 'Dress to impress', tip: 'Book a table early if you want to skip the line.', lat: 25.8172, lng: -80.1223 },
-    { name: 'Sweet Liberty', type: 'bar', area: 'South Beach', why: 'Award-winning cocktails, lively, easy for a group.', price: '$$', cover: 'Free', bestNight: 'Fri', dress: 'Casual', tip: 'Happy hour runs till 7.', lat: 25.7949, lng: -80.1287 },
-    { name: 'Wynwood Walls', type: 'activity', area: 'Wynwood', why: 'Street art, photo heaven, great tacos nearby.', price: '$', cover: '$12 entry', bestNight: 'Day', dress: 'Anything', tip: 'Go late afternoon for good light.', lat: 25.8010, lng: -80.1994 },
-    { name: 'E11EVEN', type: 'club', area: 'Downtown', why: 'Open 24 hours. For the sunrise club crew.', price: '$$$$', cover: '$50–80', bestNight: 'Sat', dress: 'Upscale', tip: 'Best after 2am.', lat: 25.7853, lng: -80.1931 },
-    { name: 'La Sandwicherie', type: 'late-night food', area: 'South Beach', why: 'The 3am sandwich everyone talks about.', price: '$', cover: 'Free', bestNight: 'Any', dress: 'Anything', tip: 'Cash moves faster.', lat: 25.7818, lng: -80.1318 },
+    { name: 'LIV', type: 'club', area: 'Mid-Beach', why: 'The big-name club night your quiz said you wanted.', price: '$$$$', cover: '$60–100', bestNight: 'Sat', dress: 'Dress to impress', tip: 'Book a table early if you want to skip the line.' },
+    { name: 'Sweet Liberty', type: 'bar', area: 'South Beach', why: 'Award-winning cocktails, lively, easy for a group.', price: '$$', cover: 'Free', bestNight: 'Fri', dress: 'Casual', tip: 'Happy hour runs till 7.' },
+    { name: 'Wynwood Walls', type: 'activity', area: 'Wynwood', why: 'Street art, photo heaven, great tacos nearby.', price: '$', cover: '$12 entry', bestNight: 'Day', dress: 'Anything', tip: 'Go late afternoon for good light.' },
+    { name: 'E11EVEN', type: 'club', area: 'Downtown', why: 'Open 24 hours. For the sunrise club crew.', price: '$$$$', cover: '$50–80', bestNight: 'Sat', dress: 'Upscale', tip: 'Best after 2am.' },
+    { name: 'La Sandwicherie', type: 'late-night food', area: 'South Beach', why: 'The 3am sandwich everyone talks about.', price: '$', cover: 'Free', bestNight: 'Any', dress: 'Anything', tip: 'Cash moves faster.' },
   ] };
   S.trip.reactions = { [rkey('spLIV')]: { d1: 1, d4: 1, d3: 1 }, [rkey('spSweet Liberty')]: { d2: 1, d5: 1 }, [rkey('stOur Airbnb · South Beach')]: { d1: 1, d2: 1, d4: 1 } };
   S.trip.itinerary = [
@@ -5968,7 +5910,6 @@ function openDemo() {
     { id: 'i7', date: TODAY, time: '23:30', title: 'LIV', kind: 'nightlife', note: 'Table booked under Jay' },
     { id: 'i8', date: TODAY, time: '03:00', title: 'La Sandwicherie', kind: 'food', note: '' },
   ];
-  S.trip.geo = { [rkey('Wynwood Walls')]: { name: 'Wynwood Walls', lat: 25.8010, lng: -80.1994, kind: 'activity' } };
   S.trip.meet = { text: 'Our Airbnb · South Beach', time: '22:45', by: m2.id, at: t0 - .6 * H };
   S.trip.hangover = { [TODAY]: { d1: 4, d2: 2, d4: 5, d3: 3 } };
   S.trip.recaps = { [y]: { title: 'Day one', text: 'Everyone landed by noon. Tacos in Wynwood, a nap nobody admits to, then Sweet Liberty until close. Jay checked in “Still out” at 2:40am. Tasha called it at 4 and logged a 5 on the hangover index. There’s a receipt for 14 espresso martinis and no one is claiming it.', at: t0 - 3 * H } };

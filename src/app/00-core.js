@@ -57,7 +57,7 @@ const S = {
   tid: null, trip: null, members: [], demo: false, tab: 'crew',
   busy: {}, unsub: [], meDirty: false, readOnly: false,
   expenses: [], packing: [], downloads: null,
-  cardUrl: null, cardBlob: null, feed: [], bucket: [], photos: [], crews: [], pot: [], mySpend: [], creating: null, newMode: null, lostOpen: false, pinSel: null, hangPlan: null, wrapI: 0, secTab: {}, realId: null, img: null, show: null, newCrew: null, copyText: '', editDeposit: false, split: null,
+  cardUrl: null, cardBlob: null, feed: [], bucket: [], photos: [], crews: [], pot: [], mySpend: [], creating: null, newMode: null, lostOpen: false, rPick: null, hangPlan: null, wrapI: 0, secTab: {}, realId: null, img: null, show: null, newCrew: null, copyText: '', editDeposit: false, split: null,
 };
 const QUIZ = [
   { k: 'night', q: 'Perfect night out?', o: ['Big club', 'Bar hop', 'Rooftop cocktails', 'Dive bar', 'Low-key dinner'] },
@@ -437,13 +437,11 @@ function findSpots() {
 ${context()}
 
 ${isSmall() && sp.askSmall || sp.ask}
-Reply with only JSON: {"items":[{"name":"",${CALM_SPOT.replace('%T', sp.types)}}]}
-lat/lng: your best estimate of the place's coordinates.` : `You're a nightlife scout planning ${isSmall() ? 'a night out for a friend group' : 'a group trip'}. Recommend real, well-known venues that are open as of your latest knowledge.
+Reply with only JSON: {"items":[{"name":"",${CALM_SPOT.replace('%T', sp.types)}}]}` : `You're a nightlife scout planning ${isSmall() ? 'a night out for a friend group' : 'a group trip'}. Recommend real, well-known venues that are open as of your latest knowledge.
 ${context()}
 
 Give 9 picks that fit the trip type and vibe. For nightlife trips: mostly clubs and bars, plus at least one rooftop or lounge and one late-night food spot. For family or work trips: activities, good restaurants and relaxed evening spots instead of clubs. Favor places that work for a group this size (table or guestlist options for clubs). Match the night each place is best to the trip days.
-Reply with only JSON: {"items":[{"name":"","type":"club|bar|rooftop|lounge|live music|late-night food","area":"neighborhood","why":"one sentence on why this group would like it","price":"$|$$|$$$|$$$$","cover":"e.g. $20–40, Free, or Table min ~$500","bestNight":"e.g. Fri","dress":"short dress code","tip":"one practical insider tip","lat":0,"lng":0}]}
-lat/lng: your best estimate of the venue's coordinates.`;
+Reply with only JSON: {"items":[{"name":"","type":"club|bar|rooftop|lounge|live music|late-night food","area":"neighborhood","why":"one sentence on why this group would like it","price":"$|$$|$$$|$$$$","cover":"e.g. $20–40, Free, or Table min ~$500","bestNight":"e.g. Fri","dress":"short dress code","tip":"one practical insider tip"}]}`;
   askAI('spots', prompt, data => {
     const items = Array.isArray(data?.items) ? data.items.slice(0, 12) : [];
     if (!items.length) { flash('No picks came back. Try again.'); return; }

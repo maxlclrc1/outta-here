@@ -37,7 +37,7 @@ expect('when everyone has answered, it says so', /Everyone has shared their days
 await p.locator('.bw.bw-all [data-lockdates]').first().click(); await settle(p); await p.waitForTimeout(1800);
 expect('locking saves the dates as before', (await api(A, 'get', 'trips/' + T)).data.lockedDates?.start === '2026-11-20');
 { const t = (await p.locator('.decided-sum').innerText()).replace(/\s+/g, ' ');
-  expect('locked: the dates say decided, and nobody is asked for days again', /Decided/i.test(t) && /Fri, Nov 20 → Sun, Nov 22/.test(t) && /Everyone can make it/.test(t) && !(await p.locator('.avail:visible').count()), t);
+  expect('locked: the dates say decided, and nobody is asked for days again', /Decided/i.test(t) && /Fri, Nov 20 → Sun, Nov 22/.test(t) && /Everyone marked these days as free/.test(t) && !(await p.locator('.avail:visible').count()), t);
   expect('…and the next decision is one tap away', /Next: Choose where to go/.test(t)); }
 await p.click('.decided-sum [data-jgo]'); await settle(p);
 expect('…which goes to choosing where', (await p.locator('.subtab.on').innerText()).trim() === 'Trip Match');

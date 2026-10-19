@@ -187,7 +187,7 @@ function jSteps() {
       goal: small ? 'Plan how the day goes' : 'Sketch what you’ll do each day',
       why: have ? `${word(have, 'stop', 'stops')} so far.` : 'Nothing planned yet. Good spots book up.',
       todo: S.sample ? 'Let the AI draft it around the crew’s picks, then change anything.' : 'Add the stops you know: dinners, activities, nights out.',
-      after: 'The plan shows up in Live on the day, with the map.',
+      after: 'The plan shows up in Live on the day.',
       act: () => goBtn('plan', S.sample ? 'Draft it with AI' : 'Add stops'), help: S.sample ? { tab: 'plan', sel: '[data-act="plan"]', click: true } : { tab: 'plan', sel: '.addItem input[id^="ai-title"]' },
     });
   }
@@ -227,7 +227,7 @@ function jSteps() {
   add('meet', 'final', {
     title: 'Set the meeting point', done: !!t.meet?.text, blockedBy: needsDecided, group: 'No meeting point yet', notBefore: !soon,
     goal: 'Make sure nobody’s left wandering', why: d ? `${daysUntil(d.start) <= 0 ? 'It’s today' : `It’s ${daysUntil(d.start) === 1 ? 'tomorrow' : 'in ' + daysUntil(d.start) + ' days'}`} and there’s no meeting point.` : '',
-    todo: 'Say where and when everyone meets.', after: 'Everyone sees it in Live, with a map link.',
+    todo: 'Say where and when everyone meets.', after: 'Everyone sees it in Live, with a directions link.',
     act: () => `<form id="meetForm" class="row j-inline" style="gap:6px;align-items:flex-end"><label class="field" style="flex:2 1 150px"><span class="label">Where</span><input id="meet-where" maxlength="80" placeholder="${small ? 'Outside the restaurant' : 'Hotel lobby'}"></label><label class="field" style="flex:0 1 120px"><span class="label">When</span><input id="meet-time" type="time" value="${esc(t.time || '')}"></label><button class="btn primary" type="submit">Set it</button></form>`,
     help: { tab: 'live', sel: '#meetForm' },
   });
@@ -237,7 +237,7 @@ function jSteps() {
     title: small ? 'Enjoy it' : 'Follow today’s plan', done: false, live: true,
     goal: 'It’s happening', why: (() => { const nowT = new Date().toTimeString().slice(0, 5), up = visItems().filter(i => i.date === TODAY).sort(byTime).find(i => timeKey(i.time) >= timeKey(nowT)); return up ? `Up next: ${up.title}${up.time ? ' at ' + t12(up.time) : ''}.` : 'Nothing else planned today.'; })(),
     todo: 'Open today’s plan. Check in when you get somewhere, and use SOS if you get separated.', after: 'Check-ins and photos feed the recap.',
-    act: () => `${btn('data-tab="live"', 'Open today')}${tabOn('map') ? btn('data-tab="map"', 'Map', 'ghost') : ''}`, help: { tab: 'live', sel: '.live' },
+    act: () => btn('data-tab="live"', 'Open today'), help: { tab: 'live', sel: '.live' },
   });
 
   /* ----- afterward ----- */

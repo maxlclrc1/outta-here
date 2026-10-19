@@ -28,7 +28,7 @@ const tid = (await A.evaluate(() => location.hash)).slice(1);
 // —— the organizer: 4 questions ——
 expect('one continuous bar, no segments', (await A.locator('.setup-bar').count()) === 1 && !(await A.locator('.setup-prog').count()));
 expect('step 1, nothing picked: an empty bar and “Skip”', (await fill(A)) <= 6 && (await go(A)) === 'skip', `${await fill(A)}% ${await go(A)}`);
-await A.click('[data-act=weekends]'); await settle(A);
+await A.click('[data-act=allDays]'); await settle(A);
 expect('picking days fills a quarter of the bar and the button says “Continue”', Math.abs((await fill(A)) - 25) <= 2 && (await go(A)) === 'continue', `${await fill(A)}% ${await go(A)}`);
 await next(A);
 expect('step 2: the answer gets a cheer, and the bar keeps its quarter', (await A.locator('.setup-praise').count()) === 1 && Math.abs((await fill(A)) - 25) <= 2 && (await go(A)) === 'skip', `${await fill(A)}%`);
