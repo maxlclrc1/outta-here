@@ -18,6 +18,8 @@ const cleanDates = t => { for (const k of ['winStart', 'winEnd', 'rsvpBy']) if (
   const L = t.lockedDates; if (L != null && !(isDay(L.start) && isDay(L.end) && L.end >= L.start)) delete t.lockedDates;
   const badDay = v => v != null && !isDay(v), items = t.pitches && Array.isArray(t.pitches.items) ? t.pitches.items : null;
   if (items && items.some(x => x && (badDay(x.start) || badDay(x.end)))) t.pitches = { ...t.pitches, items: items.map(x => { if (!x || !(badDay(x.start) || badDay(x.end))) return x; const { start, end, ...rest } = x; return rest; }) };
+  // pitches made for the other kind of plan (a trip's, on what's now a dinner, or the other way) aren't shown
+  { const sm = ['hangout', 'day'].includes(t.size), its = t.pitches && Array.isArray(t.pitches.items) ? t.pitches.items : null; if (its && its.some(x => x && !!x.small !== sm)) t.pitches = { ...t.pitches, items: its.filter(x => x && !!x.small === sm) }; }
   // other shared values a wrong type would crash on
   if (Array.isArray(t.itinerary) && t.itinerary.some(i => i && ((i.date && !isDay(i.date)) || (i.time && !hhmm(i.time)) || typeof (i.time ?? '') !== 'string'))) t.itinerary = t.itinerary.map(i => !i ? i : { ...i, ...(i.date && !isDay(i.date) ? { date: '' } : {}), ...(i.time && (typeof i.time !== 'string' || !hhmm(i.time)) ? { time: '' } : {}) });
   if (Array.isArray(t.destinations) && t.destinations.some(d => d && ((d.code && !(typeof d.code === 'string' && isCode(d.code))) || (d.city != null && typeof d.city !== 'string')))) t.destinations = t.destinations.map(d => !d ? d : { ...d, code: typeof d.code === 'string' && isCode(d.code) ? d.code : '', city: d.city == null ? d.city : String(d.city) });
@@ -371,7 +373,13 @@ async function flushMe(now) {
     if (!job.joined) S.db.doc('trips/' + job.tid).update({ people: { [S.uid]: true }, left: { [S.uid]: null } }).catch(() => {});
   }
   catch (e) {
-    if (S.tid === job.tid) { flash(writeErr(e)); job.fields.forEach(k => meFields.add(k)); }
+    // free days the server won't take (more than four ranges): say why, and show what's actually saved
+    // instead of retrying the same days forever; anything else that was in the write is sent again
+    if (S.tid === job.tid && e?.code === 'invalid_argument' && job.fields.includes('days')) {
+      flash(/date ranges/.test(e.message || '') ? e.message : writeErr(e)); job.fields.filter(k => k !== 'days' && k !== 'pref').forEach(k => meFields.add(k));
+      ref.get().then(s => { const m = meDoc(); if (m && s.exists && S.tid === job.tid) { m.days = s.data().days || []; m.pref = s.data().pref || []; render(); } }).catch(() => {});
+    }
+    else if (S.tid === job.tid) { flash(writeErr(e)); job.fields.forEach(k => meFields.add(k)); }
     else flash('Your last change to the other plan didn’t save. Open it and try again.');
   }
   job.fields.forEach(k => meSending.delete(k));

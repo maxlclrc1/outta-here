@@ -1,4 +1,5 @@
 import { StoreError, type Json } from '@/lib/store';
+import { rangeLimitError } from '@/lib/integrity';
 
 // The plan's own dates (and, further down, a few other values shared screens rely on), checked
 // whenever a plan is written: the window people pick days in
@@ -65,14 +66,21 @@ function checkPlanValues(data: Json) {
   if (isObj(data.tasks)) for (const [id, x] of Object.entries(data.tasks)) if (isObj(x) && 'due' in x && !empty(x.due) && !isDay(x.due)) throw bad(`tasks.${id}.due`, x.due, true);
 }
 
-/** A member's own days (days they can make, and preferred ones) must be lists of real dates, and the
- * number of kids they're bringing (family plans; missing means 0) a whole number from 0 to 12. */
-export function checkMemberDays(data: Json) {
+/** A member's own days (days they can make, and preferred ones) must be lists of real dates, in at most
+ * four ranges, and the number of kids they're bringing (family plans; missing means 0) a whole number
+ * from 0 to 12. A record saved before the limit with more ranges stays as it is and can still be
+ * edited, as long as the change doesn't add a range (the whole write is refused otherwise, so nothing
+ * is half saved). */
+export function checkMemberDays(data: Json, prev?: Json | null) {
   const kids = data.kids;
   if ('kids' in data && kids !== null && !(typeof kids === 'number' && Number.isInteger(kids) && kids >= 0 && kids <= 12)) throw fail('kids must be a whole number from 0 to 12.');
   for (const k of ['days', 'pref']) {
     if (!(k in data) || data[k] === null) continue;
     const v = data[k];
     if (!Array.isArray(v) || v.length > 400 || !v.every(isDay)) throw fail(`${k} must be a list of dates like 2026-11-20.`);
+  }
+  if (Array.isArray(data.days)) {
+    const why = rangeLimitError(data.days, prev?.days);
+    if (why) throw fail(why);
   }
 }

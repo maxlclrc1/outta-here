@@ -3,6 +3,7 @@ import { checkMemberDays, checkPlanDates } from '@/lib/planDates';
 import { deletePlan } from '@/lib/deletePlan';
 import { deleteDoc, getDoc, listCollection, merge, rawDoc, segments, setDoc, StoreError, updateDoc, type Json } from '@/lib/store';
 import { boundLog } from '@/lib/changelog';
+import { keepDecisionsValid } from '@/lib/integrity';
 import { checkWrite, listable, readable } from '@/lib/access';
 import { honoreeItinerary } from '@/lib/privacy';
 import { checkExpected, keepManaged, mergeListsIn } from '@/lib/merge';
@@ -45,13 +46,21 @@ export async function POST(req: Request) {
         if (isPlan && data && typeof data === 'object' && '_expect' in data) { const { _expect, ...rest } = data as Json; if (op === 'update' && prev) checkExpected(prev, _expect); data = rest; }
         // the plan's dates must be real dates (lib/planDates.ts); checked on what was sent
         if (isPlan && op !== 'delete' && data && typeof data === 'object') checkPlanDates(data);
-        if (/^trips\/[^/]+\/members\/[^/]+$/.test(path) && op !== 'delete' && data && typeof data === 'object') checkMemberDays(data);
+        if (/^trips\/[^/]+\/members\/[^/]+$/.test(path) && op !== 'delete' && data && typeof data === 'object') checkMemberDays(data, prev);
         // what will actually be written: lists merged with others' edits, surprises kept,
         // and a member's whole-record save never changing what organizers manage
         if (isPlan && op === 'update' && prev) data = honoreeItinerary(prev, mergeListsIn(prev, data), user);
         if (isPlan && op === 'set') { const { _base, ...rest } = data; data = rest; }
         if (isMine && op === 'set' && prev) data = keepManaged(prev, data);
+        // decisions that follow from this write (unlocking a removed place, a change of plan kind), checked like any other
+        let cleanup: Json | null = null;
+        if (isPlan && op !== 'delete') {
+          const v = keepDecisionsValid(prev, data, op === 'set' || !prev ? data : merge(prev, data));
+          if (v.refuse) throw new StoreError('conflict', v.refuse);
+          data = v.data; cleanup = v.cleanup;
+        }
         checkWrite(op, path, data, prev, ctx);
+        if (cleanup) data = { ...data, ...cleanup };
         // plans: written whole, with the change log kept within its limits (lib/changelog.ts)
         if (isPlan && op !== 'delete' && (op === 'set' || prev)) setDoc(path, boundLog(op === 'set' ? data : merge(prev!, data)), user);
         else if (op === 'set') setDoc(path, data, user);

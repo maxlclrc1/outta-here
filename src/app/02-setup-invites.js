@@ -13,7 +13,7 @@ const BUDGETS = { hangout: [30, 60, 100], day: [50, 100, 200], weekend: [250, 45
    free days always were, as a list of dates, so the group's best dates and everything else that reads
    free days use every range, and older plans load as they are. Ranges that overlap or touch become one
    range, so no free day is ever dropped. */
-const RANGE_MAX = 4;
+const RANGE_MAX = 4; // the server holds you to the same (lib/integrity.ts)
 const rangesOf = days => { const out = []; for (const d of [...new Set(days || [])].sort()) { const r = out[out.length - 1]; if (r && add(r.end, 1) === d) r.end = d; else out.push({ start: d, end: d }); } return out; };
 const dayRangeText = r => r.start === r.end ? fmt(r.start) : `${short(r.start)} – ${short(r.end)}`;
 // the classes a calendar day gets for your ranges and the range you're picking right now

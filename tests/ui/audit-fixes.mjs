@@ -33,7 +33,7 @@ const txt = async s => (await p.locator(s).first().innerText()).replace(/\s+/g, 
   await p.click('.bottomnav [data-sec=plan]'); await settle(p); await p.click('.subtab[data-tab=match]'); await settle(p);
   expect('…and Trip Match isn’t “Decided”, so the place can be chosen again', !(await p.locator('.decided-sum').count()) && (await p.locator('[data-lockdest=d1]').count()) >= 1); }
 { const T = 'af2' + r; await mk(T, { lockedDest: 'old-id' }); await open(T);
-  expect('older data pointing at a missing place opens as still choosing', /where still open|Picking where/i.test(await txt('.ovh-meta')) && !/Lisbon/.test(await txt('.ovh-meta')), await txt('.ovh-meta')); }
+  expect('saving a plan that points at a missing place leaves it still choosing (the server clears it; older saved data is in plan-integrity.mjs)', /where still open|Picking where/i.test(await txt('.ovh-meta')) && !/Lisbon/.test(await txt('.ovh-meta')), await txt('.ovh-meta')); }
 
 // —— 2. a change made just before a refresh is kept ——
 // (its own browser context with no request routing: Playwright's routing cancels requests sent as a page unloads)
