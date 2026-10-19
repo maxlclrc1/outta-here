@@ -1,6 +1,6 @@
 /* ---------- events ---------- */
 app.addEventListener('click', e => {
-  const t = e.target.closest('button,[data-open],[data-pin],[data-act]'); if (!t) return;
+  const t = e.target.closest('button,[data-open],[data-act]'); if (!t) return;
   const ds = t.dataset;
   if (ds.act === 'home') return goHome();
   if (ds.act === 'reloadView') { lastView = null; S.tab = 'overview'; return render(); }
@@ -146,8 +146,6 @@ app.addEventListener('click', e => {
   if (ds.setnights) return saveTrip({ nights: +ds.setnights, lockedDates: null });
   if (ds.act === 'ciJump') return jumpTo('#ci-text');
   if (ds.act === 'meetJump') return jumpTo('#meet-where');
-  if (ds.pin) { S.pinSel = S.pinSel === ds.pin ? null : ds.pin; return render(); }
-  if (ds.act === 'pinPlaces') return pinPlaces();
   if (ds.act === 'lostOpen') { S.lostOpen = true; return render(); }
   if (ds.act === 'lostClose') { S.lostOpen = false; return render(); }
   if (ds.lostat) return sendLost(ds.lostat);
@@ -300,7 +298,6 @@ document.addEventListener('keydown', e => {
 });
 // Enter in the describe box plans it (Shift+Enter for a new line); Enter in a chip's editor saves it
 app.addEventListener('keydown', e => { if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return; if (e.target.id === 'nd-text') { e.preventDefault(); shapeRead(e.target.value); } else if (e.target.closest?.('.sh-edit')) { e.preventDefault(); shapeSave(); } });
-app.addEventListener('keydown', e => { const p = e.target.closest && e.target.closest('[data-pin]'); if (p && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); p.dispatchEvent(new MouseEvent('click', { bubbles: true })); } });
 // swipe left/right on a phone to move between the tabs of a menu
 let swipe0 = null;
 app.addEventListener('touchstart', e => {

@@ -1,6 +1,6 @@
 // Browser regression test, run with: npm run test:ui (needs Playwright, see README › Tests)
-// The rest of plan type (after plan-types.mjs): cost hints and the cost/deals AI requests, the map
-// legend, where an added pick lands in the itinerary, and the crew DNA line. Family trips and team
+// The rest of plan type (after plan-types.mjs): cost hints and the cost/deals AI requests, picks
+// without a map, where an added pick lands in the itinerary, and the crew DNA line. Family trips and team
 // offsites aren't described as nights out; friends plans keep the original wording and behavior.
 import { install, trackBrowser } from '../_identity.mjs'; install(); // act as the test's people (see the file)
 const { chromium } = await import(process.env.PLAYWRIGHT || 'playwright');
@@ -62,17 +62,12 @@ for (const [mode, size, food, fun] of [['family', 'weekend', 'Every meal and sna
   expect('friends: the price check still asks for and shows nightlife', /"nightlife":"\$"/.test(prompt2) && /nightlife/i.test(shown2) && /\$120/.test(shown2), shown2.replace(/\n+/g, ' | '));
 }
 
-// —— 2. the map legend ——
-const legend = async () => (await p.locator('.legend').first().innerText()).replace(/\n+/g, ' | ');
-{ const tid = await plan('family', 'weekend', { spots: { city: 'Denver', at: 1, items: [spot('Corner Cafe', 'cafe', 39.75, -105.0), spot('Diner Co', 'restaurant', 39.751, -105.001), spot('Science Museum', 'museum', 39.747, -104.94)] } });
-  await open(tid, 'live', 'map'); const l = await legend();
-  expect('family: the map legend has Food and Plans, never Nightlife', /Food/.test(l) && /Plans/.test(l) && !/Nightlife/i.test(l), l); }
-{ const tid = await plan('work', 'trip', { spots: { city: 'Denver', at: 1, items: [spot('Quiet Bar', 'bar', 39.75, -105.0), spot('Axe Throwing', 'activity', 39.752, -105.002)] } });
-  await open(tid, 'live', 'map'); const l = await legend();
-  expect('work: a relaxed bar shows as an evening, not nightlife', /Evenings/.test(l) && /Plans/.test(l) && !/Nightlife/i.test(l), l); }
-{ const tid = await plan('friends', 'weekend', { spots: { city: 'Denver', at: 1, items: [spot('Club Vault', 'club', 39.75, -105.0), spot('Taco Food Hall', 'late-night food', 39.752, -105.002)] } });
-  await open(tid, 'live', 'map'); const l = await legend();
-  expect('friends: the legend still says Nightlife', /Nightlife/.test(l) && /Food/.test(l), l); }
+// —— 2. no map (postponed): picks are asked for without coordinates, and Live has no map ——
+{ const tid = await plan('friends', 'weekend', { spots: { city: 'Denver', at: 1, items: [spot('Club Vault', 'club', 39.75, -105.0)] } });
+  await open(tid, 'plan', 'spots'); const prompt = await ask('spots');
+  expect('the picks request doesn’t ask for coordinates', prompt.length > 0 && !/lat\/lng|"lat"|coordinates/i.test(prompt), prompt.slice(-160));
+  await open(tid, 'live', 'live');
+  expect('…and Live has no Map tab or map link', !(await p.locator('.subtab[data-tab=map], [data-tab=map]').count()), ''); }
 
 // —— 3. adding picks to the itinerary ——
 async function addAll(tid) {

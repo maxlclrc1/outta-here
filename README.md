@@ -1,6 +1,6 @@
 # Outta Here
 
-Group trips that actually happen. The crew picks dates and budgets, swipes on AI-pitched trips until everyone matches, books flights and a stay together, then the app runs the trip: live plans, a crew map, an "I'm lost" button, a group pot, and a Trip Wrapped at the end.
+Group trips that actually happen. The crew picks dates and budgets, swipes on AI-pitched trips until everyone matches, books flights and a stay together, then the app runs the trip: live plans, an "I'm lost" button, a group pot, and a Trip Wrapped at the end.
 
 This version runs on your own computer. Trips, photos and boarding passes are saved in the `data/` folder of this project.
 
@@ -135,6 +135,6 @@ Saving is crash-safe: each save is written to `data/db.json.tmp` and then swappe
 ## What's next
 
 1. **Supabase:** real accounts (join with a name, save your spot with a phone number or email), a hosted database, and uploads that work from anywhere.
-2. **Real maps and GPS** for the crew map and the "I'm lost" button.
+2. **GPS** for the "I'm lost" button.
 3. **Live flight prices** with Travelpayouts, then Duffel.
 4. **Deploy to Vercel** so it's a real link anyone can open.

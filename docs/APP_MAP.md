@@ -19,7 +19,7 @@ through, which decisions depend on which, and where screens used to overlap. The
 | Home | Overview, Crew, To-dos, Changes, Settings | The journey, passport, who's coming, your details, limits and needs, to-dos, change log, settings and templates |
 | Plan | Trip Match, Dates, What if, Spots/Nightlife, Itinerary | Pick where/what (pitches, own picks, final vote), pick when, compare options, places, day-by-day plan |
 | Book | Flights, Stays, Boarding passes, Packing | Fares per home city, stays (AI and your own finds), bookings and arrivals, packing list |
-| Live | Today, Map, Bucket list, Hype | Today's plan, meeting point, check-ins, SOS, map, bucket list, hype feed |
+| Live | Today, Bucket list, Hype | Today's plan, meeting point, check-ins, SOS, bucket list, hype feed |
 | Money | All-in cost, My spend, Group pot, Expenses | Cost per person, personal spending, kitty, split expenses |
 | Memories | Wrapped, Photos, Awards | Recap story, photo wall, superlatives |
 

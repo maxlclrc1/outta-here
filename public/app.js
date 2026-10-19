@@ -57,7 +57,7 @@ const S = {
   tid: null, trip: null, members: [], demo: false, tab: 'crew',
   busy: {}, unsub: [], meDirty: false, readOnly: false,
   expenses: [], packing: [], downloads: null,
-  cardUrl: null, cardBlob: null, feed: [], bucket: [], photos: [], crews: [], pot: [], mySpend: [], creating: null, newMode: null, lostOpen: false, pinSel: null, hangPlan: null, wrapI: 0, secTab: {}, realId: null, img: null, show: null, newCrew: null, copyText: '', editDeposit: false, split: null,
+  cardUrl: null, cardBlob: null, feed: [], bucket: [], photos: [], crews: [], pot: [], mySpend: [], creating: null, newMode: null, lostOpen: false, hangPlan: null, wrapI: 0, secTab: {}, realId: null, img: null, show: null, newCrew: null, copyText: '', editDeposit: false, split: null,
 };
 const QUIZ = [
   { k: 'night', q: 'Perfect night out?', o: ['Big club', 'Bar hop', 'Rooftop cocktails', 'Dive bar', 'Low-key dinner'] },
@@ -437,13 +437,11 @@ function findSpots() {
 ${context()}
 
 ${isSmall() && sp.askSmall || sp.ask}
-Reply with only JSON: {"items":[{"name":"",${CALM_SPOT.replace('%T', sp.types)}}]}
-lat/lng: your best estimate of the place's coordinates.` : `You're a nightlife scout planning ${isSmall() ? 'a night out for a friend group' : 'a group trip'}. Recommend real, well-known venues that are open as of your latest knowledge.
+Reply with only JSON: {"items":[{"name":"",${CALM_SPOT.replace('%T', sp.types)}}]}` : `You're a nightlife scout planning ${isSmall() ? 'a night out for a friend group' : 'a group trip'}. Recommend real, well-known venues that are open as of your latest knowledge.
 ${context()}
 
 Give 9 picks that fit the trip type and vibe. For nightlife trips: mostly clubs and bars, plus at least one rooftop or lounge and one late-night food spot. For family or work trips: activities, good restaurants and relaxed evening spots instead of clubs. Favor places that work for a group this size (table or guestlist options for clubs). Match the night each place is best to the trip days.
-Reply with only JSON: {"items":[{"name":"","type":"club|bar|rooftop|lounge|live music|late-night food","area":"neighborhood","why":"one sentence on why this group would like it","price":"$|$$|$$$|$$$$","cover":"e.g. $20–40, Free, or Table min ~$500","bestNight":"e.g. Fri","dress":"short dress code","tip":"one practical insider tip","lat":0,"lng":0}]}
-lat/lng: your best estimate of the venue's coordinates.`;
+Reply with only JSON: {"items":[{"name":"","type":"club|bar|rooftop|lounge|live music|late-night food","area":"neighborhood","why":"one sentence on why this group would like it","price":"$|$$|$$$|$$$$","cover":"e.g. $20–40, Free, or Table min ~$500","bestNight":"e.g. Fri","dress":"short dress code","tip":"one practical insider tip"}]}`;
   askAI('spots', prompt, data => {
     const items = Array.isArray(data?.items) ? data.items.slice(0, 12) : [];
     if (!items.length) { flash('No picks came back. Try again.'); return; }
@@ -917,7 +915,7 @@ function spotsTab() {
       <p class="small">${esc(s.why)}</p>
       <div class="meta">${s.cover ? `<span>${pk.spots ? 'Entry' : 'Cover'} <b>${esc(s.cover)}</b></span>` : ''}${s.bestNight ? `<span>Best <b>${esc(s.bestNight)}</b></span>` : ''}${s.dress ? `<span>Dress <b>${esc(s.dress)}</b></span>` : ''}</div>
       ${s.tip ? `<p class="small muted">Tip: ${esc(s.tip)}</p>` : ''}
-      <div class="row" style="gap:6px;margin-top:auto">${voteBtns(rkey('sp' + s.name))}<a class="btn sm" href="${maps(s.name, ds.city)}" target="_blank" rel="noopener">Map</a>${d ? `<button class="btn sm" data-addspot="${i}">Add to itinerary</button>` : ''}</div>
+      <div class="row" style="gap:6px;margin-top:auto">${voteBtns(rkey('sp' + s.name))}<a class="btn sm" href="${maps(s.name, ds.city)}" target="_blank" rel="noopener">Open in Maps</a>${d ? `<button class="btn sm" data-addspot="${i}">Add to itinerary</button>` : ''}</div>
     </article>`).join('')}</section>
     <p class="small muted">AI picks. Check hours, covers and age rules before you go.</p>`
   : `<div class="empty"><span>${isSmall() ? 'Take the vibe quiz, then let AI pull spots that fit your crew, budget and the day.' : pk.spots ? pk.spots.empty : 'Take the vibe quiz, then let AI pull clubs, bars, rooftops and a late-night food spot that fit your crew, budget and the nights you’re there.'}</span></div>`}`;
@@ -1637,7 +1635,7 @@ function liveTab() {
     </div>
     <div class="card stack"><h3>Meet-up</h3>
       ${meet && meet.text ? `<div class="stack" style="gap:2px"><b style="font-size:18px">${esc(meet.text)}</b><span class="small muted">${meet.time ? 'at ' + esc(tShow(meet.time)) + ' · ' : ''}set by ${esc(nameOf(meet.by))} ${ago(meet.at)}</span>
-        <div class="row" style="gap:6px"><a class="btn sm" href="${maps(meet.text, dest()?.city || '')}" target="_blank" rel="noopener">Map</a><button class="btn sm ghost" data-act="clearMeet">Clear</button></div></div>` : `<p class="small muted">No meet-up set.</p>`}
+        <div class="row" style="gap:6px"><a class="btn sm" href="${maps(meet.text, dest()?.city || '')}" target="_blank" rel="noopener">Open in Maps</a><button class="btn sm ghost" data-act="clearMeet">Clear</button></div></div>` : `<p class="small muted">No meet-up set.</p>`}
       <form id="meetForm" class="row" style="gap:6px;align-items:flex-end">
         <label class="field" style="flex:2 1 150px"><span class="label">Where</span><input id="meet-where" maxlength="80" placeholder="Hotel lobby"></label>
         <label class="field" style="flex:0 1 110px"><span class="label">When</span><input id="meet-time" type="time"></label>
@@ -1649,7 +1647,6 @@ function liveTab() {
     <form id="ciForm" class="row" style="gap:6px"><input aria-label="Where you are" id="ci-text" maxlength="60" placeholder="Or type it: “at the bar by the pool”" style="flex:1 1 200px"><button class="btn sm" type="submit">Check in</button></form>
     <div>${active().map(m => `<div class="nudge"><b>${esc(m.nick || 'Someone')}</b><span class="small ${m.checkin ? '' : 'muted'}">${m.checkin ? (m.hideLoc && m.id !== S.uid ? 'Checked in' : esc(m.checkin.text)) + ' · ' + ago(m.checkin.at) : 'No check-in yet'}</span></div>`).join('')}</div>
   </section>
-  ${tabOn('map') && mapPoints().length ? `<section class="card stack"><div class="row" style="justify-content:space-between"><h3>Map</h3><button class="btn sm ghost" data-tab="map">Full map</button></div>${mapView(300)}</section>` : ''}
   ${idx === 0 && size() === 'trip' ? arrivalsSection(true) : ''}`;
 }
 
@@ -1848,7 +1845,7 @@ const mode = () => MODES[S.trip?.mode] || MODES.friends;
    Most types are social plans and keep the original quiz, nightlife picks and Live chips. Family
    trips and team offsites get their own. A missing or unknown mode is a friends trip, as before. */
 const SPEND_Q = QUIZ.find(q => q.k === 'spend');
-const CALM_SPOT = '"type":"%T","area":"neighborhood","why":"one sentence on why this group would like it","price":"$|$$|$$$|$$$$","cover":"entry price per person, e.g. Free or $15","bestNight":"best time, e.g. Sat morning","tip":"one practical insider tip","lat":0,"lng":0';
+const CALM_SPOT = '"type":"%T","area":"neighborhood","why":"one sentence on why this group would like it","price":"$|$$|$$$|$$$$","cover":"entry price per person, e.g. Free or $15","bestNight":"best time, e.g. Sat morning","tip":"one practical insider tip"';
 // adding a calm pick to the itinerary: cafés in the morning, meals at dinner time, a bar or lounge as a relaxed
 // evening, everything else as a daytime activity; never as nightlife
 const calmAdd = s => { const t = s.type || ''; return /cafe/.test(t) ? { time: '09:30', kind: 'food' } : /restaurant|food/.test(t) ? { time: '18:30', kind: 'food' } : /bar|lounge/.test(t) ? { time: '20:00', kind: 'chill' } : { time: '10:00', kind: 'activity' }; };
@@ -2007,7 +2004,7 @@ function sections() {
     { k: 'home', label: 'Home', tabs: [['overview', 'Overview'], ['crew', 'Crew'], ['tasks', 'To-dos'], ['log', 'Changes'], ['settings', 'Settings']] },
     { k: 'plan', label: 'Plan', tabs: [['match', isSmall() ? 'Plan Match' : 'Trip Match'], ['dates', isSmall() ? 'When' : 'Dates'], ['whatif', 'What if'], ['spots', isSmall() ? 'Spots' : (mode().nightlife || 'Nightlife')], ['plan', isSmall() ? 'The plan' : 'Itinerary']] },
     { k: 'book', label: 'Book', tabs: [['flights', 'Flights'], ['stays', 'Stays'], ['tickets', 'Boarding passes'], ['pack', 'Packing']] },
-    { k: 'live', label: 'Live', tabs: [['live', 'Today'], ['map', 'Map'], ['bucket', 'Bucket list'], ['hype', 'Hype']] },
+    { k: 'live', label: 'Live', tabs: [['live', 'Today'], ['bucket', 'Bucket list'], ['hype', 'Hype']] },
     { k: 'money', label: 'Money', tabs: [['cost', 'All-in cost'], ['meter', 'My spend'], ['pot', 'Group pot'], ['money', 'Expenses']] },
     { k: 'memories', label: 'Memories', tabs: [['wrapped', isSmall() ? 'Recap' : 'Wrapped'], ['recap', 'Photos'], ['awards', 'Awards']] },
   ].map(s => ({ ...s, tabs: s.tabs.filter(([k]) => tabOn(k)) })).filter(s => s.tabs.length);
@@ -2015,7 +2012,7 @@ function sections() {
 const TAB_ALIAS = { deals: 'flights', where: 'match' };
 const secOf = tab => sections().find(s => s.tabs.some(t => t[0] === tab)) || sections()[0];
 const TABFN = () => ({ log: logTab, overview: overviewTab, crew: crewTab, tasks: tasksTab, cost: costTab, whatif: whatifTab, settings: settingsTab, match: matchTab, dates: datesTab, where: whereTab, spots: spotsTab, plan: planTab,
-  flights: flightsTab, stays: staysTab, tickets: ticketsTab, pack: packTab, live: liveTab, map: mapTab, bucket: bucketSection, hype: hypeTab,
+  flights: flightsTab, stays: staysTab, tickets: ticketsTab, pack: packTab, live: liveTab, bucket: bucketSection, hype: hypeTab,
   meter: meterTab, pot: potTab, money: moneyTab, wrapped: wrappedTab, recap: photosTab, awards: awardsTab });
 function tripView() {
   if (S.membersIn && accessState() !== 'ok') return blockedView(accessState());
@@ -2036,7 +2033,7 @@ function tripView() {
   ${journeyPill()}
   ${sec.tabs.length > 1 && !inviteOnly ? `<nav class="subtabs" aria-label="${esc(sec.label)}">${sec.tabs.map(([k, l]) => `<button class="subtab ${S.tab === k ? 'on' : ''}" data-tab="${k}" aria-current="${S.tab === k}">${esc(l)}${crumbTab === k ? '<i class="crumb" aria-hidden="true"></i>' : ''}${k === 'log' && !S.demo && logList().some(x => needsMe(x)) ? ` <span class="count">${logList().filter(x => needsMe(x)).length}</span>` : ''}</button>`).join('')}</nav>` : ''}
   ${fns[S.tab]()}
-  ${isLive() && !S.lostOpen && !['live', 'map', 'overview'].includes(S.tab) ? '<button class="fab-lost" data-act="lostOpen" aria-label="I’m lost: send the crew my spot">SOS</button>' : ''}
+  ${isLive() && !S.lostOpen && !['live', 'overview'].includes(S.tab) ? '<button class="fab-lost" data-act="lostOpen" aria-label="I’m lost: send the crew my spot">SOS</button>' : ''}
   ${S.lostOpen ? lostSheet() : ''}
   ${inviteOnly ? '' : `<nav class="bottomnav" aria-label="Trip sections"><div class="bn-inner" style="grid-template-columns:repeat(${sections().length},1fr)">${sections().map(s => `<button class="bn ${s.k === sec.k ? 'on' : ''}" data-sec="${s.k}" aria-current="${s.k === sec.k}">${icon(s.k)}${crumbTab && secOf(crumbTab).k === s.k && s.k !== sec.k ? '<i class="crumb" aria-hidden="true"></i>' : ''}<span>${s.label}${s.k === 'live' && isLive() ? ' ●' : ''}</span></button>`).join('')}</div></nav>`}`;
 }
@@ -3720,7 +3717,7 @@ function jSteps() {
       goal: small ? 'Plan how the day goes' : 'Sketch what you’ll do each day',
       why: have ? `${word(have, 'stop', 'stops')} so far.` : 'Nothing planned yet. Good spots book up.',
       todo: S.sample ? 'Let the AI draft it around the crew’s picks, then change anything.' : 'Add the stops you know: dinners, activities, nights out.',
-      after: 'The plan shows up in Live on the day, with the map.',
+      after: 'The plan shows up in Live on the day.',
       act: () => goBtn('plan', S.sample ? 'Draft it with AI' : 'Add stops'), help: S.sample ? { tab: 'plan', sel: '[data-act="plan"]', click: true } : { tab: 'plan', sel: '.addItem input[id^="ai-title"]' },
     });
   }
@@ -3760,7 +3757,7 @@ function jSteps() {
   add('meet', 'final', {
     title: 'Set the meeting point', done: !!t.meet?.text, blockedBy: needsDecided, group: 'No meeting point yet', notBefore: !soon,
     goal: 'Make sure nobody’s left wandering', why: d ? `${daysUntil(d.start) <= 0 ? 'It’s today' : `It’s ${daysUntil(d.start) === 1 ? 'tomorrow' : 'in ' + daysUntil(d.start) + ' days'}`} and there’s no meeting point.` : '',
-    todo: 'Say where and when everyone meets.', after: 'Everyone sees it in Live, with a map link.',
+    todo: 'Say where and when everyone meets.', after: 'Everyone sees it in Live, with a directions link.',
     act: () => `<form id="meetForm" class="row j-inline" style="gap:6px;align-items:flex-end"><label class="field" style="flex:2 1 150px"><span class="label">Where</span><input id="meet-where" maxlength="80" placeholder="${small ? 'Outside the restaurant' : 'Hotel lobby'}"></label><label class="field" style="flex:0 1 120px"><span class="label">When</span><input id="meet-time" type="time" value="${esc(t.time || '')}"></label><button class="btn primary" type="submit">Set it</button></form>`,
     help: { tab: 'live', sel: '#meetForm' },
   });
@@ -3770,7 +3767,7 @@ function jSteps() {
     title: small ? 'Enjoy it' : 'Follow today’s plan', done: false, live: true,
     goal: 'It’s happening', why: (() => { const nowT = new Date().toTimeString().slice(0, 5), up = visItems().filter(i => i.date === TODAY).sort(byTime).find(i => timeKey(i.time) >= timeKey(nowT)); return up ? `Up next: ${up.title}${up.time ? ' at ' + t12(up.time) : ''}.` : 'Nothing else planned today.'; })(),
     todo: 'Open today’s plan. Check in when you get somewhere, and use SOS if you get separated.', after: 'Check-ins and photos feed the recap.',
-    act: () => `${btn('data-tab="live"', 'Open today')}${tabOn('map') ? btn('data-tab="map"', 'Map', 'ghost') : ''}`, help: { tab: 'live', sel: '.live' },
+    act: () => btn('data-tab="live"', 'Open today'), help: { tab: 'live', sel: '.live' },
   });
 
   /* ----- afterward ----- */
@@ -4023,13 +4020,12 @@ ${context()}
 Stay budget: about ${b ? money(b.cap * .35) + ' per person for the whole stay (' + money(b.cap * .35 / nights) + ' per person per night)' : 'moderate'}.
 
 Give 6 options for ${n} people: 3–4 specific real hotels that are well known and currently operating, and 2–3 vacation rental options described generically (for example "4-bedroom Airbnb-style house in Wynwood", not a specific listing). Work out how many rooms or beds the group needs. Prices are typical ranges, not live quotes.
-Reply with only JSON: {"items":[{"name":"","kind":"hotel|rental|hostel","area":"neighborhood","sleeps":"e.g. 3 rooms, 2 queens each","perNight":"$X–Y per night for the group","perPerson":"$X–Y per person total","why":"one sentence on why it fits this group","pros":["2-3 short pros"],"lat":0,"lng":0}]}
-lat/lng: your best estimate of the location.`;
+Reply with only JSON: {"items":[{"name":"","kind":"hotel|rental|hostel","area":"neighborhood","sleeps":"e.g. 3 rooms, 2 queens each","perNight":"$X–Y per night for the group","perPerson":"$X–Y per person total","why":"one sentence on why it fits this group","pros":["2-3 short pros"]}]}`;
   askAI('stays', prompt, data => {
     const items = (Array.isArray(data?.items) ? data.items : []).filter(x => x && x.name).slice(0, 8).map(x => ({
       id: rid(6), name: String(x.name).slice(0, 80), kind: ['hotel', 'rental', 'hostel'].includes(x.kind) ? x.kind : 'hotel', area: String(x.area || '').slice(0, 60),
       sleeps: String(x.sleeps || '').slice(0, 60), perNight: String(x.perNight || '').slice(0, 40), perPerson: String(x.perPerson || '').slice(0, 40),
-      why: String(x.why || '').slice(0, 240), pros: arr(x.pros).slice(0, 3).map(p => String(p).slice(0, 50)), lat: +x.lat || null, lng: +x.lng || null }));
+      why: String(x.why || '').slice(0, 240), pros: arr(x.pros).slice(0, 3).map(p => String(p).slice(0, 50)) }));
     if (!items.length) { flash('No stays came back. Try again.'); return; }
     return saveTrip({ stays: { city: dest()?.city || '', items, at: Date.now() } });
   });
@@ -4052,7 +4048,7 @@ function staysTab() {
   ${st ? `<section class="card stack locked-stay"><div class="row" style="justify-content:space-between"><span class="on-pill">Our stay</span><button class="btn sm ghost" data-act="unlockStay">Change</button></div>
       <h2>${esc(st.name)}</h2><span class="small muted">${esc([st.area, st.sleeps, st.perNight].filter(Boolean).join(' · '))}</span>
       ${+st.total ? `<b class="mono">${esc(stayPriceText(st))}</b>` : ''}
-      <div class="row" style="gap:6px">${safeUrl(st.url) ? `<a class="btn sm primary" href="${esc(safeUrl(st.url))}" target="_blank" rel="noopener noreferrer">Open listing</a>` : stayLinks(st, ds, d, n)}<a class="btn sm" href="${maps(st.name, ds.city)}" target="_blank" rel="noopener">Map</a><button class="btn sm ghost" data-tab="map">Crew map</button></div>
+      <div class="row" style="gap:6px">${safeUrl(st.url) ? `<a class="btn sm primary" href="${esc(safeUrl(st.url))}" target="_blank" rel="noopener noreferrer">Open listing</a>` : stayLinks(st, ds, d, n)}<a class="btn sm" href="${maps(st.name, ds.city)}" target="_blank" rel="noopener">Open in Maps</a></div>
       ${stayBookedBox(st)}</section>` : ''}
   ${ownStays().length ? `<section class="stack"><h3>Found by the crew</h3><div class="grid2">${ownStays().map(s => ownStayCard(s, ds, d, n)).join('')}</div></section>` : ''}
   ${ownStayForm()}
@@ -4075,111 +4071,6 @@ function staysTab() {
   </section>`;
 }
 function ticketsTab() { return booking_time() || tickets().have.length ? ticketsSection() + arrivalsSection() : ticketsSection(); }
-
-/* ---------- maps ---------- */
-const kmBetween = (a, b) => { const R = 6371, dLa = (b.lat - a.lat) * Math.PI / 180, dLo = (b.lng - a.lng) * Math.PI / 180; const h = Math.sin(dLa / 2) ** 2 + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * Math.sin(dLo / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); };
-const KCOL = { stay: '#E9A514', nightlife: '#D41C78', food: '#0E9F6E', activity: '#3B5BDB', meet: '#151A33', lost: '#E5484D', plan: '#7048E8' };
-function mapPoints() {
-  const pts = [], seen = new Set(), push = p => { if (!p || !isFinite(p.lat) || !isFinite(p.lng) || !p.lat) return; const k = p.name.toLowerCase(); if (seen.has(k)) return; seen.add(k); pts.push(p); };
-  const st = S.trip.stay; if (st && st.lat) push({ key: 'stay', name: st.name, lat: st.lat, lng: st.lng, kind: 'stay' });
-  const geo = S.trip.geo || {};
-  if (S.trip.meet?.text) { const g = geo[rkey(S.trip.meet.text)]; if (g) push({ key: 'meet', name: S.trip.meet.text, lat: g.lat, lng: g.lng, kind: 'meet' }); }
-  // a family trip's or offsite's picks: meals as food, a bar or lounge as an evening (shown as “Evenings”), the rest as plans
-  const calm = planKind().spots, calmPin = s => ({ food: 'food', chill: 'nightlife' })[calm.add(s).kind] || 'activity';
-  for (const s of S.trip.spots?.items || []) push({ key: rkey('sp' + s.name), name: s.name, lat: s.lat, lng: s.lng, kind: calm ? calmPin(s) : /food/.test(s.type || '') ? 'food' : /activity|museum|park|tour|beach/.test(s.type || '') ? 'activity' : 'nightlife' });
-  for (const i of visItems()) { if (i.hidden) continue; const g = geo[rkey(i.title)]; if (g) push({ key: rkey('it' + i.id), name: i.title, lat: g.lat, lng: g.lng, kind: i.kind === 'food' ? 'food' : i.kind === 'nightlife' ? 'nightlife' : 'activity' }); }
-  for (const [k, g] of Object.entries(geo)) push({ key: k, name: g.name, lat: g.lat, lng: g.lng, kind: g.kind || 'plan' });
-  return pts;
-}
-let mapW = 0;
-window.addEventListener('resize', () => { clearTimeout(mapW); mapW = setTimeout(() => { if (document.querySelector('.map')) render(); }, 150); });
-function lostAt() { return active().filter(m => m.lost && !m.lost.found && Date.now() - m.lost.at < 6 * 36e5); }
-function mapView(height) {
-  const pts = mapPoints(); if (!pts.length) return '';
-  const lost = lostAt();
-  // draw in roughly real pixels so labels stay the same size on a phone and a laptop
-  const W = Math.round(Math.max(300, Math.min(840, (app.clientWidth || 600) - 34))), H = Math.round(Math.min(W * .72, height || 440)), P = 40;
-  const lats = pts.map(p => p.lat), lngs = pts.map(p => p.lng);
-  let minLa = Math.min(...lats), maxLa = Math.max(...lats), minLo = Math.min(...lngs), maxLo = Math.max(...lngs);
-  const mid = (minLa + maxLa) / 2, kx = Math.cos(mid * Math.PI / 180);
-  let spanX = (maxLo - minLo) * kx || .01, spanY = (maxLa - minLa) || .01;
-  const sc = Math.min((W - 2 * P) / spanX, (H - 2 * P) / spanY);
-  const ox = (W - spanX * sc) / 2, oy = (H - spanY * sc) / 2;
-  const X = lng => ox + (lng - minLo) * kx * sc, Y = lat => oy + (maxLa - lat) * sc;
-  const kmPerPx = 111.32 / sc, barKm = [0.25, 0.5, 1, 2, 5, 10, 20, 50].find(v => v / kmPerPx > 70) || 50, barPx = barKm / kmPerPx;
-  const sel = pts.find(p => p.key === S.pinSel), stay = pts.find(p => p.kind === 'stay');
-  const lostPts = new Map(); for (const m of lost) { const p = pts.find(q => q.name.toLowerCase() === (m.lost.where || '').toLowerCase()); if (p) lostPts.set(p.key, m); }
-  return `<div class="map-wrap"><svg viewBox="0 0 ${W} ${H}" class="map" role="img" aria-label="Crew map with ${pts.length} places">
-    <defs><pattern id="mgrid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="var(--map-line)" stroke-width="1"/></pattern></defs>
-    <rect width="${W}" height="${H}" fill="var(--map-bg)"/><rect width="${W}" height="${H}" fill="url(#mgrid)"/>
-    ${stay ? pts.filter(p => p !== stay).map(p => `<line x1="${X(stay.lng)}" y1="${Y(stay.lat)}" x2="${X(p.lng)}" y2="${Y(p.lat)}" stroke="var(--map-route)" stroke-width="1.5" stroke-dasharray="4 5"/>`).join('') : ''}
-    ${(() => {
-      // place labels above, then below, each pin; skip a label that would collide (it shows when the pin is tapped)
-      const placed = [], order = [...pts].sort((p, q) => (q === sel) - (p === sel) || (q.kind === 'stay') - (p.kind === 'stay') || lostPts.has(q.key) - lostPts.has(p.key));
-      const hit = r => placed.some(o => r.x < o.x + o.w && r.x + r.w > o.x && r.y < o.y + o.h && r.y + r.h > o.y);
-      const lab = new Map();
-      for (const p of pts) placed.push({ x: X(p.lng) - 12, y: Y(p.lat) - 12, w: 24, h: 24 });
-      placed.push({ x: 8, y: H - 40, w: barPx + 74, h: 34 }, { x: W - 54, y: 10, w: 44, h: 44 }); // scale bar, compass
-      for (const p of order) {
-        const lm = lostPts.get(p.key), cut = W < 500 ? 20 : 30, txt = lm ? (lm.nick || 'Someone') + ' is here' : p.name.length > cut ? p.name.slice(0, cut - 1) + '…' : p.name;
-        const w = txt.length * 7.4 + 10, x = Math.max(w / 2 + 4, Math.min(W - w / 2 - 4, X(p.lng))), y = Y(p.lat);
-        for (const dy of [-17, 28]) { const r = { x: x - w / 2, y: y + dy - 13, w, h: 17 }; if (!hit(r)) { placed.push(r); lab.set(p, { txt, y: y + dy, x }); break; } }
-      }
-      return pts.map(p => { const x = X(p.lng), y = Y(p.lat), on = sel === p, lm = lostPts.get(p.key), l = lab.get(p);
-        return `<g class="pin" data-pin="${esc(p.key)}" tabindex="0" role="button" aria-label="${esc(p.name)}">
-          <circle cx="${x}" cy="${y}" r="18" fill="transparent"/>
-          ${lm ? `<circle cx="${x}" cy="${y}" r="20" fill="none" stroke="${KCOL.lost}" stroke-width="3" class="pulse-ring"/>` : ''}
-          <circle cx="${x}" cy="${y}" r="${on ? 14 : 10}" fill="${KCOL[p.kind] || KCOL.plan}" stroke="var(--surface)" stroke-width="3"/>
-          ${l ? `<text x="${l.x}" y="${l.y}" text-anchor="middle" class="pin-label">${esc(l.txt)}</text>` : ''}</g>`; }).join(''); })()}
-    <g transform="translate(${W - 34},34)"><circle r="16" fill="var(--surface)" stroke="var(--map-line)"/><path d="M0 -10 L5 4 L0 1 L-5 4Z" fill="var(--ink)"/><text y="-19" text-anchor="middle" class="pin-label" style="font-size:10px">N</text></g>
-    <g transform="translate(18,${H - 20})"><rect x="-6" y="-16" width="${barPx + 70}" height="26" rx="6" fill="var(--surface)" opacity=".85"/><line x1="0" y1="0" x2="${barPx}" y2="0" stroke="var(--ink)" stroke-width="3"/><text x="${barPx + 8}" y="4" class="pin-label" style="text-anchor:start;font-size:11px">${barKm < 1 ? barKm * 1000 + ' m' : barKm + ' km'}</text></g>
-  </svg>
-  <div class="legend" style="margin-top:8px">${[['stay', 'Stay'], ['nightlife', planKind().evening || 'Nightlife'], ['food', 'Food'], ['activity', 'Plans'], ['meet', 'Meet-up']].filter(([k]) => pts.some(p => p.kind === k)).map(([k, l]) => `<span><i class="sw" style="background:${KCOL[k]}"></i>${l}</span>`).join('')}</div>
-  ${sel ? (() => { const ds = dest(), km = stay && sel !== stay ? kmBetween(stay, sel) : null;
-    return `<div class="card stack pin-card"><div class="row" style="justify-content:space-between"><b>${esc(sel.name)}</b><span class="kind">${esc(sel.kind)}</span></div>
-      ${km !== null ? `<span class="small muted">${(km * 0.621).toFixed(1)} mi from ${esc(stay.name)} · about ${Math.max(1, Math.round(km / 5 * 60))} min walk</span>` : ''}
-      <div class="row" style="gap:6px"><a class="btn sm primary" href="https://www.google.com/maps/dir/?api=1${stay && sel !== stay ? `&origin=${stay.lat},${stay.lng}` : ''}&destination=${sel.lat},${sel.lng}&travelmode=walking" target="_blank" rel="noopener">Directions</a><a class="btn sm" href="${maps(sel.name, ds?.city || '')}" target="_blank" rel="noopener">Open in Maps</a></div></div>`; })() : ''}
-  </div>`;
-}
-function pinPlaces() {
-  const ds = dest(); if (!ds) return;
-  const geo = S.trip.geo || {}, names = [];
-  for (const i of visItems()) if (!i.hidden && !geo[rkey(i.title)] && i.kind !== 'travel') names.push(i.title);
-  if (S.trip.meet?.text && !geo[rkey(S.trip.meet.text)]) names.push(S.trip.meet.text);
-  const st = S.trip.stay; const needStay = st && !st.lat;
-  if (needStay) names.push(st.name);
-  for (const s of S.trip.spots?.items || []) if (!s.lat) names.push(s.name);
-  const uniq = [...new Set(names)].slice(0, 30);
-  if (!uniq.length) { flash('Everything with a real place is already on the map.'); return; }
-  const prompt = `Estimate map coordinates for these places in or near ${ds.city}. Some are itinerary titles: find the actual place they name. If a title is not a specific place (like "Pool day" or "Sleep in"), skip it.
-Places:
-${uniq.map((n, i) => `${i + 1}. ${n}`).join('\n')}
-Reply with only JSON: {"places":[{"name":"exactly as given","lat":0,"lng":0,"kind":"nightlife|food|activity|stay"}]}`;
-  askAI('pin', prompt, data => {
-    const out = {}; let stayFix = null; const spotFix = {};
-    for (const p of data?.places || []) {
-      if (!p || !p.name || !isFinite(+p.lat) || !isFinite(+p.lng) || !+p.lat) continue;
-      const g = { name: String(p.name).slice(0, 80), lat: +p.lat, lng: +p.lng, kind: ['nightlife', 'food', 'activity', 'stay'].includes(p.kind) ? p.kind : 'plan' };
-      if (st && p.name === st.name) stayFix = g; else if ((S.trip.spots?.items || []).some(s => s.name === p.name)) spotFix[p.name] = g; else out[rkey(p.name)] = g;
-    }
-    const patch = { geo: out };
-    if (stayFix) patch.stay = { lat: stayFix.lat, lng: stayFix.lng };
-    if (Object.keys(spotFix).length) patch.spots = { ...S.trip.spots, items: S.trip.spots.items.map(s => spotFix[s.name] ? { ...s, lat: spotFix[s.name].lat, lng: spotFix[s.name].lng } : s) };
-    return saveTrip(patch);
-  });
-}
-function mapTab() {
-  const ds = dest(); if (!ds) return needDestDates('The crew map', 'dest');
-  const pts = mapPoints();
-  return `<section class="card stack">
-    <div class="row" style="justify-content:space-between"><div class="stack" style="gap:2px"><h2>Crew map</h2><span class="small muted">${isSmall() ? 'Your spots and plans' + (S.trip.city ? ' in ' + esc(S.trip.city) : '') : 'Your stay, spots and plans in ' + esc(ds.city)}. Tap a pin for walking time and directions.</span></div>
-      <div class="row" style="gap:6px"><button class="btn sm lost-btn" data-act="lostOpen">I’m lost</button>${S.sample !== null ? `<button class="btn sm" data-act="pinPlaces" ${S.busy.pin ? 'disabled' : ''}>${S.busy.pin ? '<i class="spin"></i>Pinning…' : 'Pin everything'}</button>` : ''}</div></div>
-    ${pts.length ? mapView() : `<div class="empty"><b>Nothing on the map yet.</b><span>${isSmall() ? 'Get spot picks or build the plan' : `Lock a stay, get ${planKind().spots ? 'picks' : 'nightlife picks'} or build the itinerary`}, then tap “Pin everything”.</span></div>`}
-    <p class="small muted">Pins are approximate. Use Directions for turn-by-turn.</p>
-  </section>
-  ${lostAt().length ? `<section class="card stack"><h3>Lost right now</h3>${lostAt().map(m => `<div class="nudge"><b>${esc(m.nick || 'Someone')}</b><span class="small">near ${esc(m.lost.where)} · ${ago(m.lost.at)}</span></div>`).join('')}</section>` : ''}`;
-}
-
 /* ---------- stays the crew found themselves ---------- */
 // Anyone can add a place they found (Airbnb, Booking, VRBO, a friend's cabin) with a
 // link and the real price. It sits next to the AI ideas, gets votes, and can be locked
@@ -4264,6 +4155,7 @@ function stayBookedBox(st) {
 }
 
 /* ---------- I'm lost ---------- */
+function lostAt() { return active().filter(m => m.lost && !m.lost.found && Date.now() - m.lost.at < 6 * 36e5); }
 function lostBanner() {
   const ls = lostAt(); if (!ls.length) return '';
   return ls.map(m => `<div class="lost-banner" role="alert"><div style="min-width:0"><b>${m.id === S.uid ? 'You sent an SOS' : esc(m.nick || 'Someone') + ' is lost'}</b><div class="small">Near ${esc(m.lost.where)} · ${ago(m.lost.at)}</div></div>
@@ -4284,7 +4176,7 @@ function sendLost(where) {
   S.lostOpen = false;
   const me = meDoc();
   saveMe({ lost: { where, at: Date.now() }, checkin: { text: 'Lost near ' + where, at: Date.now() }, checkins: [...(me?.checkins || []), { text: 'Lost near ' + where, at: Date.now() }].slice(-40) }, true);
-  postFeed(`SOS: ${me?.nick || 'Someone'} is lost near ${where}. Check the map.`);
+  postFeed(`SOS: ${me?.nick || 'Someone'} is lost near ${where}.`);
   flash('SOS sent. The crew can see where you are.');
 }
 function foundLost(uid) {
@@ -4561,7 +4453,6 @@ function liveQuick() {
     <button class="qa qa-lost" data-act="lostOpen"><b>I’m lost</b><span>Send the crew my spot</span></button>
     <button class="qa" data-act="ciJump"><b>Check in</b><span>${myCi ? 'You: ' + esc(myCi.text) : 'Where are you?'}</span></button>
     <button class="qa" data-act="meetJump"><b>Meet-up</b><span>${meet?.text ? esc(meet.text) + (meet.time ? ' · ' + esc(tShow(meet.time)) : '') : 'Not set yet'}</span></button>
-    ${tabOn('map') ? `<button class="qa" data-tab="map"><b>Map</b><span>${mapPoints().length} places pinned</span></button>` : ''}
   </section>`;
 }
 function jumpTo(sel) { const el = $(sel); if (!el) return; el.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); setTimeout(() => el.focus({ preventScroll: true }), 300); }
@@ -4762,10 +4653,10 @@ const HIDE_TABS = { hangout: ['flights', 'stays', 'tickets', 'pack', 'bucket', '
 // small or away). Hiding is display only: nothing is deleted, and a feature a plan already uses (it has
 // to-dos, bucket items, pot entries or award votes) stays visible, so older plans keep everything they had.
 const GROUP_HIDE = {
-  friends: { small: ['tasks', 'map', 'bucket'], away: [] },
-  celebration: { small: ['map', 'bucket'], away: [] },
-  family: { small: ['tasks', 'map', 'bucket', 'awards'], away: ['pot', 'bucket', 'awards'] },
-  work: { small: ['map', 'bucket', 'awards', 'wrapped'], away: ['pot', 'bucket', 'awards', 'wrapped'] },
+  friends: { small: ['tasks', 'bucket'], away: [] },
+  celebration: { small: ['bucket'], away: [] },
+  family: { small: ['tasks', 'bucket', 'awards'], away: ['pot', 'bucket', 'awards'] },
+  work: { small: ['bucket', 'awards', 'wrapped'], away: ['pot', 'bucket', 'awards', 'wrapped'] },
 };
 const IN_USE = { tasks: () => taskList().length > 0, bucket: () => S.bucket.length > 0, pot: () => S.pot.length > 0, awards: () => Object.keys(S.trip.superVotes || {}).length > 0 };
 // the group pot is for splitting; a plan where one person or a company pays doesn't show it (unless it's in use)
@@ -5483,7 +5374,7 @@ async function saveCard() {
 
 /* ---------- events ---------- */
 app.addEventListener('click', e => {
-  const t = e.target.closest('button,[data-open],[data-pin],[data-act]'); if (!t) return;
+  const t = e.target.closest('button,[data-open],[data-act]'); if (!t) return;
   const ds = t.dataset;
   if (ds.act === 'home') return goHome();
   if (ds.act === 'reloadView') { lastView = null; S.tab = 'overview'; return render(); }
@@ -5629,8 +5520,6 @@ app.addEventListener('click', e => {
   if (ds.setnights) return saveTrip({ nights: +ds.setnights, lockedDates: null });
   if (ds.act === 'ciJump') return jumpTo('#ci-text');
   if (ds.act === 'meetJump') return jumpTo('#meet-where');
-  if (ds.pin) { S.pinSel = S.pinSel === ds.pin ? null : ds.pin; return render(); }
-  if (ds.act === 'pinPlaces') return pinPlaces();
   if (ds.act === 'lostOpen') { S.lostOpen = true; return render(); }
   if (ds.act === 'lostClose') { S.lostOpen = false; return render(); }
   if (ds.lostat) return sendLost(ds.lostat);
@@ -5783,7 +5672,6 @@ document.addEventListener('keydown', e => {
 });
 // Enter in the describe box plans it (Shift+Enter for a new line); Enter in a chip's editor saves it
 app.addEventListener('keydown', e => { if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return; if (e.target.id === 'nd-text') { e.preventDefault(); shapeRead(e.target.value); } else if (e.target.closest?.('.sh-edit')) { e.preventDefault(); shapeSave(); } });
-app.addEventListener('keydown', e => { const p = e.target.closest && e.target.closest('[data-pin]'); if (p && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); p.dispatchEvent(new MouseEvent('click', { bubbles: true })); } });
 // swipe left/right on a phone to move between the tabs of a menu
 let swipe0 = null;
 app.addEventListener('touchstart', e => {
@@ -5877,7 +5765,7 @@ function stop() { if (S.meDirty && S.tid && !S.demo) flushMe(); S.unsub.forEach(
 function setHash(h) { try { history.replaceState(null, '', h ? '#' + h : location.pathname + location.search); } catch {} }
 function resetTrip() {
   S.trip = null; S.members = []; S.membersIn = false; S.busy = {}; meSaved = false; S.setup = null; S.addStay = false; S.whatif = null; S.repeat = null; S.recover = null; S.rc = null; S.editItem = null; S.alts = null; S.peek = false; S.expenses = []; S.packing = []; S.readOnly = false;
-  S.cardUrl = null; S.cardBlob = null; S.copyText = ''; S.split = null; S.confirm = null; S.tkFile = null; S.feed = []; S.bucket = []; S.photos = []; S.pot = []; S.mySpend = []; S.lostOpen = false; S.pinSel = null; S.hangPlan = null; S.wrapI = 0; S.img = null; S.show = null; clearInterval(showTimer);
+  S.cardUrl = null; S.cardBlob = null; S.copyText = ''; S.split = null; S.confirm = null; S.tkFile = null; S.feed = []; S.bucket = []; S.photos = []; S.pot = []; S.mySpend = []; S.lostOpen = false; S.hangPlan = null; S.wrapI = 0; S.img = null; S.show = null; clearInterval(showTimer);
   for (const k of Object.keys(DRAFT)) delete DRAFT[k];
 }
 function goHome() { stop(); S.tid = null; S.creating = null; S.crewView = null; S.demo = false; resetTrip(); setHash(''); render(); }
@@ -5943,19 +5831,19 @@ function openDemo() {
   m2.checkins = [{ text: 'Getting food', at: at(TODAY, '01:30') }, { text: 'Getting food', at: t0 - .3 * H }];
   m4.checkins = [{ text: 'Heading back', at: at(TODAY, '03:55') }];
   for (const m of S.members) if (m.checkins) m.checkin = m.checkins[m.checkins.length - 1];
-  S.trip.stay = { name: 'Our Airbnb · South Beach', kind: 'rental', area: 'South Beach', sleeps: '3 bedrooms, 6 beds', perNight: '$520–600 per night', perPerson: '$270–300 per person', why: 'Walk to the beach and Collins Ave, room for everyone.', pros: ['Pool', 'Walk to beach'], lat: 25.7840, lng: -80.1310 };
+  S.trip.stay = { name: 'Our Airbnb · South Beach', kind: 'rental', area: 'South Beach', sleeps: '3 bedrooms, 6 beds', perNight: '$520–600 per night', perPerson: '$270–300 per person', why: 'Walk to the beach and Collins Ave, room for everyone.', pros: ['Pool', 'Walk to beach'] };
   S.trip.stays = { city: 'Miami', at: t0, items: [
     S.trip.stay,
-    { id: 'st2', name: 'Freehand Miami', kind: 'hostel', area: 'Miami Beach', sleeps: '6-bed private room', perNight: '$280–340 per night', perPerson: '$140–170 per person', why: 'Cheapest good option with a legendary bar downstairs.', pros: ['Great bar', 'Cheap'], lat: 25.8016, lng: -80.1281 },
-    { id: 'st3', name: 'The Plymouth South Beach', kind: 'hotel', area: 'South Beach', sleeps: '3 rooms, 2 queens each', perNight: '$690–820 per night', perPerson: '$345–410 per person', why: 'Boutique hotel with a pool scene, a short walk to the beach.', pros: ['Pool', 'Quiet'], lat: 25.7946, lng: -80.1296 },
+    { id: 'st2', name: 'Freehand Miami', kind: 'hostel', area: 'Miami Beach', sleeps: '6-bed private room', perNight: '$280–340 per night', perPerson: '$140–170 per person', why: 'Cheapest good option with a legendary bar downstairs.', pros: ['Great bar', 'Cheap'] },
+    { id: 'st3', name: 'The Plymouth South Beach', kind: 'hotel', area: 'South Beach', sleeps: '3 rooms, 2 queens each', perNight: '$690–820 per night', perPerson: '$345–410 per person', why: 'Boutique hotel with a pool scene, a short walk to the beach.', pros: ['Pool', 'Quiet'] },
   ] };
   S.trip.stay.id = 'st1';
   S.trip.spots = { city: 'Miami', at: t0, items: [
-    { name: 'LIV', type: 'club', area: 'Mid-Beach', why: 'The big-name club night your quiz said you wanted.', price: '$$$$', cover: '$60–100', bestNight: 'Sat', dress: 'Dress to impress', tip: 'Book a table early if you want to skip the line.', lat: 25.8172, lng: -80.1223 },
-    { name: 'Sweet Liberty', type: 'bar', area: 'South Beach', why: 'Award-winning cocktails, lively, easy for a group.', price: '$$', cover: 'Free', bestNight: 'Fri', dress: 'Casual', tip: 'Happy hour runs till 7.', lat: 25.7949, lng: -80.1287 },
-    { name: 'Wynwood Walls', type: 'activity', area: 'Wynwood', why: 'Street art, photo heaven, great tacos nearby.', price: '$', cover: '$12 entry', bestNight: 'Day', dress: 'Anything', tip: 'Go late afternoon for good light.', lat: 25.8010, lng: -80.1994 },
-    { name: 'E11EVEN', type: 'club', area: 'Downtown', why: 'Open 24 hours. For the sunrise club crew.', price: '$$$$', cover: '$50–80', bestNight: 'Sat', dress: 'Upscale', tip: 'Best after 2am.', lat: 25.7853, lng: -80.1931 },
-    { name: 'La Sandwicherie', type: 'late-night food', area: 'South Beach', why: 'The 3am sandwich everyone talks about.', price: '$', cover: 'Free', bestNight: 'Any', dress: 'Anything', tip: 'Cash moves faster.', lat: 25.7818, lng: -80.1318 },
+    { name: 'LIV', type: 'club', area: 'Mid-Beach', why: 'The big-name club night your quiz said you wanted.', price: '$$$$', cover: '$60–100', bestNight: 'Sat', dress: 'Dress to impress', tip: 'Book a table early if you want to skip the line.' },
+    { name: 'Sweet Liberty', type: 'bar', area: 'South Beach', why: 'Award-winning cocktails, lively, easy for a group.', price: '$$', cover: 'Free', bestNight: 'Fri', dress: 'Casual', tip: 'Happy hour runs till 7.' },
+    { name: 'Wynwood Walls', type: 'activity', area: 'Wynwood', why: 'Street art, photo heaven, great tacos nearby.', price: '$', cover: '$12 entry', bestNight: 'Day', dress: 'Anything', tip: 'Go late afternoon for good light.' },
+    { name: 'E11EVEN', type: 'club', area: 'Downtown', why: 'Open 24 hours. For the sunrise club crew.', price: '$$$$', cover: '$50–80', bestNight: 'Sat', dress: 'Upscale', tip: 'Best after 2am.' },
+    { name: 'La Sandwicherie', type: 'late-night food', area: 'South Beach', why: 'The 3am sandwich everyone talks about.', price: '$', cover: 'Free', bestNight: 'Any', dress: 'Anything', tip: 'Cash moves faster.' },
   ] };
   S.trip.reactions = { [rkey('spLIV')]: { d1: 1, d4: 1, d3: 1 }, [rkey('spSweet Liberty')]: { d2: 1, d5: 1 }, [rkey('stOur Airbnb · South Beach')]: { d1: 1, d2: 1, d4: 1 } };
   S.trip.itinerary = [
@@ -5968,7 +5856,6 @@ function openDemo() {
     { id: 'i7', date: TODAY, time: '23:30', title: 'LIV', kind: 'nightlife', note: 'Table booked under Jay' },
     { id: 'i8', date: TODAY, time: '03:00', title: 'La Sandwicherie', kind: 'food', note: '' },
   ];
-  S.trip.geo = { [rkey('Wynwood Walls')]: { name: 'Wynwood Walls', lat: 25.8010, lng: -80.1994, kind: 'activity' } };
   S.trip.meet = { text: 'Our Airbnb · South Beach', time: '22:45', by: m2.id, at: t0 - .6 * H };
   S.trip.hangover = { [TODAY]: { d1: 4, d2: 2, d4: 5, d3: 3 } };
   S.trip.recaps = { [y]: { title: 'Day one', text: 'Everyone landed by noon. Tacos in Wynwood, a nap nobody admits to, then Sweet Liberty until close. Jay checked in “Still out” at 2:40am. Tasha called it at 4 and logged a 5 on the hangover index. There’s a receipt for 14 espresso martinis and no one is claiming it.', at: t0 - 3 * H } };
