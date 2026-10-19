@@ -1113,6 +1113,17 @@ html .setup-nav .btn.primary.setup-go.skip{background:var(--surface);color:var(-
 .ov-progress .j-row .btn{min-height:36px;padding-inline:14px}
 .ov-progress .j-more summary{font-weight:600}
 .ov-me{display:flex;flex-direction:column;gap:10px;border-radius:22px}
+.ovh-set{display:inline-block;font:800 12px var(--f-body);letter-spacing:.02em;padding:3px 9px;margin-right:4px;border-radius:999px;background:rgba(255,255,255,.95);color:#16131F;vertical-align:1px}
+.ovh-open{opacity:.78;font-weight:600}
+.crew-now{display:flex;flex-direction:column;gap:12px;border-radius:22px}
+.cn-all{color:var(--good);font-weight:700}
+.cn-list{display:flex;flex-direction:column;gap:10px}
+.cn-row{display:flex;align-items:center;gap:12px;min-width:0}
+.cn-row .avstack{flex:0 0 auto;min-width:44px}
+.cn-row b{font-size:14px}
+.cn-firm b{color:var(--good)}
+.cn-out{opacity:.6}
+.cn-me{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line);padding-top:12px}
 .glance-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 @media (min-width:700px){.glance-grid{grid-template-columns:repeat(4,1fr)}}
 .glance{all:unset;box-sizing:border-box;display:flex;flex-direction:column;gap:4px;padding:13px 14px;border-radius:18px;background:var(--surface);border:1px solid var(--line);cursor:pointer;min-height:76px;transition:transform .2s var(--ease),border-color .2s var(--ease)}

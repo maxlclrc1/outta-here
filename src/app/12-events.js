@@ -355,6 +355,7 @@ app.addEventListener('submit', async e => {
     return saveMe({ arrive, arrAirport: isCode(apt) ? apt.toUpperCase() : apt.slice(0, 3).toUpperCase(), flight: $('#arr-flight').value.trim().slice(0, 20) }, true);
   }
   if (f.id === 'editItemForm') return saveItemEdit(f.dataset.id);
+  if (f.id === 'timeForm') { const time = $('#plan-time').value; if (!time) return; return saveTrip(withLog({ time }, { area: 'dates', text: `Time set: ${t12(time)}`, act: 'all', undo: { k: 'set', patch: { time: S.trip.time || '' } } })).then(ok => { if (ok) flash(`Set for ${t12(time)}. Everyone can see it.`); }); }
   if (f.id === 'meetForm') { const text = $('#meet-where').value.trim(), time = $('#meet-time').value; if (!text) return; const old = S.trip.meet, meet = { text: text.slice(0, 80), time, by: S.uid, at: Date.now() }; return saveTrip(withLog({ ...(old ? { meet: null } : {}) }, { area: 'meet', text: `Meet ${old ? 'moved to' : 'at'} ${text.slice(0, 80)}${time ? ', ' + t12(time) : ''}`, act: 'all', undo: { k: 'set', patch: { meet: old || null }, clear: ['meet'], after: { meet } } })).then(() => saveTrip({ meet })); }
   if (f.id === 'ciForm') { const text = $('#ci-text').value.trim(); if (!text) return; const c = { text: text.slice(0, 60), at: Date.now() }; return saveMe({ checkin: c, checkins: [...(meDoc()?.checkins || []), c].slice(-40) }, true); }
   if (f.id === 'feedForm') return postFeed($('#fd-text').value, $('#fd-secret')?.checked);

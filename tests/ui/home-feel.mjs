@@ -39,14 +39,14 @@ await api(A, 'update', 'trips/' + T, { destinations: [{ id: 'd1', city: 'Catskil
 // as if this device last saw the plan while it was still deciding
 await p.waitForTimeout(800); await p.evaluate(t => localStorage.setItem('outta_stage_' + t, '1'), T);
 await p.reload(); await settle(p); await p.waitForSelector('.ov-hero'); await p.waitForTimeout(500);
-expect('when the next move is your own answer, it’s asked once', /Lock in that you’re coming/.test(await p.locator('.j-focus h2').innerText()) && !(await p.locator('.ov-me').count()) && (await p.locator('.j-focus [data-status=confirmed]').count()) === 1);
+expect('when the next move is your own answer, it’s asked once', /Lock in that you’re coming/.test(await p.locator('.j-focus h2').innerText()) && !(await p.locator('.ov-me, .crew-now .ladder').count()) && (await p.locator('.j-focus [data-status=confirmed]').count()) === 1);
 expect('reaching a new stage lights up the road', (await p.locator('.j-road.leveled li.j-cur').count()) === 1 && /New stage/.test(await p.locator('.ovp-head').innerText()));
 expect('decided tiles are marked done', (await p.locator('.glance.g-done').count()) === 2);
 await open();
 expect('…only once', !(await p.locator('.j-road.leveled').count()));
 await p.locator('.j-focus [data-status=confirmed]').click(); await settle(p); await p.waitForTimeout(400);
 expect('confirming saves as before', (await api(A, 'get', `trips/${T}/members/${A}`)).data.status === 'confirmed');
-expect('…and the ladder comes back once it’s no longer the next move', (await p.locator('.ov-me .ladder').count()) === 1);
+expect('…and the ladder comes back (in who’s coming) once it’s no longer the next move', (await p.locator('.ov-me .ladder, .crew-now .ladder').count()) === 1);
 // a milestone reached while on the plan home only celebrates
 await p.evaluate(() => showMilestone('Dates locked', { k: 'confirm', label: 'Confirm you’re coming' })).catch(() => {});
 await api(B, 'update', `trips/${T}/members/${B}`, { status: 'confirmed', updatedAt: Date.now() }); await p.waitForTimeout(1500);
