@@ -32,8 +32,11 @@ const txt = async s => (await p.locator(s).first().innerText()).replace(/\s+/g, 
   expect('…the Where tile isn’t marked done', !(await p.locator('.glance[data-tab=match].g-done').count()));
   await p.click('.bottomnav [data-sec=plan]'); await settle(p); await p.click('.subtab[data-tab=match]'); await settle(p);
   expect('…and Trip Match isn’t “Decided”, so the place can be chosen again', !(await p.locator('.decided-sum').count()) && (await p.locator('[data-lockdest=d1]').count()) >= 1); }
-{ const T = 'af2' + r; await mk(T, { lockedDest: 'old-id' }); await open(T);
-  expect('saving a plan that points at a missing place leaves it still choosing (the server clears it; older saved data is in plan-integrity.mjs)', /where still open|Picking where/i.test(await txt('.ovh-meta')) && !/Lisbon/.test(await txt('.ovh-meta')), await txt('.ovh-meta')); }
+{ const T = 'af2' + r; tids.push(T);
+  // a plan can't be saved pointing at a missing place any more (the server refuses it); older saved data
+  // that still does is opened in plan-integrity.mjs
+  const x = await api(A, 'set', 'trips/' + T, { name: 'Old', size: 'weekend', destinations: [{ id: 'd1', city: 'Lisbon' }], lockedDest: 'old-id', people: { [A]: true }, createdBy: A, createdAt: Date.now() });
+  expect('saving a plan locked on a place that isn’t an idea is refused', x.status === 409, `${x.status} ${x.message}`); }
 
 // —— 2. a change made just before a refresh is kept ——
 // (its own browser context with no request routing: Playwright's routing cancels requests sent as a page unloads)
