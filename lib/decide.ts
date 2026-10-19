@@ -56,8 +56,9 @@ function optionOf(t: Json, next: Json, active: Json[]): Opt[] {
   const datesChanged = 'lockedDates' in next && isObj(next.lockedDates) && !same(next.lockedDates, t.lockedDates);
   const L = isObj(next.lockedDates) ? next.lockedDates : null, d = dests.find(x => x.id === next.lockedDest);
   const items = (isObj(next.pitches) && Array.isArray(next.pitches.items) ? next.pitches.items : []) as Json[];
-  // a Trip Match pitch locks both at once: its place and its dates
-  const p = destChanged && datesChanged && d && L ? items.find(x => String(x.small ? x.title : x.city || '').toLowerCase() === String(d.city || '').toLowerCase() && x.start === L.start && (x.end || x.start) === L.end) : null;
+  // a Trip Match pitch locks its place and its dates: both at once, or just the place when the plan's
+  // dates were locked first (then the pitch must be for those same dates)
+  const p = destChanged && d && L ? items.find(x => String(x.small ? x.title : x.city || '').toLowerCase() === String(d.city || '').toLowerCase() && x.start === L.start && (x.end || x.start) === L.end) : null;
   if (p) {
     const id = p.id as string;
     out.push({ kind: 'pitch', key: 'p:' + id, yes: active.filter(m => swipeOf(next, id, m.id as string) === 1).map(m => m.id as string), no: active.filter(m => swipeOf(next, id, m.id as string) === -1).map(m => m.id as string), winner: runoffWinner(next, active) === id, lo: priceLo(p.perPerson), days: span(L!.start as string, L!.end as string) });

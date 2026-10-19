@@ -205,9 +205,11 @@ function crewTab() {
 const monthName = d => D(d).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' });
 function datesTab() {
   if (!S.trip.lockedDates || S.demo) return datesBody();
-  const d = S.trip.lockedDates, ms = active(), can = ms.filter(m => fitOf(m, span(d.start, d.end)));
+  const d = S.trip.lockedDates, ms = active(), can = ms.filter(m => fitOf(m, span(d.start, d.end))), quiet = ms.filter(m => !(m.days || []).length), f = journey().focus;
+  // the dates are done: say so plainly, and point at the next thing the plan needs instead of asking for days again
   return `<section class="card stack decided-sum"><div class="row" style="justify-content:space-between"><span class="on-pill">Decided</span>${S.readOnly ? '' : '<button class="btn sm ghost" data-act="unlockDates">Change it</button>'}</div>
-    <h2>${dayRange(d.start, d.end)}</h2><span class="small muted">${can.length === ms.length ? 'Everyone can make it.' : `${can.length} of ${ms.length} marked these days as free.`}</span></section>
+    <h2>${dayRange(d.start, d.end)}</h2><span class="small muted">${can.length === ms.length ? 'Everyone can make it.' : `${can.length} of ${ms.length} marked these days as free${quiet.length ? ` · ${esc(listNames(quiet))} never shared their days` : ''}.`}</span>
+    ${f && f.k !== 'dates' && !S.readOnly ? `<div><button class="btn sm chunky primary" data-jgo="${f.k}">Next: ${esc(f.mine && f.mineText ? f.mineText : f.title)}</button></div>` : ''}</section>
   <details class="card more-opts"><summary>See everyone’s days and other options</summary><div class="stack" style="margin-top:12px">${datesBody()}</div></details>`;
 }
 function datesBody() {
@@ -223,7 +225,8 @@ function datesBody() {
   // a window the others can already do and you haven't answered for: one tap says it works for you
   const ask = !S.readOnly && meDoc() && best.find(w => w.miss.some(m => m.id === S.uid) && w.ok.length && span(w.start, w.end).some(d => !mine.has(d)));
   const settingsOpen = !t.winStart || !t.winEnd || !days.length;
-  return `<section class="grid2">
+  const answered = ms.filter(m => (m.days || []).length), quiet = ms.filter(m => !(m.days || []).length);
+  return `<section class="grid2 ${mine.size ? 'answered' : ''}">
     <div class="card stack avail">
       <div class="stack" style="gap:2px"><h2>${isSmall() ? 'Which days work for you?' : 'When are you free?'}</h2><span class="small muted">${S.starMode ? 'Tap your favorite days ★. Tap again to unstar.' : 'Tap the days you could do. Tap again to take one off.'}</span></div>
       ${ask ? `<div class="avail-ask"><span class="avail-ask-t">🙌 <b>${esc(listNames(ask.ok))}</b> ${ask.ok.length === 1 ? 'can' : 'can'} do <b>${ask.start === ask.end ? fmt(ask.start) : dayRange(ask.start, ask.end)}</b>. Can you?</span>
@@ -246,14 +249,18 @@ function datesBody() {
         <span class="small muted">Change these any time. Days people already tapped are kept.</span>
       </div></div></details>
     </div>
-    <div class="card stack">
-      <h2>${isSmall() ? 'Best day' : 'Best dates'}</h2>${S.demo ? '' : ruleLine()}
+    <div class="card stack dates-best">
+      <div class="row" style="justify-content:space-between;align-items:flex-start;gap:8px"><div class="stack" style="gap:2px"><h2>${isSmall() ? 'Best day so far' : 'Best dates so far'}</h2>
+        <span class="small muted dates-heard">${answered.length === ms.length ? 'Everyone has shared their days.' : `${answered.length} of ${ms.length} have shared their days`}</span></div>${quiet.length && !S.readOnly && !S.demo ? nudgeBtn('dates', quiet, 'sm') : ''}</div>
+      ${S.demo ? '' : ruleLine()}
       ${t.lockedDates ? `<div class="banner"><span><b>Locked:</b> ${dayRange(t.lockedDates.start, t.lockedDates.end)}</span><button class="btn sm" data-act="unlockDates">Unlock</button></div>` : ''}
       ${best.length ? best.map((w, i) => `<div class="stack bw ${i === 0 ? 'bw-top' : ''} ${w.ok.length === ms.length ? 'bw-all' : ''}" style="gap:6px">
         <div class="row" style="justify-content:space-between"><b class="mono">${dayRange(w.start, w.end)}</b><span class="small bw-n"><b>${w.ok.length}/${ms.length}</b> can go</span></div>
         <div class="bar"><i style="width:${Math.round(w.ok.length / max * 100)}%"></i></div>
-        <div class="bw-crew">${avStack([...w.ok, ...w.miss.map(m => ({ ...m, faded: true }))], 8)}</div>
-        ${w.miss.length ? `<span class="small muted">Missing: ${w.miss.map(m => esc(m.nick || 'Someone')).join(', ')}</span>` : `<span class="small" style="color:var(--good)">Everyone can make it</span>`}
+        <div class="bw-crew">${avStack([...w.ok, ...w.miss.map(m => (m.days || []).length ? { ...m, faded: true } : { ...m, wait: true })], 8)}</div>
+        ${(() => { const cant = w.miss.filter(m => (m.days || []).length), wait = w.miss.filter(m => !(m.days || []).length);
+          return !w.miss.length ? '<span class="small" style="color:var(--good)">Everyone can make it</span>'
+            : [cant.length ? `<span class="small muted">Can’t make it: ${esc(listNames(cant))}</span>` : `<span class="small" style="color:var(--good)">Everyone who answered can make it</span>`, wait.length ? `<span class="small muted bw-wait">Waiting on ${esc(listNames(wait))}</span>` : ''].join(''); })()}
         ${w.late.length || w.early.length || w.pref.length ? `<span class="small muted">${[w.late.length && `${esc(listNames(w.late))} ${w.late.length === 1 ? 'arrives' : 'arrive'} a day late`, w.early.length && `${esc(listNames(w.early))} ${w.early.length === 1 ? 'leaves' : 'leave'} a day early`, w.pref.length && `★ ${w.pref.length === ms.length ? 'everyone prefers' : w.pref.length + ' prefer'} ${isSmall() ? 'this day' : 'these dates'}`].filter(Boolean).join(' · ')}</span>` : ''}
         ${t.lockedDates && t.lockedDates.start === w.start && t.lockedDates.end === w.end ? '' : ruleChip('dates', w.start + '|' + w.end)}
         <div>${t.lockedDates && t.lockedDates.start === w.start && t.lockedDates.end === w.end ? '<span class="pill in">Locked</span>' : `<button class="btn sm chunky ${i === 0 && !t.lockedDates ? 'primary' : ''}" data-lockdates="${w.start}|${w.end}">${t.lockedDates ? 'Switch to these' : isSmall() ? 'Lock this day' : 'Lock these dates'}</button>`}</div>

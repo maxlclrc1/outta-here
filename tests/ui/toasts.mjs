@@ -38,7 +38,7 @@ const failed = ts => ts.some(t => /couldn’t save|try again/i.test(t));
 const A = await mk('Ana');
 const T1 = await newPlan(A, 'Lisbon'), P1 = 'trips/' + T1;
 const B = await mk('Ben', '#' + T1), C = await mk('Cat', '#' + T1);
-for (const x of [B, C]) { await x.p.click('[data-join=in]'); await x.p.waitForTimeout(700); const sk = x.p.locator('[data-act=setupLater]'); if (await sk.count()) { await sk.click(); await settle(x.p); } }
+for (const x of [B, C]) { await x.p.locator('[data-join=in]').click({ timeout: 2500 }).catch(() => {}); await x.p.waitForTimeout(700); const sk = x.p.locator('[data-act=setupLater]'); if (await sk.count()) { await sk.click(); await settle(x.p); } }
 await A.p.waitForTimeout(800);
 
 // 1. saving a crew: when linking the plan fails, no "Saved…"; when it works, "Saved…"

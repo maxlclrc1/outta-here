@@ -20,7 +20,7 @@ const A = await mk('Ali');
 await A.p.click('[data-act=newTrip]'); await settle(A.p); await A.p.click('[data-size=trip]'); await settle(A.p); await A.p.locator('[data-mode]').first().click(); await settle(A.p);
 await A.p.fill('#nt-name', 'Lisbon'); await A.p.click('#newTrip [type=submit]'); await A.p.waitForSelector('.setup'); await A.p.click('[data-act=setupLater]'); await settle(A.p);
 const tid = (await A.p.evaluate(() => location.hash)).slice(1), P = 'trips/' + tid;
-const B = await mk('Bea', '#' + tid); await B.p.waitForSelector('.welcome'); await B.p.click('[data-join=in]'); await B.p.waitForTimeout(600);
+const B = await mk('Bea', '#' + tid); await B.p.waitForSelector('.welcome, .setup, .ov-hero'); await B.p.locator('[data-join=in]').click({ timeout: 2500 }).catch(() => {}); await B.p.waitForTimeout(600);
 const skip = B.p.locator('[data-act=setupLater]'); if (await skip.count()) await skip.click();
 const stop = (id, title, date, time = '20:00') => ({ id, title, date, time, kind: 'food' });
 await api(A.uid, 'update', P, { destinations: [{ id: 'd1', city: 'Lisbon' }], lockedDest: 'd1', lockedDates: { start: '2026-11-20', end: '2026-11-23' }, itinerary: [stop('i1', 'Fado', '2026-11-21'), stop('i2', 'Brunch', '2026-11-22', '11:00')] });

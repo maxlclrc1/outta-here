@@ -65,7 +65,7 @@ const joinAs = async (name, t) => {
   const cx = await b.newContext({ viewport: { width: 390, height: 844 } }); await cx.route('**/api/ai/status', r => r.fulfill({ json: { enabled: false } }));
   const q = await cx.newPage(); q.on('pageerror', e => errs.push(name + ': ' + e.message));
   await q.goto(BASE + '/#' + t); await q.fill('#join-name', name); await q.click('.join-card [type=submit]'); await settle(q);
-  await q.waitForSelector('.welcome'); await q.click('[data-join=in]'); await q.waitForTimeout(600);
+  await q.waitForSelector('.welcome, .setup, .ov-hero'); await q.locator('[data-join=in]').click({ timeout: 2500 }).catch(() => {}); await q.waitForTimeout(600);
   const sk = q.locator('[data-act=setupLater]'); if (await sk.count()) { await sk.click(); await settle(q); }
   return { q, id: await q.evaluate(() => localStorage.outta_uid) };
 };

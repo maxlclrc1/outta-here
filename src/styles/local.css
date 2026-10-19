@@ -11,3 +11,30 @@ img{max-width:100%}
 .join-invite{margin:0;font-size:16px;color:var(--muted)}
 .join-invite b{color:var(--ink)}
 .join-card h1{font-size:clamp(32px,8vw,44px)}
+/* opened from a plan's invite: the invitation itself, your name, your answer */
+.join-screen:has(.jp-card){overflow-y:auto;align-items:start;padding-top:max(24px,env(safe-area-inset-top,0px))}
+.jp-card{gap:12px}
+.jp{--pc:var(--accent);min-height:200px;display:flex;flex-direction:column}
+.jp-cover{display:flex;flex-direction:column;gap:6px;padding:24px 22px 22px;border-radius:26px;color:#fff;background:linear-gradient(150deg,var(--pc) 0%,var(--pc) 55%,#17121F 130%);box-shadow:0 18px 40px -22px var(--pc);min-height:200px;justify-content:flex-end;animation:jpIn .45s var(--spring,ease) both}
+.jp-from{font-size:15px;opacity:.92;margin-bottom:auto}
+.jp-from b{font-weight:800}
+.jp-cover h1{color:#fff;margin:4px 0 0;font-size:clamp(34px,10vw,48px);line-height:.98}
+.jp-facts{font-weight:800;font-size:17px}
+.jp-facts.soft{font-weight:600;opacity:.88}
+.jp-going{align-self:flex-start;margin-top:6px;padding:4px 11px;border-radius:99px;background:rgba(255,255,255,.22);font-weight:700;font-size:13px}
+.jp-loading{flex:1;border-radius:26px;background:color-mix(in oklab,var(--muted) 12%,transparent);display:flex;gap:8px;align-items:center;justify-content:center}
+.jp-loading i{width:9px;height:9px;border-radius:50%;background:var(--muted);animation:jpDot 1s ease-in-out infinite}
+.jp-loading i:nth-child(2){animation-delay:.15s}.jp-loading i:nth-child(3){animation-delay:.3s}
+.jp-off{padding:8px 2px}
+.jp-off h1{font-size:clamp(28px,7vw,36px)}
+.jp-name{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.jp-name span{font-weight:700;font-size:13px;color:var(--muted)}
+.jp-name input{font-size:18px;padding:14px 16px;border-radius:16px}
+html:root .jp-card .btn.jp-in{min-height:56px;justify-content:center;font-size:18px;font-weight:800;border-radius:18px;box-shadow:0 5px 0 color-mix(in oklab,var(--accent) 55%,#000)}
+html:root .jp-card .btn.jp-in:active{transform:translateY(5px);box-shadow:none}
+.jp-alt{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.jp-alt .btn{justify-content:center;min-height:46px}
+.jp-note{margin:2px 0 0;text-align:center}
+@keyframes jpIn{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes jpDot{0%,100%{opacity:.3;transform:translateY(0)}50%{opacity:1;transform:translateY(-4px)}}
+@media (prefers-reduced-motion:reduce){.jp-cover,.jp-loading i{animation:none}}

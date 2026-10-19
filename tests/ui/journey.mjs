@@ -30,7 +30,7 @@ const create = async (p, size, name, opts = {}) => {
 const a = await mk('Ali');
 const h1 = await create(a, 'hangout', 'Friday dinner'); const t1 = h1.slice(1);
 await home(a); await J(a, 'Hangout, just created');
-const j = await mk('Jay', h1); await j.waitForSelector('.welcome'); await j.click('[data-join=in]'); await skipSetup(j); await settle(j);
+const j = await mk('Jay', h1); await j.waitForSelector('.welcome, .setup, .ov-hero'); await j.locator('[data-join=in]').click({ timeout: 2500 }).catch(() => {}); await skipSetup(j); await settle(j);
 await db(a, 'update', `trips/${t1}/members/${await a.evaluate(() => localStorage.outta_uid)}`, { days: ['2026-10-17', '2026-10-18'] });
 await db(j, 'update', `trips/${t1}/members/${await j.evaluate(() => localStorage.outta_uid)}`, { days: ['2026-10-17'] });
 await a.waitForTimeout(800); await home(a); await J(a, 'Hangout, Jay joined, days in');
@@ -40,7 +40,7 @@ await home(a); await J(a, 'Hangout, day locked from the guide');
 await db(a, 'update', 'trips/' + t1, { venue: 'Los Tacos No. 1', time: '19:30' }); await a.waitForTimeout(600); await home(a); await J(a, 'Hangout, venue set');
 // ---------- B. birthday surprise ----------
 const h2 = await create(a, 'weekend', 'Dev turns 30', { mode: 'birthday' }); const t2 = h2.slice(1);
-const d2 = await mk('Dev', h2); await d2.waitForSelector('.welcome'); await d2.click('[data-join=in]'); await skipSetup(d2); await settle(d2);
+const d2 = await mk('Dev', h2); await d2.waitForSelector('.welcome, .setup, .ov-hero'); await d2.locator('[data-join=in]').click({ timeout: 2500 }).catch(() => {}); await skipSetup(d2); await settle(d2);
 await home(a); await J(a, 'Birthday, planner view');
 const devId = await d2.evaluate(() => localStorage.outta_uid);
 const sel = a.locator('.j-focus #set-honoree'); if (await sel.count()) { await sel.selectOption(devId); await a.waitForTimeout(800); } else console.log('  (no inline honoree picker in focus)');
@@ -48,7 +48,7 @@ await home(a); await J(a, 'Birthday, after picking Dev');
 await home(d2); await J(d2, 'Birthday, Dev (guest of honor) view'); console.log('  surprise note:', await d2.locator('.journey .small.muted').last().innerText().catch(() => 'none'));
 // ---------- C. multi-day trip ----------
 const h3 = await create(a, 'trip', 'Lisbon'); const t3 = h3.slice(1);
-const k = await mk('Kim', h3); await k.waitForSelector('.welcome'); await k.click('[data-join=in]'); await skipSetup(k); await settle(k);
+const k = await mk('Kim', h3); await k.waitForSelector('.welcome, .setup, .ov-hero'); await k.locator('[data-join=in]').click({ timeout: 2500 }).catch(() => {}); await skipSetup(k); await settle(k);
 await home(a); await J(a, 'Trip, undecided');
 await db(a, 'update', 'trips/' + t3, { destinations: [{ id: 'd1', city: 'Lisbon', code: 'LIS' }], lockedDest: 'd1', lockedDates: { start: '2026-11-20', end: '2026-11-23' } }); await a.waitForTimeout(800);
 await home(a); await J(a, 'Trip, decided');

@@ -32,11 +32,11 @@ await go(A.p, 'home', 'overview');
 await A.p.locator('.j-acts [data-act=copyInvite]').first().click(); await A.p.waitForTimeout(500);
 { const m = await toast(A.p), box = A.p.locator('#copybox'), v = await box.inputValue().catch(() => '');
   expect('“Send the invite” on the overview asks to copy the text by hand', /copy it/i.test(m), m);
-  expect('…and the text is right there, on the overview, with the invite link', (await box.count()) === 1 && (await box.isVisible()) && v.includes('/#' + tid), v.slice(-40));
+  expect('…and the text is right there, on the overview, with the invite link', (await box.count()) === 1 && (await box.isVisible()) && v.includes('/p/' + tid), v.slice(-40));
   expect('…selected, ready to copy', await A.p.evaluate(() => document.activeElement?.id === 'copybox')); }
 
 // 2. a to-do that fails to save while offline
-const B = await mk('Ben', '#' + tid); await B.p.click('[data-join=in]'); await B.p.waitForTimeout(700); { const sk = B.p.locator('[data-act=setupLater]'); if (await sk.count()) { await sk.click(); await settle(B.p); } }
+const B = await mk('Ben', '#' + tid); await B.p.locator('[data-join=in]').click({ timeout: 2500 }).catch(() => {}); await B.p.waitForTimeout(700); { const sk = B.p.locator('[data-act=setupLater]'); if (await sk.count()) { await sk.click(); await settle(B.p); } }
 await go(A.p, 'home', 'tasks'); const input = A.p.locator('#taskForm input, #task-title, [id^=task-new]').first();
 await A.c.setOffline(true);
 await input.fill('Bring snacks'); await input.press('Enter'); await A.p.waitForTimeout(1200);

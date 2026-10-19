@@ -50,13 +50,14 @@ await api(uid, 'update', 'trips/' + tid, { inviteKey: 'k7x9q2' }); await A.waitF
   expect('…and a made-up image token isn’t served', (await fetch(`${BASE}/p/${tid}/card?t=0123456789abcdef01234567`)).status === 404 && (await fetch(`${BASE}/p/${tid}/card?k=k7x9q2`)).status === 404); }
 
 // —— a friend tapping it ——
-const keyed = `${BASE}/p/${tid}?k=k7x9q2`, J = await page('Jo', keyed); await J.waitForFunction(() => location.hash.length > 1); await J.fill('#join-name', 'Jo'); await J.click('.join-card [type=submit]'); await settle(J);
-await J.waitForSelector('.welcome', { timeout: 8000 });
-expect('tapping the link lands on the plan’s invitation', /Mayasecret invited you/.test(await J.locator('.welcome').innerText()) && (await J.evaluate(() => location.hash)).startsWith(`#${tid}`));
-await J.click('[data-join=in]'); await J.waitForSelector('.setup'); await J.waitForTimeout(1200);
+const keyed = `${BASE}/p/${tid}?k=k7x9q2`, J = await page('Jo', keyed); await J.waitForFunction(() => location.hash.length > 1); await J.waitForSelector('.jp-cover', { timeout: 8000 });
+const invitation = await J.locator('.jp-card').innerText(); await J.fill('#join-name', 'Jo'); await J.click('.join-card [type=submit]'); await settle(J);
+expect('tapping the link lands on the plan’s invitation', /Mayasecret invited you/.test(invitation) && (await J.evaluate(() => location.hash)).startsWith(`#${tid}`));
+await J.waitForSelector('.ov-hero', { timeout: 8000 }); await J.waitForTimeout(1200); // the dates are set, so nothing to ask: straight to the plan
 { const jid = await J.evaluate(() => localStorage.outta_uid); expect('…and joining works as before', (await api(uid, 'get', `trips/${tid}/members/${jid}`)).data?.status === 'in'); }
 const old = await page('Old', `${BASE}/#${tid}.k7x9q2`); await old.fill('#join-name', 'Ola'); await old.click('.join-card [type=submit]'); await settle(old);
-expect('old /#plan.key links still work', (await old.locator('.welcome').count()) === 1);
+await old.waitForSelector('.ov-hero', { timeout: 8000 }).catch(() => {});
+{ const oid = await old.evaluate(() => localStorage.outta_uid); expect('old /#plan.key links still work, and join the same way', (await api(uid, 'get', `trips/${tid}/members/${oid}`)).data?.status === 'in'); }
 
 expect('no page errors', !errs.length, errs.join('; '));
 await fetch(`${BASE}/api/plans/${tid}`, { method: 'DELETE', headers: { 'x-outta-user': uid } });

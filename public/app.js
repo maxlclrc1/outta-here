@@ -753,9 +753,11 @@ function crewTab() {
 const monthName = d => D(d).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' });
 function datesTab() {
   if (!S.trip.lockedDates || S.demo) return datesBody();
-  const d = S.trip.lockedDates, ms = active(), can = ms.filter(m => fitOf(m, span(d.start, d.end)));
+  const d = S.trip.lockedDates, ms = active(), can = ms.filter(m => fitOf(m, span(d.start, d.end))), quiet = ms.filter(m => !(m.days || []).length), f = journey().focus;
+  // the dates are done: say so plainly, and point at the next thing the plan needs instead of asking for days again
   return `<section class="card stack decided-sum"><div class="row" style="justify-content:space-between"><span class="on-pill">Decided</span>${S.readOnly ? '' : '<button class="btn sm ghost" data-act="unlockDates">Change it</button>'}</div>
-    <h2>${dayRange(d.start, d.end)}</h2><span class="small muted">${can.length === ms.length ? 'Everyone can make it.' : `${can.length} of ${ms.length} marked these days as free.`}</span></section>
+    <h2>${dayRange(d.start, d.end)}</h2><span class="small muted">${can.length === ms.length ? 'Everyone can make it.' : `${can.length} of ${ms.length} marked these days as free${quiet.length ? ` · ${esc(listNames(quiet))} never shared their days` : ''}.`}</span>
+    ${f && f.k !== 'dates' && !S.readOnly ? `<div><button class="btn sm chunky primary" data-jgo="${f.k}">Next: ${esc(f.mine && f.mineText ? f.mineText : f.title)}</button></div>` : ''}</section>
   <details class="card more-opts"><summary>See everyone’s days and other options</summary><div class="stack" style="margin-top:12px">${datesBody()}</div></details>`;
 }
 function datesBody() {
@@ -771,7 +773,8 @@ function datesBody() {
   // a window the others can already do and you haven't answered for: one tap says it works for you
   const ask = !S.readOnly && meDoc() && best.find(w => w.miss.some(m => m.id === S.uid) && w.ok.length && span(w.start, w.end).some(d => !mine.has(d)));
   const settingsOpen = !t.winStart || !t.winEnd || !days.length;
-  return `<section class="grid2">
+  const answered = ms.filter(m => (m.days || []).length), quiet = ms.filter(m => !(m.days || []).length);
+  return `<section class="grid2 ${mine.size ? 'answered' : ''}">
     <div class="card stack avail">
       <div class="stack" style="gap:2px"><h2>${isSmall() ? 'Which days work for you?' : 'When are you free?'}</h2><span class="small muted">${S.starMode ? 'Tap your favorite days ★. Tap again to unstar.' : 'Tap the days you could do. Tap again to take one off.'}</span></div>
       ${ask ? `<div class="avail-ask"><span class="avail-ask-t">🙌 <b>${esc(listNames(ask.ok))}</b> ${ask.ok.length === 1 ? 'can' : 'can'} do <b>${ask.start === ask.end ? fmt(ask.start) : dayRange(ask.start, ask.end)}</b>. Can you?</span>
@@ -794,14 +797,18 @@ function datesBody() {
         <span class="small muted">Change these any time. Days people already tapped are kept.</span>
       </div></div></details>
     </div>
-    <div class="card stack">
-      <h2>${isSmall() ? 'Best day' : 'Best dates'}</h2>${S.demo ? '' : ruleLine()}
+    <div class="card stack dates-best">
+      <div class="row" style="justify-content:space-between;align-items:flex-start;gap:8px"><div class="stack" style="gap:2px"><h2>${isSmall() ? 'Best day so far' : 'Best dates so far'}</h2>
+        <span class="small muted dates-heard">${answered.length === ms.length ? 'Everyone has shared their days.' : `${answered.length} of ${ms.length} have shared their days`}</span></div>${quiet.length && !S.readOnly && !S.demo ? nudgeBtn('dates', quiet, 'sm') : ''}</div>
+      ${S.demo ? '' : ruleLine()}
       ${t.lockedDates ? `<div class="banner"><span><b>Locked:</b> ${dayRange(t.lockedDates.start, t.lockedDates.end)}</span><button class="btn sm" data-act="unlockDates">Unlock</button></div>` : ''}
       ${best.length ? best.map((w, i) => `<div class="stack bw ${i === 0 ? 'bw-top' : ''} ${w.ok.length === ms.length ? 'bw-all' : ''}" style="gap:6px">
         <div class="row" style="justify-content:space-between"><b class="mono">${dayRange(w.start, w.end)}</b><span class="small bw-n"><b>${w.ok.length}/${ms.length}</b> can go</span></div>
         <div class="bar"><i style="width:${Math.round(w.ok.length / max * 100)}%"></i></div>
-        <div class="bw-crew">${avStack([...w.ok, ...w.miss.map(m => ({ ...m, faded: true }))], 8)}</div>
-        ${w.miss.length ? `<span class="small muted">Missing: ${w.miss.map(m => esc(m.nick || 'Someone')).join(', ')}</span>` : `<span class="small" style="color:var(--good)">Everyone can make it</span>`}
+        <div class="bw-crew">${avStack([...w.ok, ...w.miss.map(m => (m.days || []).length ? { ...m, faded: true } : { ...m, wait: true })], 8)}</div>
+        ${(() => { const cant = w.miss.filter(m => (m.days || []).length), wait = w.miss.filter(m => !(m.days || []).length);
+          return !w.miss.length ? '<span class="small" style="color:var(--good)">Everyone can make it</span>'
+            : [cant.length ? `<span class="small muted">Can’t make it: ${esc(listNames(cant))}</span>` : `<span class="small" style="color:var(--good)">Everyone who answered can make it</span>`, wait.length ? `<span class="small muted bw-wait">Waiting on ${esc(listNames(wait))}</span>` : ''].join(''); })()}
         ${w.late.length || w.early.length || w.pref.length ? `<span class="small muted">${[w.late.length && `${esc(listNames(w.late))} ${w.late.length === 1 ? 'arrives' : 'arrive'} a day late`, w.early.length && `${esc(listNames(w.early))} ${w.early.length === 1 ? 'leaves' : 'leave'} a day early`, w.pref.length && `★ ${w.pref.length === ms.length ? 'everyone prefers' : w.pref.length + ' prefer'} ${isSmall() ? 'this day' : 'these dates'}`].filter(Boolean).join(' · ')}</span>` : ''}
         ${t.lockedDates && t.lockedDates.start === w.start && t.lockedDates.end === w.end ? '' : ruleChip('dates', w.start + '|' + w.end)}
         <div>${t.lockedDates && t.lockedDates.start === w.start && t.lockedDates.end === w.end ? '<span class="pill in">Locked</span>' : `<button class="btn sm chunky ${i === 0 && !t.lockedDates ? 'primary' : ''}" data-lockdates="${w.start}|${w.end}">${t.lockedDates ? 'Switch to these' : isSmall() ? 'Lock this day' : 'Lock these dates'}</button>`}</div>
@@ -1083,7 +1090,9 @@ async function delTicket() {
 // before the full plan with every tab opens up.
 const showWelcome = () => S.membersIn && !S.demo && !S.readOnly && (!meDoc() || (meDoc().status === 'maybe' && !meDoc().seen));
 // family and team plans don't ask the vibe questions up front (they're still in Things to do)
-const setupSteps = () => ['days', ...(isSmall() ? [] : ['home']), ...(hasBudget(S.uid) ? ['budget'] : []), ...(['family', 'work'].includes(planGroup()) ? [] : ['vibe'])];
+// someone joining from an invite is only asked what the plan needs from them now: their free days while
+// the dates are open (home, budget and the vibe can come later, from their details)
+const setupSteps = () => S.setup?.joined ? (S.trip.lockedDates ? [] : ['days']) : ['days', ...(isSmall() ? [] : ['home']), ...(hasBudget(S.uid) ? ['budget'] : []), ...(['family', 'work'].includes(planGroup()) ? [] : ['vibe'])];
 const BUDGETS = { hangout: [30, 60, 100], day: [50, 100, 200], weekend: [250, 450, 700], trip: [600, 1000, 1600] };
 function dayPicker() {
   const t = S.trip, days = span(t.winStart, t.winEnd), mine = new Set(meDoc()?.days || []), pref = new Set(meDoc()?.pref || []);
@@ -1118,7 +1127,7 @@ function setupView() {
     <div class="setup-top"><span class="label">${esc(S.trip.name)} · Step ${i + 1} of ${steps.length}</span><button class="linkbtn small muted" data-act="setupLater">Do this later</button></div>
     <div class="setup-bar ${pct >= 100 ? 'full' : ''}" role="progressbar" aria-label="Your answers" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}"><i style="width:${pct}%"></i></div>
     <div class="setup-step" data-key="setup-${k}">
-      ${S.setup.joined && i === 0 ? `<span class="setup-hi">🎉 You’re ${S.setup.joined === 'in' ? 'in' : 'on the list'}! ${steps.length} quick ${steps.length === 1 ? 'question' : 'questions'} and you’re done.</span>` : ''}
+      ${S.setup.joined && i === 0 ? `<span class="setup-hi">🎉 You’re ${S.setup.joined === 'in' ? 'in' : 'on the list'}! ${steps.length === 1 ? 'One quick question' : `${steps.length} quick questions`} and you’re done.</span>` : ''}
       <span class="setup-ico" aria-hidden="true">${SETUP_ICONS[k]}</span>
       <h1>${step.h}</h1>
       <p class="muted">${step.p}</p>
@@ -1236,10 +1245,20 @@ function welcomeCard() {
 // Saying yes goes straight into the quick setup, which opens with the welcome itself; setup starts
 // before the answer is saved, so no "step done" banner or toast lands on top of it.
 function joinPlan(status) {
-  if (status !== 'out' && !S.demo && !S.readOnly) { document.querySelector('.milestone')?.remove(); S.setup = { step: 0, joined: status }; }
+  if (status !== 'out' && !S.demo && !S.readOnly) { document.querySelector('.milestone')?.remove(); S.setup = { step: 0, joined: status }; if (!setupSteps().length) S.setup = null; }
+  const host = nameOf(S.trip.createdBy);
   saveMe({ status, seen: true }, true);
   if (status !== 'out') { joinCrewQuiet(S.trip.crewId); window.scrollTo({ top: 0 }); }
-  if (!S.setup) flash(status === 'in' ? 'You’re in.' : status === 'maybe' ? 'Marked as maybe.' : 'Got it. The crew will see you can’t make it.');
+  // nothing to ask (the dates are set): the moment itself, then the plan
+  if (!S.setup && status !== 'out' && !S.demo) celebrate(S.trip.name, planColor(S.trip), status === 'in' ? 'You’re in' : 'You’re a maybe');
+  if (!S.setup) flash(status === 'in' ? `You’re in! ${host} and the crew can see it.` : status === 'maybe' ? 'Marked as maybe. Change it any time.' : 'Got it. The crew will see you can’t make it.');
+}
+// the answer given on the invitation screen itself (public/shim.js), used once, for this plan only
+function pendingJoin() {
+  let p = null; try { p = JSON.parse(sessionStorage.getItem('outta_join') || 'null'); } catch {}
+  if (!p || p.tid !== S.tid || !['in', 'maybe', 'out'].includes(p.ans)) return '';
+  try { sessionStorage.removeItem('outta_join'); } catch {}
+  return p.ans;
 }
 
 /* ---------- plan match: learning and settling disagreements ---------- */
@@ -1372,6 +1391,8 @@ function matchedPitch() {
   return p.find(x => vs.every(m => swipeOf(x.id, m.id) === 1)) || null;
 }
 function dateOptions() {
+  // dates already locked: pitches are for those dates only
+  const L = S.trip.lockedDates; if (L && isDay(L.start) && isDay(L.end)) return [{ start: L.start, end: L.end, ok: active().filter(m => fitOf(m, span(L.start, L.end))).length }];
   const t = S.trip, len = nightsSet(t) + 1, days = span(t.winStart, t.winEnd), ms = active(), out = [];
   for (let i = 0; i + len <= days.length; i++) {
     const d = days.slice(i, i + len), ok = ms.filter(m => fitOf(m, d)).length;
@@ -1440,8 +1461,23 @@ function votePop(text, kind) {
   document.body.appendChild(el); setTimeout(() => el.remove(), 1100);
   if (navigator.vibrate) try { navigator.vibrate(10); } catch {}
 }
+// a pitch made for other dates than the ones the group locked: it can't be locked (that would quietly move the dates)
+const offDates = p => { const L = S.trip.lockedDates; return !!L && (p.start !== L.start || (p.end || p.start) !== L.end); };
+// What honestly sets a pitch apart, only from data the pitches carry: the lowest AI price estimate, the
+// best vibe match, and the crew's favorite so far. Each only when it's one clear pick among two or more.
+function pitchTags(items) {
+  const top = (key, min) => { const vs = items.map(p => [p, key(p)]).filter(([, v]) => v != null && !isNaN(v)); if (vs.length < 2) return null;
+    const best = vs.reduce((a, b) => (min ? b[1] < a[1] : b[1] > a[1]) ? b : a); return vs.filter(([, v]) => v === best[1]).length === 1 ? best[0].id : null; };
+  const out = {}, add = (id, t) => id && (out[id] = [...(out[id] || []), t]);
+  add(top(p => moneyRange(p.perPerson)?.[0], true), '💸 Lowest estimate');
+  add(top(p => +p.vibeMatch || null), '✨ Best vibe match');
+  // the crew's favorite: the one pitch with the most yes votes, if anyone has said yes
+  const ys = items.map(p => yesOf(p)), most = Math.max(0, ...ys); if (items.length >= 2 && most > 0 && ys.filter(y => y === most).length === 1) add(items[ys.indexOf(most)].id, '❤️ Crew favorite');
+  return out;
+}
 function lockPitch(pid) {
   const p = (S.trip.pitches?.items || []).find(x => x.id === pid); if (!p) return;
+  if (offDates(p)) { flash(`This was pitched for other dates. Your dates are ${dayRange(S.trip.lockedDates.start, S.trip.lockedDates.end)}, so pitch again for those.`); return; }
   if (p.small) return lockSmallPitch(p);
   const ds = [...(S.trip.destinations || [])];
   let d = ds.find(x => x.city.toLowerCase() === p.city.toLowerCase());
@@ -1454,12 +1490,15 @@ function matchTab() {
   if (!S.trip.lockedDest || S.demo) return matchBody();
   const ds = dest(), d = S.trip.lockedDates, p = (S.trip.pitches?.items || []).find(lockedOn);
   return `<section class="card stack decided-sum"><div class="row" style="justify-content:space-between"><span class="on-pill">Decided</span>${S.readOnly ? '' : '<button class="btn sm ghost" data-act="unlockDest">Change it</button>'}</div>
-    <h2>${esc(ds?.city || '')}</h2><span class="small muted">${[d && dayRange(d.start, d.end), p && pitchShort(p, p.perPerson ? p.perPerson + ' each' : ''), p && p.tagline].filter(Boolean).map(esc).join(' · ')}</span></section>
+    <h2>${esc(ds?.city || '')}</h2><span class="small muted">${[d && dayRange(d.start, d.end), p && pitchShort(p, p.perPerson ? p.perPerson + ' each' : ''), p && p.tagline].filter(Boolean).map(esc).join(' · ')}</span>
+    ${(() => { const f = journey().focus; return f && f.k !== 'dest' && !S.readOnly ? `<div><button class="btn sm chunky primary" data-jgo="${f.k}">Next: ${esc(f.mine && f.mineText ? f.mineText : f.title)}</button></div>` : ''; })()}</section>
   <details class="card more-opts"><summary>See the votes and other options</summary><div class="stack" style="margin-top:12px">${matchBody()}</div></details>`;
 }
 function matchBody() {
   const items = S.trip.pitches?.items || [], vs = active(), m = matchedPitch();
-  const next = items.find(x => !swipeOf(x.id, S.uid));
+  // pitches made for other dates than the locked ones are set aside, not voted on or locked
+  const live = items.filter(x => !offDates(x)), off = items.filter(offDates), tags = pitchTags(live), L = S.trip.lockedDates;
+  const next = live.find(x => !swipeOf(x.id, S.uid));
   const pitchCard = p => { const [c1, c2] = GRADS[hashStr(p.city) % GRADS.length], mark = p.small ? '' : p.code || p.city.slice(0, 3).toUpperCase();
     return `<article class="pitch" id="pitch" data-noanim data-key="pitch-${esc(p.id)}" data-pid="${esc(p.id)}">
       <span class="stamp yes" id="stamp-yes">I'D GO</span><span class="stamp no" id="stamp-no">PASS</span><span class="stamp meh">COULD WORK</span>
@@ -1471,26 +1510,25 @@ function matchBody() {
       </div>
       <div class="pitch-body">
         <div class="facts"><div><span class="label">${p.small ? 'When' : 'Dates'}</span><b>${p.small ? fmt(p.start) + (p.time ? ' · ' + t12(p.time) : '') : short(p.start) + ' → ' + short(p.end)}</b></div>${(pp => `<div class="${pp.split ? '' : pp.missing ? 'p-total p-na' : 'p-total'}"><span class="label">${pp.label}</span><b>${esc(pp.main)}</b>${pp.split ? '' : `<span class="small muted">${esc(pp.each)}</span>`}</div></div>${pp.split ? '' : `<span class="small pay-who">${esc(pp.who)}</span>`}`)(pitchPay(p))}
+        ${(tags[p.id] || []).length ? `<div class="m-tags">${tags[p.id].map(x => `<span class="m-tag">${x}</span>`).join('')}</div>` : ''}
         <p class="p-why">${esc(p.why)}</p>
         ${fitChips(p)}
         ${arr(p.highlights).length || p.weather ? `<details class="p-more"><summary class="small">See details</summary>${p.weather ? `<p class="small" style="margin:6px 0 0"><b>Weather:</b> ${esc(p.weather)}</p>` : ''}${arr(p.highlights).length ? `<ul style="margin:6px 0 0;padding-left:18px">${arr(p.highlights).map(h => `<li>${esc(h)}</li>`).join('')}</ul>` : ''}</details>` : ''}
       </div>
     </article>`; };
   // how far the crew is: every person's swipe on every pitch
-  const total = items.length * vs.length, done = items.reduce((n, p) => n + vs.filter(x => swipeOf(p.id, x.id)).length, 0), left = items.filter(p => !swipeOf(p.id, S.uid)).length;
-  const progress = items.length && vs.length ? `<div class="vprog">
+  const total = live.length * vs.length, done = live.reduce((n, p) => n + vs.filter(x => swipeOf(p.id, x.id)).length, 0), left = live.filter(p => !swipeOf(p.id, S.uid)).length;
+  const progress = live.length && vs.length ? `<div class="vprog">
       <div class="vprog-top"><span><b>${done}/${total}</b> swipes in</span><span class="small ${left ? 'muted' : 'vp-done'}">${left ? `${left} left for you` : done === total ? 'Everyone’s swiped ✓' : 'You’re done ✓'}</span></div>
       <div class="setup-bar ${done === total ? 'full' : ''}" role="progressbar" aria-label="Swipes in" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${done}"><i style="width:${Math.round(done / total * 100)}%"></i></div>
-      <div class="vprog-crew">${vs.map(x => { const fin = items.every(p => swipeOf(p.id, x.id)); return `<span class="vp-av ${fin ? 'fin' : ''}" style="background:${colorFor(x.id)}" title="${esc(x.nick || 'Someone')}${fin ? ': all swiped' : ''}">${esc((x.nick || '?')[0].toUpperCase())}${fin ? '<i aria-hidden="true">✓</i>' : ''}</span>`; }).join('')}</div>
+      <div class="vprog-crew">${vs.map(x => { const fin = live.every(p => swipeOf(p.id, x.id)); return `<span class="vp-av ${fin ? 'fin' : ''}" style="background:${colorFor(x.id)}" title="${esc(x.nick || 'Someone')}${fin ? ': all swiped' : ''}">${esc((x.nick || '?')[0].toUpperCase())}${fin ? '<i aria-hidden="true">✓</i>' : ''}</span>`; }).join('')}</div>
     </div>` : '';
-  // your vote on a pitch, changeable any time: pass, could work, yes
-  const voteSeg = p => { const mine = swipeOf(p.id, S.uid);
-    return `<div class="vseg" role="group" aria-label="Your vote on ${esc(pName(p))}">${[[-1, '✕', 'Pass'], [WORKABLE, '≈', 'Could work'], [1, '♥', 'Yes']].map(([v, ic, l]) => `<button class="vs-opt v${v === 1 ? 'y' : v === -1 ? 'n' : 'm'} ${mine === v ? 'on' : ''}" data-swipe="${esc(p.id)}|${v}" aria-pressed="${mine === v}" aria-label="${l}" title="${l}">${ic}</button>`).join('')}</div>`; };
   const more = `${steerField()}${S.demo ? '' : ruleLine()}${(() => { const c = S.crews.find(x => x.id === S.trip.crewId); return c && !S.demo ? dnaCard(c, true) : ''; })()}<span class="small muted">Not feeling them? Add your own picks below.</span>`;
   return `${S.sample === null ? whereTab() : ''}<section class="card stack vote-head">
     <div class="row" style="justify-content:space-between;align-items:flex-start"><div class="stack" style="gap:2px"><h2>${isSmall() ? 'Plan Match' : 'Trip Match'}</h2><span class="small muted">Swipe on ${isSmall() ? 'plans' : 'trips'} picked for the crew. Everyone says yes to the same one? It’s a match.</span></div>
       ${S.sample !== null ? `<button class="btn ${items.length ? '' : 'primary chunky'}" data-act="genPitches" ${S.busy.pitch ? 'disabled' : ''}>${S.busy.pitch ? '<i class="spin"></i>Pitching…' : items.length ? 'New pitches' : isSmall() ? 'Pitch us some plans' : 'Pitch us some trips'}</button>` : ''}</div>
     ${progress}
+    ${off.length && L ? `<div class="cost-flag soft m-off"><span>Your ${isSmall() ? 'day is' : 'dates are'} set: <b>${L.start === L.end ? fmt(L.start) : dayRange(L.start, L.end)}</b>. ${off.length === items.length ? 'These pitches were' : `${off.length} of these ${off.length === 1 ? 'was' : 'were'}`} for other ${isSmall() ? 'days' : 'dates'}, so ${off.length === 1 ? 'it can’t' : 'they can’t'} be locked.</span>${S.sample && !S.readOnly ? `<button class="btn sm chunky primary" data-act="genPitches" ${S.busy.pitch ? 'disabled' : ''}>Pitch for ${isSmall() ? 'our day' : 'our dates'}</button>` : ''}</div>` : ''}
     ${items.length ? `<details class="m-more" data-key="m-more"><summary class="small">Steer the pitches · how the vote works</summary><div class="stack" style="gap:12px;margin-top:10px">${more}</div></details>` : more}
   </section>
   ${runoffCard()}
@@ -1504,16 +1542,24 @@ function matchBody() {
       <div class="vote-row"><button class="swipe-btn no" data-swipe="${esc(next.id)}|-1" aria-label="Pass"><span aria-hidden="true">✕</span><b>Pass</b></button><button class="swipe-btn meh" data-swipe="${esc(next.id)}|0.5" aria-label="Could work"><span aria-hidden="true">≈</span><b>Could work</b></button><button class="swipe-btn yes" data-swipe="${esc(next.id)}|1" aria-label="I'd go"><span aria-hidden="true">♥</span><b>I’d go</b></button></div>
       <span class="small muted">Or swipe the card: right if you’re in, left to pass.</span></section>`
   : !m && active().length >= 2 ? settleCard(items) : `<div class="empty"><b>You’ve swiped them all.</b><span>Pick one from the scoreboard below and lock it in.</span></div>`}
-  ${items.length ? `<section class="card scoreboard"><h3 style="margin-bottom:6px">Scoreboard</h3>
-    ${[...items].sort((a, b) => fitScore(b) - fitScore(a)).map(p => {
-      const yes = vs.filter(x => swipeOf(p.id, x.id) === 1), waiting = vs.filter(x => !swipeOf(p.id, x.id)), mine = swipeOf(p.id, S.uid), n = Math.max(1, vs.length);
-      return `<div class="linkrow sb-row ${lockedOn(p) ? 'is-locked' : ''}"><div class="sb-main"><b>${esc(p.city)}</b> <span class="small muted">${p.start === p.end ? short(p.start) : short(p.start) + ' – ' + short(p.end)} · ${esc(pitchShort(p, p.perPerson))}</span>
-        <div class="vbar" aria-hidden="true"><i class="y" style="width:${yes.length / n * 100}%"></i><i class="m" style="width:${workableOf(p) / n * 100}%"></i></div>
-        <div class="small muted">${yes.length} yes · ${workableOf(p)} could work${waiting.length ? ` · waiting on ${waiting.map(x => esc(x.nick || 'Someone')).join(', ')}` : ''}</div>${fitChips(p)}${lockedOn(p) ? '' : ruleChip('pitch', p.id)}</div>
-        <div class="sb-side">${mine && !S.readOnly ? voteSeg(p) : ''}${lockedOn(p) ? '<span class="pill lvl-confirmed">Locked</span>' : S.readOnly ? '' : `<button class="btn sm chunky ${yes.length && !S.trip.lockedDest ? 'primary' : ''}" data-lockpitch="${esc(p.id)}">Lock it in</button>`}</div></div>`; }).join('')}
+  ${live.length || off.length ? `<section class="card scoreboard"><h3 style="margin-bottom:6px">${live.length > 3 ? 'Top picks' : 'Scoreboard'}</h3>
+    ${(() => { const ranked = [...live].sort((a, b) => fitScore(b) - fitScore(a)), row = sbRow(vs, tags);
+      return `${ranked.slice(0, 3).map(row).join('')}${ranked.length > 3 ? `<details class="sb-more" data-key="sb-more"><summary class="small">See ${ranked.length - 3} more</summary>${ranked.slice(3).map(row).join('')}</details>` : ''}
+        ${off.length ? `<details class="sb-more" data-key="sb-off"><summary class="small">Pitched for other ${isSmall() ? 'days' : 'dates'} (${off.length})</summary>${off.map(p => `<div class="linkrow sb-row is-off"><div class="sb-main"><b>${esc(pName(p))}</b> <span class="small muted">${p.start === p.end ? short(p.start) : short(p.start) + ' – ' + short(p.end)} · not your ${isSmall() ? 'day' : 'dates'}</span></div></div>`).join('')}</details>` : ''}`; })()}
   </section>` : ''}
   ${S.sample === null ? '' : whereTab()}`;
 }
+// One scoreboard row: how the crew voted (yes, could work and passed counted apart; who hasn't voted is
+// "waiting on", not a no), what's left before it can lock, and your own vote.
+const sbRow = (vs, tags) => p => {
+  const yes = vs.filter(x => swipeOf(p.id, x.id) === 1), passed = vs.filter(x => swipeOf(p.id, x.id) === -1), waiting = vs.filter(x => !swipeOf(p.id, x.id)), mine = swipeOf(p.id, S.uid), n = Math.max(1, vs.length);
+  const voteSeg = `<div class="vseg" role="group" aria-label="Your vote on ${esc(pName(p))}">${[[-1, '✕', 'Pass'], [WORKABLE, '≈', 'Could work'], [1, '♥', 'Yes']].map(([v, ic, l]) => `<button class="vs-opt v${v === 1 ? 'y' : v === -1 ? 'n' : 'm'} ${mine === v ? 'on' : ''}" data-swipe="${esc(p.id)}|${v}" aria-pressed="${mine === v}" aria-label="${l}" title="${l}">${ic}</button>`).join('')}</div>`;
+  return `<div class="linkrow sb-row ${lockedOn(p) ? 'is-locked' : ''}"><div class="sb-main"><b>${esc(p.city)}</b> <span class="small muted">${p.start === p.end ? short(p.start) : short(p.start) + ' – ' + short(p.end)} · ${esc(pitchShort(p, p.perPerson))}</span>
+    ${(tags[p.id] || []).length ? `<div class="m-tags">${tags[p.id].map(x => `<span class="m-tag">${x}</span>`).join('')}</div>` : ''}
+    <div class="vbar" aria-hidden="true"><i class="y" style="width:${yes.length / n * 100}%"></i><i class="m" style="width:${workableOf(p) / n * 100}%"></i></div>
+    <div class="small muted">${yes.length} yes · ${workableOf(p)} could work${passed.length ? ` · ${passed.length} passed` : ''}${waiting.length ? ` · waiting on ${waiting.map(x => esc(x.nick || 'Someone')).join(', ')}` : ''}</div>${fitChips(p)}${lockedOn(p) ? '' : ruleChip('pitch', p.id)}</div>
+    <div class="sb-side">${mine && !S.readOnly ? voteSeg : ''}${lockedOn(p) ? '<span class="pill lvl-confirmed">Locked</span>' : S.readOnly ? '' : `<button class="btn sm chunky ${yes.length && !S.trip.lockedDest ? 'primary' : ''}" data-lockpitch="${esc(p.id)}">Lock it in</button>`}</div></div>`;
+};
 function bindSwipe() {
   const el = document.getElementById('pitch'); if (!el || el._swipe) return; el._swipe = true;
   let x0 = null, dx = 0;
@@ -3623,7 +3669,17 @@ function jSteps() {
   });
   if (small) {
     const first = (t.itinerary || []).filter(i => i.time).sort(byTime)[0];
-    add('venue', 'prepare', {
+    // with the place already chosen, a dinner only needs a time: one field, not an itinerary
+    const placeSet = haveDest && dest()?.city;
+    if (placeSet) add('venue', 'prepare', {
+      title: 'Set the time', done: !!(t.venue || t.time || first), blockedBy: needsDecided,
+      group: 'No start time yet', goal: 'What time are you meeting?',
+      why: `${placeSet}, ${d ? fmt(d.start) : 'the day'}. All it needs is a time.`,
+      todo: 'Set the time everyone meets.', after: 'Everyone sees it on the plan, and the reminders use it.',
+      act: () => `<form id="timeForm" class="row j-inline" style="gap:6px;align-items:flex-end"><label class="field" style="flex:0 1 150px"><span class="label">Time</span><input id="plan-time" type="time" required></label><button class="btn primary" type="submit">Set it</button></form>`,
+      help: { tab: 'overview', sel: '#plan-time' },
+    });
+    else add('venue', 'prepare', {
       title: 'Confirm the place and time', done: !!(t.venue || t.time || first), blockedBy: needsDecided,
       group: 'No place or time yet', goal: 'Pin down where and when',
       why: `${dest()?.city || 'The plan'} is set for ${d ? fmt(d.start) : 'the day'}, but there’s no place or start time yet.`,
@@ -3791,7 +3847,7 @@ function journeyCard(tiles = '') {
       ${f.why || f.todo ? `<p class="j-why">${esc(f.why || f.todo)}</p>` : ''}
       ${waitOn.length ? `<div class="j-wait">${avStack(waitOn, 5)}<span class="small">Waiting on ${esc(namesOrCount(waitOn))}</span></div>` : ''}
       <div class="j-acts">${f.act()}</div>
-      ${f.help && !f.live ? `<button class="linkbtn small j-help" data-jgo="${f.k}">Show me where</button>` : ''}
+      ${f.help && !f.live && f.help.tab !== 'overview' ? `<button class="linkbtn small j-help" data-jgo="${f.k}">Show me where</button>` : ''}
       ${f.k === 'invite' && S.copyText ? `<textarea aria-label="Text to copy" id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
     </section>`
     : `<section class="j-focus done"><span class="j-eyebrow">${j.stage === 'after' ? 'That’s a wrap' : 'All set'}</span><h2>${j.stage === 'after' ? 'All wrapped up' : 'You’re all set'}</h2><p class="j-why">${(() => { const c = countdown(); return c && j.stage !== 'after' ? `${c.text} to go. Nothing needs doing right now.` : 'Nothing needs doing right now.'; })()}</p></section>`;
@@ -3854,15 +3910,20 @@ function coverOf(t, id, photo) {
 // Overlapping avatars; people who haven't said yes are faded.
 function avStack(ms, max = 5) {
   const list = ms.slice(0, max);
-  return `<div class="avstack" aria-hidden="true">${list.map(m => `<span class="av ${m.faded ? 'av-maybe' : ''} ${m.lvl ? 'lv-' + m.lvl : ''}" style="background:${colorFor(m.id)}">${esc((m.nick || '').trim()[0]?.toUpperCase() || '')}</span>`).join('')}${ms.length > max ? `<span class="av av-more">+${ms.length - max}</span>` : ''}</div>`;
+  return `<div class="avstack" aria-hidden="true">${list.map(m => `<span class="av ${m.faded ? 'av-maybe' : ''} ${m.wait ? 'av-wait' : ''} ${m.lvl ? 'lv-' + m.lvl : ''}" style="background:${colorFor(m.id)}">${esc((m.nick || '').trim()[0]?.toUpperCase() || '')}</span>`).join('')}${ms.length > max ? `<span class="av av-more">+${ms.length - max}</span>` : ''}</div>`;
 }
 function planHero() {
   const t = S.trip, m = mode(), sz = size(), small = isSmall(), d = t.lockedDates, ds = t.lockedDest ? dest() : null, cd = d ? countdown() : null;
   const here = S.members.filter(x => !x.removed && x.status !== 'out'), goers = here.filter(going), maybes = here.length - goers.length;
   const photo = [...S.photos].filter(p => p.asset).sort((a, b) => (b.at || 0) - (a.at || 0))[0]?.asset;
   const cv = coverOf(t, S.tid, photo);
-  const meta = [ds && esc(ds.city), d && esc(planWhen(t))].filter(Boolean).join(' · ') || (small ? 'Picking the plan and the day' : 'Picking where and when');
-  const kids = kidsWith(goers), who = here.length <= 1 && !kids ? 'Just you so far' : `${goers.length + kids} going${partyNote(goers.length, kids)}${maybes ? ` · ${maybes} maybe` : ''}`;
+  // what's decided, said as decided; what isn't, said as still open (never a guess)
+  const meta = ds && d ? `<span class="ovh-set">✓ It’s on</span> ${esc(ds.city)} · ${esc(planWhen(t))}`
+    : ds ? `${esc(ds.city)} · <span class="ovh-open">${small ? 'day' : 'dates'} still open</span>` : d ? `${esc(planWhen(t))} · <span class="ovh-open">${small ? 'what' : 'where'} still open</span>`
+    : (small ? 'Picking the plan and the day' : 'Picking where and when');
+  // once the dates are set, "confirmed" and "going" are told apart: that's who the plan is built around
+  const firm = goers.filter(x => x.status !== 'in').length;
+  const kids = kidsWith(goers), who = here.length <= 1 && !kids ? 'Just you so far' : d && firm && !kids ? `${firm} confirmed${goers.length > firm ? ` · ${goers.length - firm} going` : ''}${maybes ? ` · ${maybes} maybe` : ''}` : `${goers.length + kids} going${partyNote(goers.length, kids)}${maybes ? ` · ${maybes} maybe` : ''}`;
   const onInvite = journey().focus?.k === 'invite';
   return `<section class="ov-hero ${cv.cls}" style="${cv.style}">
     <div class="ovh-top"><span class="ovh-chip">${esc(modeLabel(m, sz))}</span>${!modeLabel(m, sz).toLowerCase().includes(SIZES[sz].label.toLowerCase()) ? `<span class="ovh-chip soft">${esc(SIZES[sz].label)}</span>` : ''}
@@ -3887,10 +3948,28 @@ function ovGlance() {
     ${tabOn('tasks') ? tile('tasks', '✅', 'To-dos', open ? `${open} open` : all.length ? 'All done' : 'Add the first one', all.length > 0 && !open) : tile('hype', '💬', 'Chat', S.feed.length ? `${S.feed.length} message${S.feed.length === 1 ? '' : 's'}` : 'Say hi to the crew', false)}
   </section>`;
 }
+// Once the dates are set, who's actually coming, in one place: confirmed, going but not confirmed yet,
+// undecided, can't make it, with names, so nobody has to check the crew tab. Only real answers; the one
+// nudge is left out when the next-move card above already asks the same people. Your own answer sits
+// underneath, so the plan home asks it once.
+function crewNow(f, ladder) {
+  const ms = S.members.filter(x => !x.removed), firm = ms.filter(x => ['confirmed', 'booked'].includes(x.status)), soft = ms.filter(x => x.status === 'in'), und = undecided().filter(x => !x.removed), out = ms.filter(x => x.status === 'out');
+  if (ms.length < 2 && !ladder) return '';
+  const grp = (k, label, list) => list.length ? `<div class="cn-row cn-${k}" data-key="cn-${k}">${avStack(list.map(x => ({ ...x, faded: k !== 'firm' })), 4)}<div class="stack" style="gap:0;min-width:0"><b>${label} · ${list.length}</b><span class="small muted">${esc(list.map(x => x.nick || 'Someone').join(', '))}</span></div></div>` : '';
+  const nudge = f && !['confirm', 'rsvp'].includes(f.k) && !S.readOnly ? (soft.some(x => x.id !== S.uid) ? nudgeBtn('confirm', soft.filter(x => x.id !== S.uid), 'sm') : und.some(x => x.id !== S.uid) ? nudgeBtn('rsvp', und.filter(x => x.id !== S.uid), 'sm') : '') : '';
+  const all = !soft.length && !und.length;
+  return `<section class="card crew-now" data-key="crew-now">
+    <div class="row" style="justify-content:space-between;align-items:baseline"><span class="g-k">Who’s coming</span><span class="small ${all ? 'cn-all' : 'muted'}">${all ? (firm.length ? 'Everyone’s answered ✓' : 'Nobody’s confirmed yet') : `${firm.length} of ${firm.length + soft.length + und.length} confirmed`}</span></div>
+    ${ms.length >= 2 ? `<div class="cn-list">${grp('firm', 'Confirmed', firm)}${grp('soft', 'Going, not confirmed yet', soft)}${grp('und', 'Haven’t decided', und)}${grp('out', 'Can’t make it', out)}</div>` : ''}
+    ${nudge ? `<div class="row">${nudge}</div>` : ''}
+    ${ladder ? `<div class="cn-me"><span class="g-k">You’re…</span>${commitLadder()}</div>` : ''}
+  </section>`;
+}
 function overviewTab() {
   const t = S.trip, welcome = showWelcome();
-  // someone who hasn't answered yet sees the invitation first, not the whole planning screen
-  if (welcome && !S.peek) return welcomeCard();
+  // someone who hasn't answered yet sees the invitation first, not the whole planning screen; if they
+  // already answered on the invitation screen, that answer is used instead of asking twice
+  if (welcome && !S.peek) { const ans = pendingJoin(); if (ans) { setTimeout(() => joinPlan(ans), 0); return skel(); } return welcomeCard(); }
   const me = meDoc(), stage = STAGES.findIndex(([k]) => k === stageOf(t, S.members)), f = welcome ? null : journey().focus;
   // when the next move is your own answer, the big card already asks it; the ladder would ask twice
   const askedAbove = f && f.mine && (f.k === 'rsvp' || f.k === 'confirm');
@@ -3898,7 +3977,7 @@ function overviewTab() {
   ${isLive() ? '<div class="row" style="gap:8px"><button class="btn lost-btn" data-act="lostOpen">I’m lost</button><span class="small muted">Sends the crew your spot.</span></div>' : ''}
   ${welcome ? ovGlance() : journeyCard(ovGlance())}
   ${welcome ? '' : changesCard()}
-  ${me && !welcome && !S.readOnly && !askedAbove ? `<section class="card ov-me"><span class="g-k">You’re…</span>${commitLadder()}</section>` : ''}
+  ${!welcome && t.lockedDates ? crewNow(f, me && !S.readOnly && !askedAbove) : me && !welcome && !S.readOnly && !askedAbove ? `<section class="card ov-me"><span class="g-k">You’re…</span>${commitLadder()}</section>` : ''}
   <div class="ov-folds">
   ${S.recover ? recoveryCard() : welcome ? '' : `<details class="ov-fold" data-key="fold-recover"><summary><b>Something changed?</b><span class="small muted">See what it affects first</span></summary>${recoveryCard()}</details>`}
   <details class="ov-fold" data-key="fold-pass" ${S.cardUrl ? 'open' : ''}><summary><b>${stage >= 2 ? 'Plan passport' : 'Plan pass'}</b><span class="small muted">Share it as a story card</span></summary>${stage >= 2 ? passport() : pass()}</details>
@@ -4755,6 +4834,7 @@ Reply with only JSON: {"pitches":[{"title":"the plan in 2-5 words","tagline":"pu
   });
 }
 function lockSmallPitch(p) {
+  if (offDates(p)) { flash('This was pitched for another day. Pitch again for the day you picked.'); return; }
   const ds = [...(S.trip.destinations || [])];
   let d = ds.find(x => x.city.toLowerCase() === p.title.toLowerCase());
   if (!d) { d = { id: rid(6), city: p.title, code: '' }; ds.push(d); }
@@ -5758,6 +5838,7 @@ app.addEventListener('submit', async e => {
     return saveMe({ arrive, arrAirport: isCode(apt) ? apt.toUpperCase() : apt.slice(0, 3).toUpperCase(), flight: $('#arr-flight').value.trim().slice(0, 20) }, true);
   }
   if (f.id === 'editItemForm') return saveItemEdit(f.dataset.id);
+  if (f.id === 'timeForm') { const time = $('#plan-time').value; if (!time) return; return saveTrip(withLog({ time }, { area: 'dates', text: `Time set: ${t12(time)}`, act: 'all', undo: { k: 'set', patch: { time: S.trip.time || '' } } })).then(ok => { if (ok) flash(`Set for ${t12(time)}. Everyone can see it.`); }); }
   if (f.id === 'meetForm') { const text = $('#meet-where').value.trim(), time = $('#meet-time').value; if (!text) return; const old = S.trip.meet, meet = { text: text.slice(0, 80), time, by: S.uid, at: Date.now() }; return saveTrip(withLog({ ...(old ? { meet: null } : {}) }, { area: 'meet', text: `Meet ${old ? 'moved to' : 'at'} ${text.slice(0, 80)}${time ? ', ' + t12(time) : ''}`, act: 'all', undo: { k: 'set', patch: { meet: old || null }, clear: ['meet'], after: { meet } } })).then(() => saveTrip({ meet })); }
   if (f.id === 'ciForm') { const text = $('#ci-text').value.trim(); if (!text) return; const c = { text: text.slice(0, 60), at: Date.now() }; return saveMe({ checkin: c, checkins: [...(meDoc()?.checkins || []), c].slice(-40) }, true); }
   if (f.id === 'feedForm') return postFeed($('#fd-text').value, $('#fd-secret')?.checked);

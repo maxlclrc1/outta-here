@@ -3,7 +3,9 @@
 // before the full plan with every tab opens up.
 const showWelcome = () => S.membersIn && !S.demo && !S.readOnly && (!meDoc() || (meDoc().status === 'maybe' && !meDoc().seen));
 // family and team plans don't ask the vibe questions up front (they're still in Things to do)
-const setupSteps = () => ['days', ...(isSmall() ? [] : ['home']), ...(hasBudget(S.uid) ? ['budget'] : []), ...(['family', 'work'].includes(planGroup()) ? [] : ['vibe'])];
+// someone joining from an invite is only asked what the plan needs from them now: their free days while
+// the dates are open (home, budget and the vibe can come later, from their details)
+const setupSteps = () => S.setup?.joined ? (S.trip.lockedDates ? [] : ['days']) : ['days', ...(isSmall() ? [] : ['home']), ...(hasBudget(S.uid) ? ['budget'] : []), ...(['family', 'work'].includes(planGroup()) ? [] : ['vibe'])];
 const BUDGETS = { hangout: [30, 60, 100], day: [50, 100, 200], weekend: [250, 450, 700], trip: [600, 1000, 1600] };
 function dayPicker() {
   const t = S.trip, days = span(t.winStart, t.winEnd), mine = new Set(meDoc()?.days || []), pref = new Set(meDoc()?.pref || []);
@@ -38,7 +40,7 @@ function setupView() {
     <div class="setup-top"><span class="label">${esc(S.trip.name)} · Step ${i + 1} of ${steps.length}</span><button class="linkbtn small muted" data-act="setupLater">Do this later</button></div>
     <div class="setup-bar ${pct >= 100 ? 'full' : ''}" role="progressbar" aria-label="Your answers" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}"><i style="width:${pct}%"></i></div>
     <div class="setup-step" data-key="setup-${k}">
-      ${S.setup.joined && i === 0 ? `<span class="setup-hi">🎉 You’re ${S.setup.joined === 'in' ? 'in' : 'on the list'}! ${steps.length} quick ${steps.length === 1 ? 'question' : 'questions'} and you’re done.</span>` : ''}
+      ${S.setup.joined && i === 0 ? `<span class="setup-hi">🎉 You’re ${S.setup.joined === 'in' ? 'in' : 'on the list'}! ${steps.length === 1 ? 'One quick question' : `${steps.length} quick questions`} and you’re done.</span>` : ''}
       <span class="setup-ico" aria-hidden="true">${SETUP_ICONS[k]}</span>
       <h1>${step.h}</h1>
       <p class="muted">${step.p}</p>
@@ -156,10 +158,20 @@ function welcomeCard() {
 // Saying yes goes straight into the quick setup, which opens with the welcome itself; setup starts
 // before the answer is saved, so no "step done" banner or toast lands on top of it.
 function joinPlan(status) {
-  if (status !== 'out' && !S.demo && !S.readOnly) { document.querySelector('.milestone')?.remove(); S.setup = { step: 0, joined: status }; }
+  if (status !== 'out' && !S.demo && !S.readOnly) { document.querySelector('.milestone')?.remove(); S.setup = { step: 0, joined: status }; if (!setupSteps().length) S.setup = null; }
+  const host = nameOf(S.trip.createdBy);
   saveMe({ status, seen: true }, true);
   if (status !== 'out') { joinCrewQuiet(S.trip.crewId); window.scrollTo({ top: 0 }); }
-  if (!S.setup) flash(status === 'in' ? 'You’re in.' : status === 'maybe' ? 'Marked as maybe.' : 'Got it. The crew will see you can’t make it.');
+  // nothing to ask (the dates are set): the moment itself, then the plan
+  if (!S.setup && status !== 'out' && !S.demo) celebrate(S.trip.name, planColor(S.trip), status === 'in' ? 'You’re in' : 'You’re a maybe');
+  if (!S.setup) flash(status === 'in' ? `You’re in! ${host} and the crew can see it.` : status === 'maybe' ? 'Marked as maybe. Change it any time.' : 'Got it. The crew will see you can’t make it.');
+}
+// the answer given on the invitation screen itself (public/shim.js), used once, for this plan only
+function pendingJoin() {
+  let p = null; try { p = JSON.parse(sessionStorage.getItem('outta_join') || 'null'); } catch {}
+  if (!p || p.tid !== S.tid || !['in', 'maybe', 'out'].includes(p.ans)) return '';
+  try { sessionStorage.removeItem('outta_join'); } catch {}
+  return p.ans;
 }
 
 /* ---------- plan match: learning and settling disagreements ---------- */

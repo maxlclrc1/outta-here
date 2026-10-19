@@ -136,7 +136,17 @@ function jSteps() {
   });
   if (small) {
     const first = (t.itinerary || []).filter(i => i.time).sort(byTime)[0];
-    add('venue', 'prepare', {
+    // with the place already chosen, a dinner only needs a time: one field, not an itinerary
+    const placeSet = haveDest && dest()?.city;
+    if (placeSet) add('venue', 'prepare', {
+      title: 'Set the time', done: !!(t.venue || t.time || first), blockedBy: needsDecided,
+      group: 'No start time yet', goal: 'What time are you meeting?',
+      why: `${placeSet}, ${d ? fmt(d.start) : 'the day'}. All it needs is a time.`,
+      todo: 'Set the time everyone meets.', after: 'Everyone sees it on the plan, and the reminders use it.',
+      act: () => `<form id="timeForm" class="row j-inline" style="gap:6px;align-items:flex-end"><label class="field" style="flex:0 1 150px"><span class="label">Time</span><input id="plan-time" type="time" required></label><button class="btn primary" type="submit">Set it</button></form>`,
+      help: { tab: 'overview', sel: '#plan-time' },
+    });
+    else add('venue', 'prepare', {
       title: 'Confirm the place and time', done: !!(t.venue || t.time || first), blockedBy: needsDecided,
       group: 'No place or time yet', goal: 'Pin down where and when',
       why: `${dest()?.city || 'The plan'} is set for ${d ? fmt(d.start) : 'the day'}, but there’s no place or start time yet.`,
@@ -304,7 +314,7 @@ function journeyCard(tiles = '') {
       ${f.why || f.todo ? `<p class="j-why">${esc(f.why || f.todo)}</p>` : ''}
       ${waitOn.length ? `<div class="j-wait">${avStack(waitOn, 5)}<span class="small">Waiting on ${esc(namesOrCount(waitOn))}</span></div>` : ''}
       <div class="j-acts">${f.act()}</div>
-      ${f.help && !f.live ? `<button class="linkbtn small j-help" data-jgo="${f.k}">Show me where</button>` : ''}
+      ${f.help && !f.live && f.help.tab !== 'overview' ? `<button class="linkbtn small j-help" data-jgo="${f.k}">Show me where</button>` : ''}
       ${f.k === 'invite' && S.copyText ? `<textarea aria-label="Text to copy" id="copybox" readonly>${esc(S.copyText)}</textarea>` : ''}
     </section>`
     : `<section class="j-focus done"><span class="j-eyebrow">${j.stage === 'after' ? 'That’s a wrap' : 'All set'}</span><h2>${j.stage === 'after' ? 'All wrapped up' : 'You’re all set'}</h2><p class="j-why">${(() => { const c = countdown(); return c && j.stage !== 'after' ? `${c.text} to go. Nothing needs doing right now.` : 'Nothing needs doing right now.'; })()}</p></section>`;

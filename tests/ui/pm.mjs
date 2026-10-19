@@ -20,7 +20,7 @@ await a.click('[data-act=newTrip]'); await settle(a); await a.click('[data-size=
 await a.fill('#nt-name', 'Saturday'); await a.fill('#nt-city', 'Brooklyn'); await a.click('#newTrip [type=submit]'); await a.waitForSelector('.ov-hero, .pass, .passport, .setup').then(() => skipSetup(a)); await settle(a);
 const tid = await a.evaluate(() => location.hash);
 const j = await mk('Jay', tid), k = await mk('Kim', tid);
-for (const p of [j, k]) { await p.waitForSelector('.welcome'); await p.click('[data-join=in]'); await skipSetup(p); await p.waitForTimeout(600); }
+for (const p of [j, k]) { await p.waitForSelector('.welcome, .setup, .ov-hero'); await p.locator('[data-join=in]').click({ timeout: 2500 }).catch(() => {}); await skipSetup(p); await p.waitForTimeout(600); }
 const toMatch = async p => { await p.click('.bottomnav [data-sec=plan]'); await settle(p); await p.click('.subtab[data-tab=match]'); await settle(p); };
 await toMatch(a); await a.fill('#pitch-note', 'no karaoke, near the L'); await a.click('[data-act=genPitches]'); await a.waitForSelector('#pitch'); await settle(a);
 console.log('prompt 1 has note:', prompts[0].includes('no karaoke, near the L'), '| has history:', prompts[0].includes('How the crew'));
