@@ -48,12 +48,12 @@ async function read() {
 
 // —— family, nobody has a count saved: exactly as before ——
 { await plan('family', false); const x = await read();
-  expect('family, no counts: hero as before', x.hero === '4 going · 1 maybe', x.hero);
+  expect('family, no counts: hero as for any plan (no kids added)', x.hero === '1 confirmed · 3 going · 1 maybe', x.hero);
   expect('…RSVP as before', /Plan for 1 person, up to 4 if everyone going confirms\. Stays and costs use this number\./.test(x.rsvp) && !/kid/i.test(x.blocks.join()), x.rsvp); }
 
 // —— friends, with the same saved counts: ignored ——
 { await plan('friends'); const x = await read();
-  expect('friends: saved counts are ignored in the hero', x.hero === '4 going · 1 maybe', x.hero);
+  expect('friends: saved counts are ignored in the hero', x.hero === '1 confirmed · 3 going · 1 maybe', x.hero);
   expect('…and the RSVP card', /Plan for 1 person, up to 4 if everyone going confirms\. Stays and costs use this number\./.test(x.rsvp) && !/kid/i.test(x.rsvp), x.rsvp);
   expect('…and the cost group', /For everyone \(1 person\)/.test(x.cost), x.cost.slice(0, 120)); }
 
