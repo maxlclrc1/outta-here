@@ -1450,3 +1450,11 @@ html:root .nd .nd-go{width:100%;justify-content:center;min-height:54px;font-size
 .avstack .av.av-wait{background:transparent!important;color:var(--muted);border:2px dashed color-mix(in oklab,var(--muted) 60%,transparent);font-size:0}
 .avstack .av.av-wait::after{content:"?";font-size:12px;font-weight:800}
 .bw-wait{font-style:italic}
+
+/* Trip Match: honest tags, a shortlist, and pitches set aside for other dates */
+.m-tags{display:flex;flex-wrap:wrap;gap:6px}
+.m-tag{font:700 12px var(--f-body);padding:4px 10px;border-radius:99px;background:color-mix(in oklab,var(--accent) 12%,transparent);color:var(--ink)}
+.m-off{display:flex;flex-wrap:wrap;align-items:center;gap:10px;justify-content:space-between}
+.sb-more{border-top:1px solid var(--line);padding-top:10px;margin-top:4px}
+.sb-more summary{cursor:pointer;color:var(--muted);font-weight:600}
+.sb-row.is-off{opacity:.6}

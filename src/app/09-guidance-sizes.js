@@ -155,6 +155,7 @@ Reply with only JSON: {"pitches":[{"title":"the plan in 2-5 words","tagline":"pu
   });
 }
 function lockSmallPitch(p) {
+  if (offDates(p)) { flash('This was pitched for another day. Pitch again for the day you picked.'); return; }
   const ds = [...(S.trip.destinations || [])];
   let d = ds.find(x => x.city.toLowerCase() === p.title.toLowerCase());
   if (!d) { d = { id: rid(6), city: p.title, code: '' }; ds.push(d); }
